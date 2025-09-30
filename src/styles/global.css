@@ -1,0 +1,164 @@
+.technician-dashboard {
+  padding: 12px;
+}
+
+/* Form elements */
+.ant-form-item {
+  margin-bottom: 16px;
+}
+
+/* Cards */
+.ant-card {
+  margin-bottom: 16px;
+  border-radius: 8px;
+}
+
+/* Buttons */
+.ant-btn {
+  white-space: nowrap;
+}
+
+/* List items */
+.ant-list-item {
+  padding: 12px 16px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 576px) {
+  .ant-statistic-title {
+    font-size: 12px;
+  }
+  
+  .ant-card-head-title {
+    font-size: 16px;
+  }
+}
+
+/* Form steps */
+.maintenance-form {
+  padding: 12px;
+}
+
+.maintenance-form .ant-steps {
+  margin-bottom: 16px;
+}
+
+.form-actions {
+  margin-top: 24px;
+  text-align: center;
+}
+
+
+
+
+// Technician App
+/* technician-app/App.css */
+/* Base styles */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #f5f5f5;
+}
+
+/* Mobile-specific styles */
+@media (max-width: 768px) {
+  .ant-card {
+    border-radius: 0;
+    margin-bottom: 8px;
+  }
+  
+  .ant-list-item {
+    padding: 12px;
+  }
+  
+  .ant-btn {
+    padding: 8px 12px;
+  }
+  
+  .ant-statistic-title {
+    font-size: 12px;
+  }
+  
+  .ant-statistic-content {
+    font-size: 18px;
+  }
+}
+
+/* Form styles */
+.maintenance-form .ant-steps {
+  margin-bottom: 16px;
+}
+
+.maintenance-form .form-actions {
+  margin-top: 24px;
+  text-align: center;
+}
+
+/* Generator scanner */
+.generator-scanner {
+  text-align: center;
+}
+
+/* Profile page */
+.profile-page .ant-avatar {
+  background-color: #1890ff;
+}
+
+/* Status tags */
+.status-tag {
+  margin-right: 8px;
+}
+
+
+
+
+/* technician-app/pages/Maintenance.css */
+.maintenance-page {
+  padding: 12px;
+}
+
+.maintenance-page .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+.maintenance-page .ant-tabs-content {
+  padding: 16px 0;
+}
+
+@media (max-width: 768px) {
+  .maintenance-page .ant-tabs-nav-wrap {
+    justify-content: center;
+  }
+  
+  .maintenance-page .ant-tabs-tab {
+    padding: 8px 12px;
+  }
+}
+
+
+
+
+/* technician-app/pages/Generators.css */
+.generators-page {
+  padding: 12px;
+}
+
+.generators-page .ant-list-item {
+  padding: 12px 0;
+}
+
+.generators-page .ant-list-item-meta {
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .generators-page .ant-space {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .generators-page .ant-select {
+    width: 100% !important;
+    margin-top: 8px;
+  }
+}
