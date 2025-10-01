@@ -695,6 +695,19 @@ export const purchaseRequisitionAPI = {
         message: error.response?.data?.message || 'Failed to fetch spending analytics'
       };
     }
+  },
+
+  getFinanceDashboardData: async () => {
+    try {
+      const response = await apiClient.get('/purchase-requisitions/finance/dashboard-data');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching finance dashboard data:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to fetch finance dashboard data'
+      };
+    }
   }
 };
 

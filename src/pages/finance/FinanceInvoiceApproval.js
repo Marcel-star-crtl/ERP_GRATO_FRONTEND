@@ -54,7 +54,8 @@ import {
   ShopOutlined,
   TagOutlined,
   BankOutlined,
-  DollarOutlined
+  DollarOutlined,
+  CrownOutlined
 } from '@ant-design/icons';
 import api from '../../services/api';
 import * as XLSX from 'xlsx';
@@ -472,6 +473,7 @@ const FinanceInvoiceApprovalPage = () => {
   };
 
   // Handle mark as processed
+  // Handle mark as processed (NEW WORKFLOW: pending_finance_processing -> processed)
   const handleMarkAsProcessed = async (invoice) => {
     try {
       setLoading(true);
@@ -480,12 +482,10 @@ const FinanceInvoiceApprovalPage = () => {
       let endpoint, data;
       
       if (isSupplierInvoice) {
-        // For supplier invoices, process payment
-        endpoint = `/api/suppliers/admin/invoices/${invoice._id}/payment`;
+        // For supplier invoices, mark as processed (not payment yet)
+        endpoint = `/api/suppliers/admin/invoices/${invoice._id}/process`;
         data = {
-          paymentAmount: invoice.invoiceAmount,
-          paymentMethod: 'Bank Transfer',
-          comments: 'Invoice processed by finance'
+          comments: 'Invoice processed by finance and ready for payment'
         };
       } else {
         // For employee invoices, mark as processed
@@ -498,13 +498,54 @@ const FinanceInvoiceApprovalPage = () => {
       const response = await api.put(endpoint, data);
       
       if (response.data.success) {
-        message.success('Invoice processed successfully');
+        message.success('Invoice marked as processed successfully');
         fetchAllInvoices();
       } else {
         throw new Error(response.data.message);
       }
     } catch (error) {
       message.error(error.response?.data?.message || 'Failed to process invoice');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle payment processing (NEW: processed -> paid)
+  const handleMarkAsPaid = async (invoice) => {
+    try {
+      setLoading(true);
+      
+      const isSupplierInvoice = invoice.invoiceType === 'supplier';
+      let endpoint, data;
+      
+      if (isSupplierInvoice) {
+        // For supplier invoices, process payment
+        endpoint = `/api/suppliers/admin/invoices/${invoice._id}/payment`;
+        data = {
+          paymentAmount: invoice.invoiceAmount,
+          paymentMethod: 'Bank Transfer',
+          comments: 'Payment processed by finance'
+        };
+      } else {
+        // For employee invoices, mark as paid
+        endpoint = `/api/invoices/finance/process/${invoice._id}`;
+        data = {
+          paymentAmount: invoice.invoiceAmount,
+          paymentMethod: 'Bank Transfer',
+          comments: 'Payment processed by finance'
+        };
+      }
+      
+      const response = await api.put(endpoint, data);
+      
+      if (response.data.success) {
+        message.success('Payment processed successfully');
+        fetchAllInvoices();
+      } else {
+        throw new Error(response.data.message);
+      }
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Failed to process payment');
     } finally {
       setLoading(false);
     }
@@ -570,11 +611,13 @@ const FinanceInvoiceApprovalPage = () => {
   const getStatusTag = (status) => {
     const statusMap = {
       'pending_finance_assignment': { color: 'orange', text: 'Pending Assignment', icon: <ClockCircleOutlined /> },
-      'pending_department_approval': { color: 'blue', text: 'Department Review', icon: <TeamOutlined /> },
+      'pending_department_head_approval': { color: 'blue', text: 'Department Head Review', icon: <TeamOutlined /> },
+      'pending_head_of_business_approval': { color: 'geekblue', text: 'Head of Business Review', icon: <CrownOutlined /> },
+      'pending_finance_processing': { color: 'purple', text: 'Pending Finance Processing', icon: <DollarOutlined /> },
       'approved': { color: 'green', text: 'Approved', icon: <CheckCircleOutlined /> },
       'rejected': { color: 'red', text: 'Rejected', icon: <CloseCircleOutlined /> },
-      'processed': { color: 'purple', text: 'Processed', icon: <CheckCircleOutlined /> },
-      'paid': { color: 'cyan', text: 'Paid', icon: <DollarOutlined /> }
+      'processed': { color: 'cyan', text: 'Processed', icon: <CheckCircleOutlined /> },
+      'paid': { color: 'lime', text: 'Paid', icon: <DollarOutlined /> }
     };
 
     const config = statusMap[status] || { color: 'default', text: status, icon: null };
@@ -593,7 +636,10 @@ const FinanceInvoiceApprovalPage = () => {
         case 'unassigned':
           return inv.approvalStatus === 'pending_finance_assignment';
         case 'pending':
-          return inv.approvalStatus === 'pending_department_approval';
+          return inv.approvalStatus === 'pending_department_head_approval' || 
+                 inv.approvalStatus === 'pending_head_of_business_approval';
+        case 'ready_for_processing':
+          return inv.approvalStatus === 'pending_finance_processing';
         case 'approved':
           return inv.approvalStatus === 'approved';
         case 'rejected':
@@ -969,7 +1015,9 @@ const FinanceInvoiceApprovalPage = () => {
       render: (status) => getStatusTag(status),
       filters: [
         { text: 'Pending Assignment', value: 'pending_finance_assignment' },
-        { text: 'Department Review', value: 'pending_department_approval' },
+        { text: 'Department Head Review', value: 'pending_department_head_approval' },
+        { text: 'Head of Business Review', value: 'pending_head_of_business_approval' },
+        { text: 'Pending Finance Processing', value: 'pending_finance_processing' },
         { text: 'Approved', value: 'approved' },
         { text: 'Rejected', value: 'rejected' },
         { text: 'Processed', value: 'processed' },
@@ -991,7 +1039,9 @@ const FinanceInvoiceApprovalPage = () => {
         const progress = getApprovalProgress(record);
         let status = 'active';
         if (record.approvalStatus === 'rejected') status = 'exception';
-        if (record.approvalStatus === 'approved' || record.approvalStatus === 'paid') status = 'success';
+        if (record.approvalStatus === 'pending_finance_processing' || 
+            record.approvalStatus === 'processed' || 
+            record.approvalStatus === 'paid') status = 'success';
         
         return (
           <div style={{ width: 80 }}>
@@ -1070,10 +1120,10 @@ const FinanceInvoiceApprovalPage = () => {
             </Tooltip>
           )}
           
-          {(record.approvalStatus === 'approved' || record.approvalStatus === 'paid') && (
+          {record.approvalStatus === 'pending_finance_processing' && (
             <Popconfirm
-              title={`${record.invoiceType === 'supplier' ? 'Process payment' : 'Mark as processed'}?`}
-              description={`This will ${record.invoiceType === 'supplier' ? 'process the payment for this supplier invoice' : 'mark the invoice as fully processed'}.`}
+              title="Mark as processed?"
+              description="This will mark the invoice as processed and ready for payment."
               onConfirm={() => handleMarkAsProcessed(record)}
               okText="Yes"
               cancelText="No"
@@ -1081,10 +1131,28 @@ const FinanceInvoiceApprovalPage = () => {
               <Button 
                 size="small" 
                 type="primary" 
-                ghost
-                icon={record.invoiceType === 'supplier' ? <DollarOutlined /> : <CheckCircleOutlined />}
+                icon={<AuditOutlined />}
               >
-                {record.invoiceType === 'supplier' ? 'Pay' : 'Process'}
+                Process
+              </Button>
+            </Popconfirm>
+          )}
+          
+          {(record.approvalStatus === 'processed') && (
+            <Popconfirm
+              title={`${record.invoiceType === 'supplier' ? 'Process payment' : 'Mark as paid'}?`}
+              description={`This will ${record.invoiceType === 'supplier' ? 'process the payment for this supplier invoice' : 'mark the invoice as paid'}.`}
+              onConfirm={() => handleMarkAsPaid(record)}
+              okText="Yes"
+              cancelText="No"
+            >
+              <Button 
+                size="small" 
+                type="primary" 
+                ghost
+                icon={<DollarOutlined />}
+              >
+                Pay
               </Button>
             </Popconfirm>
           )}
@@ -1268,10 +1336,18 @@ const FinanceInvoiceApprovalPage = () => {
           <TabPane 
             tab={
               <Badge count={getTabCount('pending')} size="small">
-                <span><TeamOutlined /> Pending ({getTabCount('pending')})</span>
+                <span><TeamOutlined /> Pending Approval ({getTabCount('pending')})</span>
               </Badge>
             } 
             key="pending"
+          />
+          <TabPane 
+            tab={
+              <Badge count={getTabCount('ready_for_processing')} size="small" style={{ backgroundColor: '#722ed1' }}>
+                <span><AuditOutlined /> Ready for Processing ({getTabCount('ready_for_processing')})</span>
+              </Badge>
+            } 
+            key="ready_for_processing"
           />
           <TabPane 
             tab={
@@ -1306,7 +1382,10 @@ const FinanceInvoiceApprovalPage = () => {
               case 'unassigned':
                 return invoice.approvalStatus === 'pending_finance_assignment';
               case 'pending':
-                return invoice.approvalStatus === 'pending_department_approval';
+                return invoice.approvalStatus === 'pending_department_head_approval' || 
+                       invoice.approvalStatus === 'pending_head_of_business_approval';
+              case 'ready_for_processing':
+                return invoice.approvalStatus === 'pending_finance_processing';
               case 'approved':
                 return invoice.approvalStatus === 'approved';
               case 'rejected':

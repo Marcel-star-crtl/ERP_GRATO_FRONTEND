@@ -62,7 +62,8 @@ import SupervisorSuggestions from './pages/supervisor/SupervisorSuggestions';
 
 
 // Finance components
-import FinanceCashApprovals from './pages/finance/FinanceApprovalList';
+import FinanceApprovalList from './pages/finance/FinanceApprovalList';
+import FinanceCashApprovals from './pages/finance/FinanceCashApprovals';
 import FinanceInvoiceManagement from './pages/finance/FinanceInvoiceManagement';
 import FinanceCashApprovalForm from './pages/finance/FinanceCashApprovalForm';
 import InvoiceAnalytics from './pages/finance/InvoiceAnalytics';
@@ -71,8 +72,8 @@ import FinanceDashboard from './pages/finance/FinanceDashboard';
 import FinanceReports from './pages/finance/FinanceReports';
 import FinanceSupplierManagement from './pages/finance/FinanceSupplierManagement';
 import FinancePaymentProcessing from './pages/finance/FinancePaymentProcessing';
-import FinancePurchaseRequisitions from './pages/finance/FinancePurchaseRequisitions'
-import FinanceITApprovals from './pages/finance/FinanceITApprovals'
+import FinancePurchaseRequisitions from './pages/finance/FinancePurchaseRequisitions';
+import FinanceITApprovals from './pages/finance/FinanceITApprovals';
 
 // Supply Chain components
 import SupplyChainRequisitionManagement from './pages/supply-chain/SupplyChainRequisitionManagement';

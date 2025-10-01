@@ -447,6 +447,7 @@ const UnifiedSupplierPortal = () => {
   const handleInvoiceUpload = async (values) => {
     try {
       setUploadLoading(true);
+      console.log('Upload loading set to true');
       
       console.log('Form values received:', values);
       console.log('PO File:', values.poFile);
@@ -454,9 +455,12 @@ const UnifiedSupplierPortal = () => {
   
       // Validate required fields
       if (!values.poNumber || !values.invoiceNumber) {
+        console.log('Validation failed: missing required fields');
         message.error('Please fill in all required fields');
         return;
       }
+      
+      console.log('Validation passed, creating FormData...');
   
       // Create FormData for multipart file upload
       const formData = new FormData();
@@ -1594,7 +1598,7 @@ const UnifiedSupplierPortal = () => {
         >
           <Alert
             message="Invoice Upload Requirements"
-            description="Please ensure the PO number follows the format: PO-XX0000000000-X (e.g., PO-NG010000000-1)"
+            description="Please ensure the PO number follows the format: PO-XX########-X (e.g., PO-NG010000000-1)"
             type="info"
             showIcon
             style={{ marginBottom: '16px' }}
@@ -1611,8 +1615,8 @@ const UnifiedSupplierPortal = () => {
               rules={[
                 { required: true, message: 'Please enter PO number' },
                 {
-                  pattern: /^PO-\w{2}\d{10}-\d+$/i,
-                  message: 'PO number format should be: PO-XX0000000000-X (e.g., PO-NG010000000-1)'
+                  pattern: /^PO-\w{2}\d{8,12}-\d+$/i,
+                  message: 'PO number format should be: PO-XX########-X (e.g., PO-NG010000000-1)'
                 }
               ]}
             >
