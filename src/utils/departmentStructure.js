@@ -79,7 +79,7 @@ export const DEPARTMENT_STRUCTURE = {
                 department: 'Business Development & Supply Chain'
             },
             'Order Management Assistant': {
-                name: 'Mr. Cristabel Maneni',
+                name: 'Ms. Christabel Mangwi',
                 email: 'christabel@gratoengineering.com',
                 supervisor: 'Supply Chain Coordinator',
                 department: 'Business Development & Supply Chain'
@@ -166,7 +166,7 @@ export const DEPARTMENT_STRUCTURE = {
     // Department Heads (admin level)
     'Mr. Didier Oyong': 'admin',
     'Mr. E.T Kelvin': 'admin', 
-    'Mrs. Brunline Teitoh': 'admin',
+    'Mrs. Bruiline Tsitoh': 'admin',
     
     // Senior Management (supervisor level)
     'Mr. Ovo Becheni': 'supervisor',
@@ -189,7 +189,7 @@ export const DEPARTMENT_STRUCTURE = {
     
     // Staff level (employee)
     'Mr. Bomba Yvone': 'employee',
-    'Mr. Cristabel Maneni': 'employee',
+    'Ms. Christabel Mangwi': 'employee',
     'Ms. Aghangu Marie': 'employee',
     'Mr. Che Earnest': 'employee',
     'Ms. Ndi Belther': 'employee',
@@ -223,7 +223,7 @@ export const DEPARTMENT_STRUCTURE = {
       'Mr. Lukong Lambert': 'coordinator',
       'Mr. Pryde Mua': 'coordinator',
       'Ms. Rambell Mambo': 'staff',
-      'Mr. Cristabel Maneni': 'staff',
+      'Ms. Christabel Mangwi': 'staff',
       'Ms. Aghangu Marie': 'staff'
     },
     'HR & Admin': {

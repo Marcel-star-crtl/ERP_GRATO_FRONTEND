@@ -374,5 +374,3 @@ const SupervisorJustificationForm = () => {
 };
 
 export default SupervisorJustificationForm;
-
-

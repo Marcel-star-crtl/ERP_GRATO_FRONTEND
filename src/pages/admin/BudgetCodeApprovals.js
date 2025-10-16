@@ -1,36 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Table, Button, Modal, Form, Input, Tag, Space, 
-  Typography, Descriptions, Timeline, message, Radio, Badge,
-  Row, Col, Statistic, Alert, Spin
+  Typography, Descriptions, Timeline, message, Radio
 } from 'antd';
 import {
   CheckCircleOutlined, CloseCircleOutlined, 
-  ClockCircleOutlined, EyeOutlined, AuditOutlined,
-  ReloadOutlined, DollarOutlined
+  ClockCircleOutlined, EyeOutlined
 } from '@ant-design/icons';
-import { budgetCodeAPI } from '../../services/budgetCodeAPI';
+import budgetCodeAPI from '../../services/budgetCodeAPI';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-const SupervisorBudgetCodeApprovals = () => {
+const BudgetCodeApprovals = () => {
   const [pendingApprovals, setPendingApprovals] = useState([]);
-  const [allBudgetCodes, setAllBudgetCodes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
-  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [selectedBudgetCode, setSelectedBudgetCode] = useState(null);
   const [form] = Form.useForm();
-  const [stats, setStats] = useState({
-    pending: 0,
-    approved: 0,
-    rejected: 0
-  });
 
   useEffect(() => {
     fetchPendingApprovals();
-    fetchAllBudgetCodes();
   }, []);
 
   const fetchPendingApprovals = async () => {
@@ -40,35 +30,12 @@ const SupervisorBudgetCodeApprovals = () => {
       
       if (response.success) {
         setPendingApprovals(response.data);
-        setStats(prev => ({ ...prev, pending: response.data.length }));
       }
     } catch (error) {
       console.error('Error fetching pending approvals:', error);
       message.error('Failed to fetch pending approvals');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchAllBudgetCodes = async () => {
-    try {
-      const response = await budgetCodeAPI.getBudgetCodes();
-      
-      if (response.success) {
-        setAllBudgetCodes(response.data);
-        
-        // Calculate stats
-        const approved = response.data.filter(bc => bc.active).length;
-        const rejected = response.data.filter(bc => bc.status === 'rejected').length;
-        
-        setStats(prev => ({
-          ...prev,
-          approved,
-          rejected
-        }));
-      }
-    } catch (error) {
-      console.error('Error fetching budget codes:', error);
     }
   };
 
@@ -87,11 +54,6 @@ const SupervisorBudgetCodeApprovals = () => {
     setApprovalModalVisible(true);
   };
 
-  const handleViewDetails = (budgetCode) => {
-    setSelectedBudgetCode(budgetCode);
-    setDetailsModalVisible(true);
-  };
-
   const handleSubmitApproval = async (values) => {
     try {
       setLoading(true);
@@ -107,7 +69,6 @@ const SupervisorBudgetCodeApprovals = () => {
         form.resetFields();
         setSelectedBudgetCode(null);
         fetchPendingApprovals();
-        fetchAllBudgetCodes();
       } else {
         message.error(response.message || 'Failed to process approval');
       }
@@ -195,23 +156,13 @@ const SupervisorBudgetCodeApprovals = () => {
       title: 'Actions',
       key: 'actions',
       render: (_, record) => (
-        <Space>
-          <Button
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => handleViewDetails(record)}
-          >
-            View
-          </Button>
-          <Button
-            type="primary"
-            size="small"
-            icon={<CheckCircleOutlined />}
-            onClick={() => handleApprovalAction(record)}
-          >
-            Review
-          </Button>
-        </Space>
+        <Button
+          type="primary"
+          icon={<CheckCircleOutlined />}
+          onClick={() => handleApprovalAction(record)}
+        >
+          Review
+        </Button>
       )
     }
   ];
@@ -219,82 +170,21 @@ const SupervisorBudgetCodeApprovals = () => {
   return (
     <div style={{ padding: '24px' }}>
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <Title level={2} style={{ margin: 0 }}>Budget Code Approvals</Title>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => {
-              fetchPendingApprovals();
-              fetchAllBudgetCodes();
-            }}
-            loading={loading}
-          >
-            Refresh
-          </Button>
-        </div>
-
-        {/* Statistics */}
-        <Row gutter={16} style={{ marginBottom: '24px' }}>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Pending Your Approval"
-                value={stats.pending}
-                valueStyle={{ color: '#faad14' }}
-                prefix={<ClockCircleOutlined />}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Approved"
-                value={stats.approved}
-                valueStyle={{ color: '#52c41a' }}
-                prefix={<CheckCircleOutlined />}
-              />
-            </Card>
-          </Col>
-          <Col span={8}>
-            <Card>
-              <Statistic
-                title="Rejected"
-                value={stats.rejected}
-                valueStyle={{ color: '#ff4d4f' }}
-                prefix={<CloseCircleOutlined />}
-              />
-            </Card>
-          </Col>
-        </Row>
-
-        {/* Pending Approvals Table */}
-        <Alert
-          message="Budget Code Approval"
-          description="Review and approve budget code requests from your team members. Your approval is required before the budget code proceeds to the next level."
-          type="info"
-          showIcon
-          style={{ marginBottom: '16px' }}
-        />
-
+        <Title level={2}>Budget Code Approvals</Title>
+        
         <Table
           columns={columns}
           dataSource={pendingApprovals}
           loading={loading}
           rowKey="_id"
           pagination={{
-            showTotal: (total) => `${total} budget codes awaiting your approval`
+            showTotal: (total) => `${total} budget codes awaiting approval`
           }}
         />
       </Card>
 
-      {/* Approval Modal */}
       <Modal
-        title={
-          <Space>
-            <AuditOutlined />
-            Budget Code Approval
-          </Space>
-        }
+        title="Budget Code Approval"
         open={approvalModalVisible}
         onCancel={() => {
           setApprovalModalVisible(false);
@@ -387,7 +277,7 @@ const SupervisorBudgetCodeApprovals = () => {
                 label="Decision"
                 rules={[{ required: true, message: 'Please select a decision' }]}
               >
-                <Radio.Group size="large">
+                <Radio.Group>
                   <Radio.Button value="approved" style={{ color: '#52c41a' }}>
                     <CheckCircleOutlined /> Approve
                   </Radio.Button>
@@ -432,57 +322,8 @@ const SupervisorBudgetCodeApprovals = () => {
           </div>
         )}
       </Modal>
-
-      {/* Details Modal */}
-      <Modal
-        title="Budget Code Details"
-        open={detailsModalVisible}
-        onCancel={() => {
-          setDetailsModalVisible(false);
-          setSelectedBudgetCode(null);
-        }}
-        footer={null}
-        width={700}
-      >
-        {selectedBudgetCode && (
-          <div>
-            <Descriptions bordered column={2} size="small">
-              <Descriptions.Item label="Budget Code" span={2}>
-                <Text code strong>{selectedBudgetCode.code}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Name" span={2}>
-                {selectedBudgetCode.name}
-              </Descriptions.Item>
-              <Descriptions.Item label="Department">
-                {selectedBudgetCode.department}
-              </Descriptions.Item>
-              <Descriptions.Item label="Type">
-                {selectedBudgetCode.budgetType.replace('_', ' ').toUpperCase()}
-              </Descriptions.Item>
-              <Descriptions.Item label="Total Budget">
-                <Text strong style={{ color: '#52c41a' }}>
-                  XAF {selectedBudgetCode.budget.toLocaleString()}
-                </Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Period">
-                {selectedBudgetCode.budgetPeriod.toUpperCase()}
-              </Descriptions.Item>
-              <Descriptions.Item label="Status" span={2}>
-                {getStatusTag(selectedBudgetCode.status)}
-              </Descriptions.Item>
-              {selectedBudgetCode.description && (
-                <Descriptions.Item label="Description" span={2}>
-                  {selectedBudgetCode.description}
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 };
 
-export default SupervisorBudgetCodeApprovals;
-
-
+export default BudgetCodeApprovals;

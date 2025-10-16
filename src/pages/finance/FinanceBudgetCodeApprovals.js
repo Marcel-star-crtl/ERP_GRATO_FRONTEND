@@ -2,19 +2,20 @@ import React, { useState, useEffect } from 'react';
 import {
   Card, Table, Button, Modal, Form, Input, Tag, Space, 
   Typography, Descriptions, Timeline, message, Radio, Badge,
-  Row, Col, Statistic, Alert, Spin
+  Row, Col, Statistic, Alert, Spin, Divider
 } from 'antd';
 import {
   CheckCircleOutlined, CloseCircleOutlined, 
   ClockCircleOutlined, EyeOutlined, AuditOutlined,
-  ReloadOutlined, DollarOutlined
+  ReloadOutlined, DollarOutlined, BankOutlined,
+  BarChartOutlined
 } from '@ant-design/icons';
 import { budgetCodeAPI } from '../../services/budgetCodeAPI';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-const SupervisorBudgetCodeApprovals = () => {
+const FinanceBudgetCodeApprovals = () => {
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [allBudgetCodes, setAllBudgetCodes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -24,8 +25,9 @@ const SupervisorBudgetCodeApprovals = () => {
   const [form] = Form.useForm();
   const [stats, setStats] = useState({
     pending: 0,
-    approved: 0,
-    rejected: 0
+    active: 0,
+    totalBudget: 0,
+    utilization: 0
   });
 
   useEffect(() => {
@@ -39,8 +41,18 @@ const SupervisorBudgetCodeApprovals = () => {
       const response = await budgetCodeAPI.getPendingApprovals();
       
       if (response.success) {
-        setPendingApprovals(response.data);
-        setStats(prev => ({ ...prev, pending: response.data.length }));
+        // Filter for codes pending finance activation (Level 3)
+        const financePending = response.data.filter(bc => 
+          bc.status === 'pending_finance_activation' &&
+          bc.approvalChain.some(step => 
+            step.level === 3 && 
+            step.status === 'pending' &&
+            step.approver.role === 'Finance Officer'
+          )
+        );
+        
+        setPendingApprovals(financePending);
+        setStats(prev => ({ ...prev, pending: financePending.length }));
       }
     } catch (error) {
       console.error('Error fetching pending approvals:', error);
@@ -58,13 +70,16 @@ const SupervisorBudgetCodeApprovals = () => {
         setAllBudgetCodes(response.data);
         
         // Calculate stats
-        const approved = response.data.filter(bc => bc.active).length;
-        const rejected = response.data.filter(bc => bc.status === 'rejected').length;
+        const activeCodes = response.data.filter(bc => bc.active);
+        const totalBudget = activeCodes.reduce((sum, bc) => sum + bc.budget, 0);
+        const totalUsed = activeCodes.reduce((sum, bc) => sum + bc.used, 0);
+        const utilization = totalBudget > 0 ? Math.round((totalUsed / totalBudget) * 100) : 0;
         
         setStats(prev => ({
           ...prev,
-          approved,
-          rejected
+          active: activeCodes.length,
+          totalBudget,
+          utilization
         }));
       }
     } catch (error) {
@@ -75,13 +90,10 @@ const SupervisorBudgetCodeApprovals = () => {
   const handleApprovalAction = (budgetCode) => {
     setSelectedBudgetCode(budgetCode);
     
-    // Find current pending level
-    const pendingStep = budgetCode.approvalChain.find(step => step.status === 'pending');
-    
     form.setFieldsValue({
       decision: 'approved',
       comments: '',
-      level: pendingStep ? pendingStep.level : 1
+      level: 3 
     });
     
     setApprovalModalVisible(true);
@@ -102,7 +114,12 @@ const SupervisorBudgetCodeApprovals = () => {
       );
       
       if (response.success) {
-        message.success(response.message);
+        if (values.decision === 'approved') {
+          message.success('Budget code activated successfully! It is now available for use.');
+        } else {
+          message.info('Budget code request has been rejected.');
+        }
+        
         setApprovalModalVisible(false);
         form.resetFields();
         setSelectedBudgetCode(null);
@@ -121,9 +138,9 @@ const SupervisorBudgetCodeApprovals = () => {
 
   const getStatusTag = (status) => {
     const statusMap = {
-      'pending_departmental_approval': { color: 'orange', text: 'Pending Department Head' },
+      'pending_departmental_approval': { color: 'orange', text: 'Pending Department' },
       'pending_head_of_business': { color: 'blue', text: 'Pending Executive' },
-      'pending_finance_activation': { color: 'purple', text: 'Pending Finance' },
+      'pending_finance_activation': { color: 'purple', text: 'Pending Finance Activation' },
       'active': { color: 'green', text: 'Active' },
       'rejected': { color: 'red', text: 'Rejected' }
     };
@@ -155,7 +172,7 @@ const SupervisorBudgetCodeApprovals = () => {
       dataIndex: 'budget',
       key: 'budget',
       render: (budget) => (
-        <Text strong style={{ color: '#52c41a' }}>
+        <Text strong style={{ color: '#52c41a', fontSize: '14px' }}>
           XAF {budget.toLocaleString()}
         </Text>
       )
@@ -164,7 +181,9 @@ const SupervisorBudgetCodeApprovals = () => {
       title: 'Budget Type',
       dataIndex: 'budgetType',
       key: 'budgetType',
-      render: (type) => type.replace('_', ' ').toUpperCase()
+      render: (type) => (
+        <Tag color="blue">{type.replace('_', ' ').toUpperCase()}</Tag>
+      )
     },
     {
       title: 'Created By',
@@ -180,16 +199,21 @@ const SupervisorBudgetCodeApprovals = () => {
       )
     },
     {
-      title: 'Submitted',
-      dataIndex: 'submissionDate',
-      key: 'submissionDate',
-      render: (date) => new Date(date).toLocaleDateString()
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status) => getStatusTag(status)
+      title: 'Approvals',
+      key: 'approvals',
+      render: (_, record) => {
+        const approvedLevels = record.approvalChain.filter(s => s.status === 'approved').length;
+        const totalLevels = record.approvalChain.length;
+        return (
+          <div>
+            <Text>{approvedLevels}/{totalLevels} Approved</Text>
+            <br />
+            <Text type="secondary" style={{ fontSize: '11px' }}>
+              {approvedLevels === totalLevels - 1 ? 'Final Approval' : 'In Progress'}
+            </Text>
+          </div>
+        );
+      }
     },
     {
       title: 'Actions',
@@ -206,10 +230,10 @@ const SupervisorBudgetCodeApprovals = () => {
           <Button
             type="primary"
             size="small"
-            icon={<CheckCircleOutlined />}
+            icon={<BankOutlined />}
             onClick={() => handleApprovalAction(record)}
           >
-            Review
+            Activate
           </Button>
         </Space>
       )
@@ -220,7 +244,9 @@ const SupervisorBudgetCodeApprovals = () => {
     <div style={{ padding: '24px' }}>
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <Title level={2} style={{ margin: 0 }}>Budget Code Approvals</Title>
+          <Title level={2} style={{ margin: 0 }}>
+            <BankOutlined /> Finance - Budget Code Activation
+          </Title>
           <Button
             icon={<ReloadOutlined />}
             onClick={() => {
@@ -235,42 +261,52 @@ const SupervisorBudgetCodeApprovals = () => {
 
         {/* Statistics */}
         <Row gutter={16} style={{ marginBottom: '24px' }}>
-          <Col span={8}>
+          <Col span={6}>
             <Card>
               <Statistic
-                title="Pending Your Approval"
+                title="Pending Activation"
                 value={stats.pending}
-                valueStyle={{ color: '#faad14' }}
+                valueStyle={{ color: '#722ed1' }}
                 prefix={<ClockCircleOutlined />}
               />
             </Card>
           </Col>
-          <Col span={8}>
+          <Col span={6}>
             <Card>
               <Statistic
-                title="Approved"
-                value={stats.approved}
+                title="Active Budget Codes"
+                value={stats.active}
                 valueStyle={{ color: '#52c41a' }}
                 prefix={<CheckCircleOutlined />}
               />
             </Card>
           </Col>
-          <Col span={8}>
+          <Col span={6}>
             <Card>
               <Statistic
-                title="Rejected"
-                value={stats.rejected}
-                valueStyle={{ color: '#ff4d4f' }}
-                prefix={<CloseCircleOutlined />}
+                title="Total Active Budget"
+                value={`XAF ${stats.totalBudget.toLocaleString()}`}
+                valueStyle={{ color: '#1890ff' }}
+                prefix={<DollarOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card>
+              <Statistic
+                title="Overall Utilization"
+                value={stats.utilization}
+                suffix="%"
+                valueStyle={{ color: '#fa8c16' }}
+                prefix={<BarChartOutlined />}
               />
             </Card>
           </Col>
         </Row>
 
-        {/* Pending Approvals Table */}
         <Alert
-          message="Budget Code Approval"
-          description="Review and approve budget code requests from your team members. Your approval is required before the budget code proceeds to the next level."
+          message="Budget Code Activation - Final Approval"
+          description="As the Finance Officer, your approval activates the budget code in the accounting system. Review the budget allocation carefully before activating."
           type="info"
           showIcon
           style={{ marginBottom: '16px' }}
@@ -282,17 +318,20 @@ const SupervisorBudgetCodeApprovals = () => {
           loading={loading}
           rowKey="_id"
           pagination={{
-            showTotal: (total) => `${total} budget codes awaiting your approval`
+            showTotal: (total) => `${total} budget codes awaiting finance activation`
+          }}
+          locale={{
+            emptyText: loading ? <Spin /> : 'No budget codes pending activation'
           }}
         />
       </Card>
 
-      {/* Approval Modal */}
+      {/* Activation/Approval Modal */}
       <Modal
         title={
           <Space>
-            <AuditOutlined />
-            Budget Code Approval
+            <BankOutlined />
+            Budget Code Activation
           </Space>
         }
         open={approvalModalVisible}
@@ -302,16 +341,24 @@ const SupervisorBudgetCodeApprovals = () => {
           setSelectedBudgetCode(null);
         }}
         footer={null}
-        width={800}
+        width={900}
       >
         {selectedBudgetCode && (
           <div>
+            <Alert
+              message="Final Approval - Budget Code Activation"
+              description="This is the final step in the approval process. Approving will activate this budget code in the accounting system and make it available for requisition assignments."
+              type="warning"
+              showIcon
+              style={{ marginBottom: '20px' }}
+            />
+
             <Descriptions bordered column={2} size="small" style={{ marginBottom: '20px' }}>
               <Descriptions.Item label="Budget Code" span={2}>
-                <Text code strong>{selectedBudgetCode.code}</Text>
+                <Text code strong style={{ fontSize: '16px' }}>{selectedBudgetCode.code}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="Budget Name" span={2}>
-                {selectedBudgetCode.name}
+                <Text strong>{selectedBudgetCode.name}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="Department">
                 {selectedBudgetCode.department}
@@ -319,17 +366,27 @@ const SupervisorBudgetCodeApprovals = () => {
               <Descriptions.Item label="Budget Type">
                 {selectedBudgetCode.budgetType.replace('_', ' ').toUpperCase()}
               </Descriptions.Item>
-              <Descriptions.Item label="Budget Amount" span={2}>
-                <Text strong style={{ color: '#52c41a', fontSize: '16px' }}>
+              <Descriptions.Item label="Total Budget" span={2}>
+                <Text strong style={{ color: '#52c41a', fontSize: '18px' }}>
                   XAF {selectedBudgetCode.budget.toLocaleString()}
                 </Text>
               </Descriptions.Item>
-              <Descriptions.Item label="Period">
+              <Descriptions.Item label="Budget Period">
                 {selectedBudgetCode.budgetPeriod.toUpperCase()}
               </Descriptions.Item>
               <Descriptions.Item label="Created By">
                 {selectedBudgetCode.createdBy?.fullName}
               </Descriptions.Item>
+              {selectedBudgetCode.startDate && (
+                <Descriptions.Item label="Start Date">
+                  {new Date(selectedBudgetCode.startDate).toLocaleDateString()}
+                </Descriptions.Item>
+              )}
+              {selectedBudgetCode.endDate && (
+                <Descriptions.Item label="End Date">
+                  {new Date(selectedBudgetCode.endDate).toLocaleDateString()}
+                </Descriptions.Item>
+              )}
               {selectedBudgetCode.description && (
                 <Descriptions.Item label="Description" span={2}>
                   {selectedBudgetCode.description}
@@ -337,12 +394,12 @@ const SupervisorBudgetCodeApprovals = () => {
               )}
               {selectedBudgetCode.justification && (
                 <Descriptions.Item label="Justification" span={2}>
-                  {selectedBudgetCode.justification}
+                  <Text italic>{selectedBudgetCode.justification}</Text>
                 </Descriptions.Item>
               )}
             </Descriptions>
 
-            <Card size="small" title="Approval Progress" style={{ marginBottom: '20px' }}>
+            <Card size="small" title="Approval History" style={{ marginBottom: '20px' }}>
               <Timeline>
                 {selectedBudgetCode.approvalChain.map((step, index) => {
                   let color = 'gray';
@@ -356,40 +413,57 @@ const SupervisorBudgetCodeApprovals = () => {
                     icon = <CloseCircleOutlined />;
                   } else if (step.status === 'pending') {
                     color = 'blue';
+                    icon = <ClockCircleOutlined />;
                   }
 
                   return (
                     <Timeline.Item key={index} color={color} dot={icon}>
-                      <Text strong>Level {step.level}: {step.approver.name}</Text>
-                      <br />
-                      <Text type="secondary">{step.approver.role}</Text>
-                      <br />
-                      <Tag color={color} style={{ marginTop: '4px' }}>
-                        {step.status.toUpperCase()}
-                      </Tag>
+                      <div>
+                        <Text strong>Level {step.level}: {step.approver.name}</Text>
+                        <br />
+                        <Text type="secondary">{step.approver.role}</Text>
+                        <br />
+                        <Tag color={color} style={{ marginTop: '4px' }}>
+                          {step.status.toUpperCase()}
+                        </Tag>
+                        {step.status === 'approved' && step.actionDate && (
+                          <div style={{ marginTop: '4px' }}>
+                            <Text type="secondary" style={{ fontSize: '11px' }}>
+                              Approved on {new Date(step.actionDate).toLocaleDateString()}
+                            </Text>
+                          </div>
+                        )}
+                        {step.comments && (
+                          <div style={{ marginTop: '4px', fontStyle: 'italic', color: '#666' }}>
+                            "{step.comments}"
+                          </div>
+                        )}
+                      </div>
                     </Timeline.Item>
                   );
                 })}
               </Timeline>
             </Card>
 
+            <Divider />
+
             <Form
               form={form}
               layout="vertical"
               onFinish={handleSubmitApproval}
             >
-              <Form.Item name="level" hidden>
+              <Form.Item name="level" hidden initialValue={3}>
                 <Input />
               </Form.Item>
 
               <Form.Item
                 name="decision"
-                label="Decision"
+                label="Activation Decision"
                 rules={[{ required: true, message: 'Please select a decision' }]}
               >
                 <Radio.Group size="large">
-                  <Radio.Button value="approved" style={{ color: '#52c41a' }}>
-                    <CheckCircleOutlined /> Approve
+                  <Radio.Button value="approved" style={{ color: '#52c41a', marginRight: '8px' }}>
+                    <CheckCircleOutlined /> Activate Budget Code
                   </Radio.Button>
                   <Radio.Button value="rejected" style={{ color: '#ff4d4f' }}>
                     <CloseCircleOutlined /> Reject
@@ -399,16 +473,32 @@ const SupervisorBudgetCodeApprovals = () => {
 
               <Form.Item
                 name="comments"
-                label="Comments"
-                rules={[{ required: true, message: 'Please provide comments' }]}
+                label="Activation Notes"
+                rules={[{ required: true, message: 'Please provide activation notes' }]}
+                help="Add any relevant notes about the budget code activation or rejection"
               >
                 <TextArea
                   rows={4}
-                  placeholder="Provide your feedback or reason for decision..."
+                  placeholder="Enter notes about budget code activation, accounting system integration, or any special instructions..."
                   maxLength={500}
                   showCount
                 />
               </Form.Item>
+
+              <Alert
+                message="Finance Officer Responsibilities"
+                description={
+                  <ul style={{ marginBottom: 0, paddingLeft: '20px' }}>
+                    <li>Create budget code in accounting system</li>
+                    <li>Set up budget tracking and monitoring</li>
+                    <li>Ensure financial compliance</li>
+                    <li>Configure spending limits and alerts</li>
+                  </ul>
+                }
+                type="info"
+                showIcon
+                style={{ marginBottom: '16px' }}
+              />
 
               <Form.Item>
                 <Space>
@@ -423,6 +513,7 @@ const SupervisorBudgetCodeApprovals = () => {
                     type="primary"
                     htmlType="submit"
                     loading={loading}
+                    size="large"
                   >
                     Submit Decision
                   </Button>
@@ -441,14 +532,21 @@ const SupervisorBudgetCodeApprovals = () => {
           setDetailsModalVisible(false);
           setSelectedBudgetCode(null);
         }}
-        footer={null}
-        width={700}
+        footer={[
+          <Button key="close" onClick={() => {
+            setDetailsModalVisible(false);
+            setSelectedBudgetCode(null);
+          }}>
+            Close
+          </Button>
+        ]}
+        width={800}
       >
         {selectedBudgetCode && (
           <div>
-            <Descriptions bordered column={2} size="small">
+            <Descriptions bordered column={2} size="small" style={{ marginBottom: '20px' }}>
               <Descriptions.Item label="Budget Code" span={2}>
-                <Text code strong>{selectedBudgetCode.code}</Text>
+                <Text code strong style={{ fontSize: '16px' }}>{selectedBudgetCode.code}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="Name" span={2}>
                 {selectedBudgetCode.name}
@@ -476,6 +574,35 @@ const SupervisorBudgetCodeApprovals = () => {
                 </Descriptions.Item>
               )}
             </Descriptions>
+
+            <Card size="small" title="Approval Chain" style={{ marginTop: '20px' }}>
+              <Timeline>
+                {selectedBudgetCode.approvalChain.map((step, index) => {
+                  let color = 'gray';
+                  let icon = <ClockCircleOutlined />;
+                  
+                  if (step.status === 'approved') {
+                    color = 'green';
+                    icon = <CheckCircleOutlined />;
+                  } else if (step.status === 'rejected') {
+                    color = 'red';
+                    icon = <CloseCircleOutlined />;
+                  } else if (step.status === 'pending') {
+                    color = 'blue';
+                  }
+
+                  return (
+                    <Timeline.Item key={index} color={color} dot={icon}>
+                      <Text strong>{step.approver.name}</Text>
+                      <br />
+                      <Text type="secondary">{step.approver.role}</Text>
+                      <br />
+                      <Tag color={color}>{step.status.toUpperCase()}</Tag>
+                    </Timeline.Item>
+                  );
+                })}
+              </Timeline>
+            </Card>
           </div>
         )}
       </Modal>
@@ -483,6 +610,4 @@ const SupervisorBudgetCodeApprovals = () => {
   );
 };
 
-export default SupervisorBudgetCodeApprovals;
-
-
+export default FinanceBudgetCodeApprovals;

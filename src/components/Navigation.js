@@ -131,12 +131,12 @@ const Navigation = ({ children }) => {
           label: 'Dashboard',
           path: '/dashboard'
         },
-        {
-          key: 'petty-cash',
-          icon: <DollarOutlined />,
-          label: 'Petty Cash',
-          path: '/pettycash/dashboard'
-        },
+        // {
+        //   key: 'petty-cash',
+        //   icon: <DollarOutlined />,
+        //   label: 'Petty Cash',
+        //   path: '/pettycash/dashboard'
+        // },
         {
           key: 'cash-approvals',
           icon: <CheckCircleOutlined />,
@@ -227,12 +227,12 @@ const Navigation = ({ children }) => {
           label: 'Dashboard',
           path: '/dashboard'
         },
-        {
-          key: 'petty-cash',
-          icon: <DollarOutlined />,
-          label: 'Petty Cash Admin',
-          path: '/pettycash/dashboard'
-        },
+        // {
+        //   key: 'petty-cash',
+        //   icon: <DollarOutlined />,
+        //   label: 'Petty Cash Admin',
+        //   path: '/pettycash/dashboard'
+        // },
         {
           key: 'suppliers',
           icon: <ShopOutlined />,

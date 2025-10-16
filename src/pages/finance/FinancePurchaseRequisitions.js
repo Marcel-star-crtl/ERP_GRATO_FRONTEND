@@ -24,7 +24,6 @@ import {
     Tooltip,
     Switch,
     Tabs,
-    Drawer,
     DatePicker,
     Progress
 } from 'antd';
@@ -43,21 +42,45 @@ import {
     PlusOutlined,
     EditOutlined,
     DeleteOutlined,
-    SettingOutlined,
     DollarOutlined,
     CalendarOutlined,
-    ExportOutlined,
     ContactsOutlined,
     BarChartOutlined,
     TeamOutlined
 } from '@ant-design/icons';
-import { purchaseRequisitionAPI } from '../../services/purchaseRequisitionAPI';
-import { projectAPI } from '../../services/projectAPI';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
 const { TabPane } = Tabs;
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+
+const makeAuthenticatedRequest = async (url, options = {}) => {
+  const token = localStorage.getItem('token');
+  
+  const defaultHeaders = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
+
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers,
+    },
+  };
+
+  const response = await fetch(url, config);
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return await response.json();
+};
 
 const FinancePurchaseRequisitions = () => {
     const [requisitions, setRequisitions] = useState([]);
@@ -70,7 +93,11 @@ const FinancePurchaseRequisitions = () => {
     const [verificationModalVisible, setVerificationModalVisible] = useState(false);
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
     const [budgetCodeModalVisible, setBudgetCodeModalVisible] = useState(false);
+    const [budgetCodeApprovalModalVisible, setBudgetCodeApprovalModalVisible] = useState(false);
+    const [budgetCodeDetailsModalVisible, setBudgetCodeDetailsModalVisible] = useState(false);
     const [selectedRequisition, setSelectedRequisition] = useState(null);
+    const [selectedBudgetCode, setSelectedBudgetCode] = useState(null);
+    const [selectedBudgetCodeForApproval, setSelectedBudgetCodeForApproval] = useState(null);
     const [activeTab, setActiveTab] = useState('pending');
     const [mainSection, setMainSection] = useState('requisitions');
     const [stats, setStats] = useState({ 
@@ -83,6 +110,7 @@ const FinancePurchaseRequisitions = () => {
     });
     const [form] = Form.useForm();
     const [budgetCodeForm] = Form.useForm();
+    const [budgetCodeApprovalForm] = Form.useForm();
     const [editingBudgetCode, setEditingBudgetCode] = useState(null);
 
     useEffect(() => {
@@ -95,27 +123,17 @@ const FinancePurchaseRequisitions = () => {
     const fetchRequisitions = async () => {
         try {
             setLoading(true);
+            const response = await makeAuthenticatedRequest(`${API_BASE_URL}/purchase-requisitions/dashboard-stats`);
             
-            // Since there's no specific finance endpoint, use the dashboard stats endpoint
-            // which contains the requisitions data
-            const response = await purchaseRequisitionAPI.getDashboardStats();
-            
-            console.log('API Response:', response); // Debug log
-
             if (response.success && response.data && response.data.recent) {
-                // The requisitions are in response.data.recent based on your API structure
                 setRequisitions(response.data.recent);
-                console.log('Set requisitions:', response.data.recent); // Debug log
-                console.log('Total requisitions found:', response.data.recent.length);
             } else {
-                console.warn('No recent data found in response:', response);
-                message.error('No requisitions found');
-                setRequisitions([]); // Set empty array to prevent undefined errors
+                setRequisitions([]);
             }
         } catch (error) {
             console.error('Error fetching finance requisitions:', error);
             message.error('Failed to fetch requisitions');
-            setRequisitions([]); // Set empty array on error
+            setRequisitions([]);
         } finally {
             setLoading(false);
         }
@@ -123,9 +141,8 @@ const FinancePurchaseRequisitions = () => {
 
     const fetchStats = async () => {
         try {
-            const response = await purchaseRequisitionAPI.getDashboardStats();
+            const response = await makeAuthenticatedRequest(`${API_BASE_URL}/purchase-requisitions/dashboard-stats`);
             if (response.success && response.data) {
-                // Calculate finance-specific stats from the fetched data
                 const financeStats = {
                     pending: response.data.summary?.pending || 0,
                     verified: response.data.summary?.approved || 0,
@@ -143,31 +160,21 @@ const FinancePurchaseRequisitions = () => {
 
     const fetchBudgetCodes = async () => {
         try {
-            const response = await purchaseRequisitionAPI.getBudgetCodes();
+            const response = await makeAuthenticatedRequest(`${API_BASE_URL}/budget-codes`);
             if (response.success) {
                 setBudgetCodes(response.data);
             }
         } catch (error) {
             console.error('Error fetching budget codes:', error);
-            // Set default budget codes if API fails
-            setBudgetCodes([
-                { code: 'DEPT-IT-2024', name: 'IT Department 2024', budget: 5000000, used: 1200000, active: true },
-                { code: 'PROJ-OFFICE-2024', name: 'Office Supplies 2024', budget: 2000000, used: 450000, active: true },
-                { code: 'EQUIP-2024', name: 'Equipment Purchase 2024', budget: 10000000, used: 3500000, active: true }
-            ]);
         }
     };
 
     const fetchProjects = async () => {
         try {
             setLoadingProjects(true);
-            const response = await projectAPI.getActiveProjects();
+            const response = await makeAuthenticatedRequest(`${API_BASE_URL}/projects/active`);
             if (response.success) {
                 setProjects(response.data);
-                console.log(`Loaded ${response.data.length} active projects for budget code management`);
-            } else {
-                console.error('Failed to fetch projects:', response.message);
-                setProjects([]);
             }
         } catch (error) {
             console.error('Error fetching projects:', error);
@@ -180,26 +187,11 @@ const FinancePurchaseRequisitions = () => {
     const fetchBudgetOwners = async () => {
         try {
             setLoadingBudgetOwners(true);
-            console.log('Fetching active users for budget owner selection...');
+            const response = await makeAuthenticatedRequest(`${API_BASE_URL}/auth/active-users`);
             
-            const response = await fetch('http://localhost:5001/api/auth/active-users', {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                if (result.success && result.data) {
-                    setBudgetOwners(result.data);
-                    console.log(`Loaded ${result.data.length} active users for budget owner selection`);
-                } else {
-                    console.log('No active users found for budget owner selection');
-                    setBudgetOwners([]);
-                }
+            if (response.success && response.data) {
+                setBudgetOwners(response.data);
             } else {
-                console.error('Failed to fetch budget owners:', response.status);
                 setBudgetOwners([]);
             }
         } catch (error) {
@@ -227,9 +219,12 @@ const FinancePurchaseRequisitions = () => {
                 requiresAdditionalApproval: values.requiresAdditionalApproval
             };
 
-            const response = await purchaseRequisitionAPI.processFinanceVerification(
-                selectedRequisition._id,
-                verificationData
+            const response = await makeAuthenticatedRequest(
+                `${API_BASE_URL}/purchase-requisitions/${selectedRequisition._id}/finance-verification`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify(verificationData)
+                }
             );
 
             if (response.success) {
@@ -243,7 +238,7 @@ const FinancePurchaseRequisitions = () => {
                 throw new Error(response.message);
             }
         } catch (error) {
-            message.error(error.response?.data?.message || 'Failed to process verification');
+            message.error(error.message || 'Failed to process verification');
         } finally {
             setLoading(false);
         }
@@ -252,22 +247,23 @@ const FinancePurchaseRequisitions = () => {
     const handleCreateBudgetCode = async (values) => {
         try {
             setLoading(true);
-            console.log('Creating budget code with values:', values);
-            
-            const response = await purchaseRequisitionAPI.createBudgetCode(values);
-            console.log('Budget code creation response:', response);
+            const response = await makeAuthenticatedRequest(
+                `${API_BASE_URL}/budget-codes`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify(values)
+                }
+            );
             
             if (response.success) {
-                message.success('Budget code created successfully');
+                message.success('Budget code created successfully and sent for approval');
                 setBudgetCodeModalVisible(false);
                 budgetCodeForm.resetFields();
                 fetchBudgetCodes();
             } else {
-                console.error('Budget code creation failed:', response.message);
                 message.error(response.message || 'Failed to create budget code');
             }
         } catch (error) {
-            console.error('Budget code creation error:', error);
             message.error(error.message || 'Failed to create budget code');
         } finally {
             setLoading(false);
@@ -277,7 +273,13 @@ const FinancePurchaseRequisitions = () => {
     const handleUpdateBudgetCode = async (values) => {
         try {
             setLoading(true);
-            const response = await purchaseRequisitionAPI.updateBudgetCode(editingBudgetCode.code, values);
+            const response = await makeAuthenticatedRequest(
+                `${API_BASE_URL}/budget-codes/${editingBudgetCode._id}`,
+                {
+                    method: 'PUT',
+                    body: JSON.stringify(values)
+                }
+            );
             
             if (response.success) {
                 message.success('Budget code updated successfully');
@@ -290,6 +292,38 @@ const FinancePurchaseRequisitions = () => {
             }
         } catch (error) {
             message.error('Failed to update budget code');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleBudgetCodeApproval = async (values) => {
+        if (!selectedBudgetCodeForApproval) return;
+
+        try {
+            setLoading(true);
+            const response = await makeAuthenticatedRequest(
+                `${API_BASE_URL}/budget-codes/${selectedBudgetCodeForApproval._id}/approve`,
+                {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        decision: values.decision,
+                        comments: values.comments
+                    })
+                }
+            );
+
+            if (response.success) {
+                message.success(`Budget code ${values.decision} successfully`);
+                setBudgetCodeApprovalModalVisible(false);
+                setSelectedBudgetCodeForApproval(null);
+                budgetCodeApprovalForm.resetFields();
+                fetchBudgetCodes();
+            } else {
+                throw new Error(response.message);
+            }
+        } catch (error) {
+            message.error(error.message || 'Failed to process approval');
         } finally {
             setLoading(false);
         }
@@ -322,15 +356,24 @@ const FinancePurchaseRequisitions = () => {
         }
         setBudgetCodeModalVisible(true);
         
-        // Fetch projects when opening the modal if not already loaded
         if (projects.length === 0) {
             fetchProjects();
         }
         
-        // Fetch budget owners when opening the modal if not already loaded
         if (budgetOwners.length === 0) {
             fetchBudgetOwners();
         }
+    };
+
+    const openBudgetCodeApprovalModal = (budgetCode) => {
+        setSelectedBudgetCodeForApproval(budgetCode);
+        budgetCodeApprovalForm.resetFields();
+        setBudgetCodeApprovalModalVisible(true);
+    };
+
+    const viewBudgetCodeDetails = (budgetCode) => {
+        setSelectedBudgetCode(budgetCode);
+        setBudgetCodeDetailsModalVisible(true);
     };
 
     const getStatusTag = (status) => {
@@ -347,6 +390,22 @@ const FinancePurchaseRequisitions = () => {
         return <Tag color={config.color} icon={config.icon}>{config.text}</Tag>;
     };
 
+    const getBudgetCodeStatusTag = (status) => {
+        const statusMap = {
+            'pending': { color: 'default', text: 'Pending' },
+            'pending_departmental_head': { color: 'orange', text: 'Pending Dept Head' },
+            'pending_head_of_business': { color: 'gold', text: 'Pending HOB' },
+            'pending_finance': { color: 'blue', text: 'Pending Finance' },
+            'active': { color: 'green', text: 'Active' },
+            'rejected': { color: 'red', text: 'Rejected' },
+            'suspended': { color: 'red', text: 'Suspended' },
+            'expired': { color: 'default', text: 'Expired' }
+        };
+
+        const config = statusMap[status] || { color: 'default', text: status };
+        return <Tag color={config.color}>{config.text}</Tag>;
+    };
+
     const getBudgetCodeStatus = (budgetCode) => {
         const utilizationRate = (budgetCode.used / budgetCode.budget) * 100;
         if (utilizationRate >= 90) return { color: 'red', text: 'Critical' };
@@ -356,13 +415,7 @@ const FinancePurchaseRequisitions = () => {
     };
 
     const getFilteredRequisitions = () => {
-        console.log('Filtering requisitions - Active tab:', activeTab);
-        console.log('Total requisitions:', requisitions.length);
-        console.log('Sample requisition status:', requisitions[0]?.status);
-        console.log('Sample financeVerification:', requisitions[0]?.financeVerification);
-        
         if (!Array.isArray(requisitions) || requisitions.length === 0) {
-            console.log('No requisitions to filter');
             return [];
         }
         
@@ -370,7 +423,6 @@ const FinancePurchaseRequisitions = () => {
         
         switch (activeTab) {
             case 'pending':
-                
                 filtered = requisitions.filter(r => {
                     const needsFinanceVerification = 
                         r.status === 'pending_finance_verification' ||
@@ -418,12 +470,10 @@ const FinancePurchaseRequisitions = () => {
                 break;
         }
         
-        console.log(`Filtered ${filtered.length} requisitions for tab: ${activeTab}`);
-        console.log('Filtered requisitions:', filtered.map(r => ({ id: r._id, status: r.status, title: r.title })));
         return filtered;
     };
 
-    const columns = [
+    const requisitionColumns = [
         {
             title: 'Requisition Details',
             key: 'requisition',
@@ -617,13 +667,9 @@ const FinancePurchaseRequisitions = () => {
         },
         {
             title: 'Status',
-            dataIndex: 'active',
+            dataIndex: 'status',
             key: 'status',
-            render: (active) => (
-                <Tag color={active ? 'green' : 'red'}>
-                    {active ? 'Active' : 'Inactive'}
-                </Tag>
-            )
+            render: (status) => getBudgetCodeStatusTag(status)
         },
         {
             title: 'Actions',
@@ -632,30 +678,33 @@ const FinancePurchaseRequisitions = () => {
                 <Space size="small">
                     <Button
                         size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => openBudgetCodeModal(record)}
+                        icon={<EyeOutlined />}
+                        onClick={() => viewBudgetCodeDetails(record)}
                     >
-                        Edit
+                        View
                     </Button>
+                    {record.status !== 'active' && record.status !== 'rejected' && (
+                        <Button 
+                            size="small" 
+                            type="primary"
+                            onClick={() => openBudgetCodeApprovalModal(record)}
+                        >
+                            Review
+                        </Button>
+                    )}
+                    {(record.status === 'active' || record.status === 'rejected') && (
+                        <Button
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => openBudgetCodeModal(record)}
+                        >
+                            Edit
+                        </Button>
+                    )}
                 </Space>
             )
         }
     ];
-
-    // Add debug info component
-    const DebugInfo = () => {
-        if (process.env.NODE_ENV === 'production') return null;
-        
-        return (
-            <Card size="small" style={{ margin: '16px 0', backgroundColor: '#f6f8fa' }}>
-                <Text type="secondary">
-                    Debug: Total requisitions: {requisitions.length}, 
-                    Active tab: {activeTab}, 
-                    Filtered: {getFilteredRequisitions().length}
-                </Text>
-            </Card>
-        );
-    };
 
     return (
         <div style={{ padding: '24px' }}>
@@ -746,89 +795,29 @@ const FinancePurchaseRequisitions = () => {
                         </Row>
                     </Card>
 
-                    <DebugInfo />
-
-                    <Tabs size="small" style={{ marginBottom: '16px' }} activeKey={activeTab} onChange={setActiveTab}>
+                    <Tabs activeKey={activeTab} onChange={setActiveTab} style={{ marginBottom: '16px' }}>
                         <TabPane 
                             tab={
-                                <Badge count={requisitions.filter(r => 
-                                    r.status === 'pending_finance_verification' || 
-                                    (r.financeVerification && r.financeVerification.decision === 'pending')
-                                ).length} size="small">
+                                <Badge count={getFilteredRequisitions().length} size="small">
                                     <span>Pending Verification</span>
                                 </Badge>
                             } 
                             key="pending"
-                        >
-                            <Table
-                                columns={columns}
-                                dataSource={getFilteredRequisitions()}
-                                loading={loading}
-                                rowKey="_id"
-                                pagination={{
-                                    showSizeChanger: true,
-                                    showQuickJumper: true,
-                                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requisitions`,
-                                }}
-                                scroll={{ x: 1200 }}
-                                size="small"
-                                locale={{ 
-                                    emptyText: loading ? <Spin /> : 'No requisitions found for finance verification'
-                                }}
-                            />
-                        </TabPane>
+                        />
                         <TabPane 
                             tab={
                                 <Badge count={requisitions.filter(r => 
                                     r.status === 'pending_supply_chain_review' || 
                                     r.status === 'approved' || 
                                     r.status === 'in_procurement' ||
-                                    r.status === 'completed' ||
-                                    (r.financeVerification && r.financeVerification.decision === 'approved')
+                                    r.status === 'completed'
                                 ).length} size="small">
                                     <span>Approved</span>
                                 </Badge>
                             } 
                             key="approved"
-                        >
-                            <Table
-                                columns={columns}
-                                dataSource={getFilteredRequisitions()}
-                                loading={loading}
-                                rowKey="_id"
-                                pagination={{
-                                    showSizeChanger: true,
-                                    showQuickJumper: true,
-                                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requisitions`,
-                                }}
-                                scroll={{ x: 1200 }}
-                                size="small"
-                                locale={{ 
-                                    emptyText: loading ? <Spin /> : 'No approved requisitions found'
-                                }}
-                            />
-                        </TabPane>
-                        <TabPane 
-                            tab="Rejected" 
-                            key="rejected"
-                        >
-                            <Table
-                                columns={columns}
-                                dataSource={getFilteredRequisitions()}
-                                loading={loading}
-                                rowKey="_id"
-                                pagination={{
-                                    showSizeChanger: true,
-                                    showQuickJumper: true,
-                                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requisitions`,
-                                }}
-                                scroll={{ x: 1200 }}
-                                size="small"
-                                locale={{ 
-                                    emptyText: loading ? <Spin /> : 'No rejected requisitions found'
-                                }}
-                            />
-                        </TabPane>
+                        />
+                        <TabPane tab="Rejected" key="rejected" />
                         <TabPane 
                             tab={
                                 <Badge count={requisitions.length} size="small">
@@ -836,25 +825,22 @@ const FinancePurchaseRequisitions = () => {
                                 </Badge>
                             } 
                             key="all"
-                        >
-                            <Table
-                                columns={columns}
-                                dataSource={getFilteredRequisitions()}
-                                loading={loading}
-                                rowKey="_id"
-                                pagination={{
-                                    showSizeChanger: true,
-                                    showQuickJumper: true,
-                                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requisitions`,
-                                }}
-                                scroll={{ x: 1200 }}
-                                size="small"
-                                locale={{ 
-                                    emptyText: loading ? <Spin /> : 'No requisitions found'
-                                }}
-                            />
-                        </TabPane>
+                        />
                     </Tabs>
+
+                    <Table
+                        columns={requisitionColumns}
+                        dataSource={getFilteredRequisitions()}
+                        loading={loading}
+                        rowKey="_id"
+                        pagination={{
+                            showSizeChanger: true,
+                            showQuickJumper: true,
+                            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requisitions`,
+                        }}
+                        scroll={{ x: 1200 }}
+                        size="small"
+                    />
                 </Card>
             )}
 
@@ -886,7 +872,7 @@ const FinancePurchaseRequisitions = () => {
                         columns={budgetCodeColumns}
                         dataSource={budgetCodes}
                         loading={loading}
-                        rowKey="code"
+                        rowKey="_id"
                         pagination={{
                             showSizeChanger: true,
                             showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} budget codes`,
@@ -895,8 +881,7 @@ const FinancePurchaseRequisitions = () => {
                 </Card>
             )}
 
-            {/* Modals remain the same... */}
-            {/* Enhanced Budget Verification Modal */}
+            {/* Budget Verification Modal */}
             <Modal
                 title={
                     <Space>
@@ -996,7 +981,7 @@ const FinancePurchaseRequisitions = () => {
                                                 </div>
                                             )}
                                         >
-                                            {budgetCodes.filter(code => code.active).map(code => {
+                                            {budgetCodes.filter(code => code.active && code.status === 'active').map(code => {
                                                 const available = code.budget - code.used;
                                                 const status = getBudgetCodeStatus(code);
                                                 return (
@@ -1060,6 +1045,7 @@ const FinancePurchaseRequisitions = () => {
                             <Form.Item
                                 name="requiresAdditionalApproval"
                                 label="Additional Approvals Required"
+                                valuePropName="checked"
                                 help="Check if this requisition requires additional executive approval"
                             >
                                 <Switch />
@@ -1103,7 +1089,7 @@ const FinancePurchaseRequisitions = () => {
                 )}
             </Modal>
 
-            {/* Budget Code Management Modal */}
+            {/* Budget Code Create/Edit Modal */}
             <Modal
                 title={
                     <Space>
@@ -1175,19 +1161,12 @@ const FinancePurchaseRequisitions = () => {
                                 name="department"
                                 label="Department/Project"
                                 rules={[{ required: true, message: 'Please select department or project' }]}
-                                help="Select existing department or active project for budget allocation"
+                                help="Select existing department or active project"
                             >
                                 <Select 
                                     placeholder="Select department or project"
                                     showSearch
                                     loading={loadingProjects}
-                                    filterOption={(input, option) => {
-                                        const label = option.children;
-                                        if (typeof label === 'string') {
-                                            return label.toLowerCase().indexOf(input.toLowerCase()) >= 0;
-                                        }
-                                        return false;
-                                    }}
                                 >
                                     <Select.OptGroup label="Departments">
                                         <Option value="IT">IT Department</Option>
@@ -1273,9 +1252,7 @@ const FinancePurchaseRequisitions = () => {
                                         if (!user) return false;
                                         return (
                                             (user.fullName || '').toLowerCase().includes(input.toLowerCase()) ||
-                                            (user.email || '').toLowerCase().includes(input.toLowerCase()) ||
-                                            (user.role || '').toLowerCase().includes(input.toLowerCase()) ||
-                                            (user.department || '').toLowerCase().includes(input.toLowerCase())
+                                            (user.email || '').toLowerCase().includes(input.toLowerCase())
                                         );
                                     }}
                                     notFoundContent={loadingBudgetOwners ? <Spin size="small" /> : "No users found"}
@@ -1328,7 +1305,236 @@ const FinancePurchaseRequisitions = () => {
                 </Form>
             </Modal>
 
-            {/* Details Modal */}
+            {/* Budget Code Approval Modal */}
+            <Modal
+                title={
+                    <Space>
+                        <AuditOutlined />
+                        Budget Code Approval - {selectedBudgetCodeForApproval?.code}
+                    </Space>
+                }
+                open={budgetCodeApprovalModalVisible}
+                onCancel={() => {
+                    setBudgetCodeApprovalModalVisible(false);
+                    setSelectedBudgetCodeForApproval(null);
+                    budgetCodeApprovalForm.resetFields();
+                }}
+                footer={null}
+                width={700}
+            >
+                {selectedBudgetCodeForApproval && (
+                    <div>
+                        <Card size="small" style={{ marginBottom: '20px', backgroundColor: '#fafafa' }}>
+                            <Descriptions column={2} size="small">
+                                <Descriptions.Item label="Budget Code">
+                                    <Text strong code>{selectedBudgetCodeForApproval.code}</Text>
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Name">
+                                    {selectedBudgetCodeForApproval.name}
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Budget Amount">
+                                    <Text strong style={{ color: '#1890ff' }}>
+                                        XAF {selectedBudgetCodeForApproval.budget?.toLocaleString()}
+                                    </Text>
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Department">
+                                    <Tag color="blue">{selectedBudgetCodeForApproval.department}</Tag>
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Budget Type">
+                                    {selectedBudgetCodeForApproval.budgetType}
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Current Status">
+                                    {getBudgetCodeStatusTag(selectedBudgetCodeForApproval.status)}
+                                </Descriptions.Item>
+                            </Descriptions>
+                        </Card>
+
+                        {selectedBudgetCodeForApproval.approvalChain && (
+                            <Card size="small" title="Approval Progress" style={{ marginBottom: '20px' }}>
+                                <Timeline>
+                                    {selectedBudgetCodeForApproval.approvalChain.map((step, index) => {
+                                        const color = step.status === 'approved' ? 'green' : 
+                                                     step.status === 'rejected' ? 'red' : 'gray';
+                                        const icon = step.status === 'approved' ? <CheckCircleOutlined /> :
+                                                    step.status === 'rejected' ? <CloseCircleOutlined /> :
+                                                    <ClockCircleOutlined />;
+                                        
+                                        return (
+                                            <Timeline.Item key={index} color={color} dot={icon}>
+                                                <Text strong>Level {step.level}: {step.approver.name}</Text>
+                                                <br />
+                                                <Text type="secondary">{step.approver.role}</Text>
+                                                <br />
+                                                <Tag color={color}>{step.status.toUpperCase()}</Tag>
+                                                {step.actionDate && (
+                                                    <>
+                                                        <br />
+                                                        <Text type="secondary">
+                                                            {new Date(step.actionDate).toLocaleDateString()} at {step.actionTime}
+                                                        </Text>
+                                                    </>
+                                                )}
+                                                {step.comments && (
+                                                    <div style={{ marginTop: 4 }}>
+                                                        <Text italic>"{step.comments}"</Text>
+                                                    </div>
+                                                )}
+                                            </Timeline.Item>
+                                        );
+                                    })}
+                                </Timeline>
+                            </Card>
+                        )}
+
+                        <Form
+                            form={budgetCodeApprovalForm}
+                            layout="vertical"
+                            onFinish={handleBudgetCodeApproval}
+                        >
+                            <Form.Item
+                                name="decision"
+                                label="Approval Decision"
+                                rules={[{ required: true, message: 'Please select your decision' }]}
+                            >
+                                <Select placeholder="Select decision">
+                                    <Option value="approved">✅ Approve Budget Code</Option>
+                                    <Option value="rejected">❌ Reject Budget Code</Option>
+                                </Select>
+                            </Form.Item>
+
+                            <Form.Item
+                                name="comments"
+                                label="Comments"
+                                rules={[{ required: true, message: 'Please provide comments for your decision' }]}
+                            >
+                                <TextArea
+                                    rows={4}
+                                    placeholder="Enter your comments, reasons, or recommendations..."
+                                    showCount
+                                    maxLength={500}
+                                />
+                            </Form.Item>
+
+                            <Form.Item>
+                                <Space>
+                                    <Button onClick={() => {
+                                        setBudgetCodeApprovalModalVisible(false);
+                                        setSelectedBudgetCodeForApproval(null);
+                                        budgetCodeApprovalForm.resetFields();
+                                    }}>
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="primary"
+                                        htmlType="submit"
+                                        loading={loading}
+                                        icon={<SendOutlined />}
+                                    >
+                                        Submit Decision
+                                    </Button>
+                                </Space>
+                            </Form.Item>
+                        </Form>
+                    </div>
+                )}
+            </Modal>
+
+            {/* Budget Code Details Modal */}
+            <Modal
+                title={
+                    <Space>
+                        <TagOutlined />
+                        Budget Code Details
+                    </Space>
+                }
+                open={budgetCodeDetailsModalVisible}
+                onCancel={() => {
+                    setBudgetCodeDetailsModalVisible(false);
+                    setSelectedBudgetCode(null);
+                }}
+                footer={null}
+                width={800}
+            >
+                {selectedBudgetCode && (
+                    <div>
+                        <Descriptions bordered column={2} size="small">
+                            <Descriptions.Item label="Budget Code" span={2}>
+                                <Text code strong>{selectedBudgetCode.code}</Text>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Name" span={2}>
+                                {selectedBudgetCode.name}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Budget Amount">
+                                <Text strong style={{ color: '#1890ff' }}>XAF {selectedBudgetCode.budget?.toLocaleString()}</Text>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Used Amount">
+                                <Text strong style={{ color: '#fa8c16' }}>XAF {selectedBudgetCode.used?.toLocaleString()}</Text>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Remaining">
+                                <Text strong style={{ color: '#52c41a' }}>XAF {(selectedBudgetCode.budget - selectedBudgetCode.used).toLocaleString()}</Text>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Utilization">
+                                <Progress 
+                                    percent={Math.round((selectedBudgetCode.used / selectedBudgetCode.budget) * 100)} 
+                                    size="small"
+                                />
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Department">
+                                {selectedBudgetCode.department}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Budget Type">
+                                {selectedBudgetCode.budgetType}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Budget Period">
+                                {selectedBudgetCode.budgetPeriod}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Status">
+                                {getBudgetCodeStatusTag(selectedBudgetCode.status)}
+                            </Descriptions.Item>
+                        </Descriptions>
+
+                        {selectedBudgetCode.description && (
+                            <Card size="small" title="Description" style={{ marginTop: '20px' }}>
+                                <Text>{selectedBudgetCode.description}</Text>
+                            </Card>
+                        )}
+
+                        {selectedBudgetCode.approvalChain && selectedBudgetCode.approvalChain.length > 0 && (
+                            <Card size="small" title="Approval Progress" style={{ marginTop: '20px' }}>
+                                <Timeline>
+                                    {selectedBudgetCode.approvalChain.map((step, index) => {
+                                        const color = step.status === 'approved' ? 'green' : 
+                                                     step.status === 'rejected' ? 'red' : 'gray';
+                                        const icon = step.status === 'approved' ? <CheckCircleOutlined /> :
+                                                    step.status === 'rejected' ? <CloseCircleOutlined /> :
+                                                    <ClockCircleOutlined />;
+                                        
+                                        return (
+                                            <Timeline.Item key={index} color={color} dot={icon}>
+                                                <Text strong>Level {step.level}: {step.approver.name}</Text>
+                                                <br />
+                                                <Text type="secondary">{step.approver.role}</Text>
+                                                <br />
+                                                <Tag color={color}>{step.status.toUpperCase()}</Tag>
+                                                {step.actionDate && (
+                                                    <>
+                                                        <br />
+                                                        <Text type="secondary">
+                                                            {new Date(step.actionDate).toLocaleDateString()}
+                                                        </Text>
+                                                    </>
+                                                )}
+                                            </Timeline.Item>
+                                        );
+                                    })}
+                                </Timeline>
+                            </Card>
+                        )}
+                    </div>
+                )}
+            </Modal>
+
+            {/* Requisition Details Modal */}
             <Modal
                 title={
                     <Space>
@@ -1372,12 +1578,6 @@ const FinancePurchaseRequisitions = () => {
                                     XAF {selectedRequisition.budgetXAF?.toLocaleString() || 'Not specified'}
                                 </Text>
                             </Descriptions.Item>
-                            <Descriptions.Item label="Budget Holder">
-                                {selectedRequisition.budgetHolder}
-                            </Descriptions.Item>
-                            <Descriptions.Item label="Delivery Location">
-                                {selectedRequisition.deliveryLocation}
-                            </Descriptions.Item>
                             <Descriptions.Item label="Expected Date">
                                 {selectedRequisition.expectedDate ? new Date(selectedRequisition.expectedDate).toLocaleDateString('en-GB') : 'N/A'}
                             </Descriptions.Item>
@@ -1408,30 +1608,10 @@ const FinancePurchaseRequisitions = () => {
                                         dataIndex: 'measuringUnit',
                                         key: 'unit',
                                         width: 100
-                                    },
-                                    {
-                                        title: 'Project',
-                                        dataIndex: 'projectName',
-                                        key: 'project',
-                                        width: 150,
-                                        render: (project) => project || 'N/A'
                                     }
                                 ]}
                             />
                         </Card>
-
-                        <Row gutter={16} style={{ marginBottom: '20px' }}>
-                            <Col span={12}>
-                                <Card size="small" title="Purchase Justification">
-                                    <Text>{selectedRequisition.justificationOfPurchase}</Text>
-                                </Card>
-                            </Col>
-                            <Col span={12}>
-                                <Card size="small" title="Preferred Supplier Justification">
-                                    <Text>{selectedRequisition.justificationOfPreferredSupplier || 'Not specified'}</Text>
-                                </Card>
-                            </Col>
-                        </Row>
 
                         {selectedRequisition.financeVerification && (
                             <Card size="small" title="Finance Verification Details" style={{ marginBottom: '20px' }}>
@@ -1546,4 +1726,8 @@ const FinancePurchaseRequisitions = () => {
 };
 
 export default FinancePurchaseRequisitions;
+
+
+
+
 

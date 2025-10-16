@@ -55,31 +55,6 @@ const NavBar = () => {
       <Menu.Item key="home" icon={<HomeOutlined />}>
         <Link to="/pettycash">Home</Link>
       </Menu.Item>
-
-      <Menu.Item key="Request" icon={<UserOutlined />}>
-        <Link to="/pettycash/cash-requests">Requests</Link>
-      </Menu.Item>
-      
-      <Menu.Item key="display" icon={<DashboardOutlined />}>
-        <Link to="/pettycash/display">Display</Link>
-      </Menu.Item>
-      
-      <Menu.Item key="position" icon={<MoneyCollectFilled />}>
-        <Link to="/pettycash/position">Position</Link>
-      </Menu.Item>
-      
-      <Menu.Item key="settings" icon={<SettingOutlined />}>
-        <Link to="/pettycash/settings">Settings</Link>
-      </Menu.Item>
-      
-      <Menu.Item key="history">
-        <Dropdown overlay={historyMenu} placement="bottomLeft">
-          <span>
-            <HistoryOutlined style={{ marginRight: 4 }} />
-            History
-          </span>
-        </Dropdown>
-      </Menu.Item>
       
       <Menu.Item key="logout" icon={<LogoutOutlined />} onClick={handleLogout} style={{ marginLeft: 'auto' }}>
         Logout

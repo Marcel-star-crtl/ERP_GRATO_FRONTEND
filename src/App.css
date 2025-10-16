@@ -9,7 +9,7 @@ body {
   background: #f0f2f5;
   margin: 0;
   padding: 0;
-  cursor: url('U.cur'), auto;
+  /* cursor: url('U.cur'), auto; */
   /* overflow-x: hidden; */
   
 }
@@ -229,7 +229,7 @@ ul {
 }
 
 /* Ultra-high specificity button fixes */
-body .ant-btn-primary,
+
 body .ant-app .ant-btn-primary,
 body .ant-form .ant-btn-primary,
 body .ant-form-item .ant-btn-primary {
@@ -242,7 +242,7 @@ body .ant-form-item .ant-btn-primary {
   box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3) !important;
 }
 
-body .ant-btn-primary:hover,
+/* body .ant-btn-primary:hover, */
 body .ant-app .ant-btn-primary:hover,
 body .ant-form .ant-btn-primary:hover,
 body .ant-form-item .ant-btn-primary:hover {
@@ -253,7 +253,7 @@ body .ant-form-item .ant-btn-primary:hover {
   box-shadow: 0 2px 8px rgba(64, 169, 255, 0.4) !important;
 }
 
-body .ant-btn-primary:focus,
+/* body .ant-btn-primary:focus, */
 body .ant-app .ant-btn-primary:focus,
 body .ant-form .ant-btn-primary:focus,
 body .ant-form-item .ant-btn-primary:focus {
@@ -264,7 +264,7 @@ body .ant-form-item .ant-btn-primary:focus {
   box-shadow: 0 2px 8px rgba(64, 169, 255, 0.4) !important;
 }
 
-body .ant-btn-primary:active,
+/* body .ant-btn-primary:active, */
 body .ant-app .ant-btn-primary:active,
 body .ant-form .ant-btn-primary:active,
 body .ant-form-item .ant-btn-primary:active {
@@ -297,3 +297,96 @@ body .ant-btn-dangerous.ant-btn-primary:hover {
 
 
 
+
+/* Brand Color Override - Red Theme */
+/* Override all primary buttons to use brand red color */
+body .ant-btn-primary,
+body .ant-app .ant-btn-primary,
+body .ant-form .ant-btn-primary,
+body .ant-form-item .ant-btn-primary,
+.ant-btn-primary {
+  background-color: #dc3545 !important;
+  background: #dc3545 !important;
+  border-color: #dc3545 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3) !important;
+}
+
+body .ant-btn-primary:hover,
+body .ant-app .ant-btn-primary:hover,
+body .ant-form .ant-btn-primary:hover,
+body .ant-form-item .ant-btn-primary:hover,
+.ant-btn-primary:hover {
+  background-color: #c82333 !important;
+  background: #c82333 !important;
+  border-color: #c82333 !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(200, 35, 51, 0.4) !important;
+}
+
+body .ant-btn-primary:focus,
+body .ant-app .ant-btn-primary:focus,
+body .ant-form .ant-btn-primary:focus,
+body .ant-form-item .ant-btn-primary:focus,
+.ant-btn-primary:focus {
+  background-color: #c82333 !important;
+  background: #c82333 !important;
+  border-color: #c82333 !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(200, 35, 51, 0.4) !important;
+}
+
+body .ant-btn-primary:active,
+body .ant-app .ant-btn-primary:active,
+body .ant-form .ant-btn-primary:active,
+body .ant-form-item .ant-btn-primary:active,
+.ant-btn-primary:active {
+  background-color: #bd2130 !important;
+  background: #bd2130 !important;
+  border-color: #bd2130 !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(189, 33, 48, 0.5) !important;
+}
+
+/* Ensure text is visible in all button states */
+body .ant-btn-primary span,
+body .ant-btn-primary .anticon,
+body .ant-btn-primary .ant-btn-loading-icon,
+.ant-btn-primary span,
+.ant-btn-primary .anticon {
+  color: #ffffff !important;
+}
+
+/* Fix for danger buttons - keep them red but slightly different */
+body .ant-btn-dangerous.ant-btn-primary,
+.ant-btn-dangerous.ant-btn-primary {
+  background-color: #dc3545 !important;
+  border-color: #dc3545 !important;
+  color: #ffffff !important;
+}
+
+body .ant-btn-dangerous.ant-btn-primary:hover,
+.ant-btn-dangerous.ant-btn-primary:hover {
+  background-color: #c82333 !important;
+  border-color: #c82333 !important;
+  color: #ffffff !important;
+}
+
+/* Loading state buttons */
+.ant-btn-primary.ant-btn-loading,
+body .ant-btn-primary.ant-btn-loading {
+  background-color: #dc3545 !important;
+  border-color: #dc3545 !important;
+  color: #ffffff !important;
+}
+
+/* Disabled state */
+.ant-btn-primary[disabled],
+body .ant-btn-primary[disabled] {
+  background-color: #f5f5f5 !important;
+  border-color: #d9d9d9 !important;
+  color: #00000040 !important;
+  opacity: 0.6 !important;
+}

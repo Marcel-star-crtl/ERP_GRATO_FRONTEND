@@ -26,7 +26,9 @@ import {
     DatePicker,
     Progress,
     Avatar,
-    List
+    List,
+    Collapse,
+    Slider
 } from 'antd';
 import {
     ProjectOutlined,
@@ -46,7 +48,8 @@ import {
     ClockCircleOutlined,
     BankOutlined,
     DollarOutlined,
-    BarChartOutlined
+    BarChartOutlined,
+    MinusCircleOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
 import { projectAPI } from '../../services/projectAPI';
@@ -57,6 +60,7 @@ const { TextArea } = Input;
 const { Option } = Select;
 const { TabPane } = Tabs;
 const { RangePicker } = DatePicker;
+const { Panel } = Collapse;
 
 const EnhancedProjectManagement = () => {
     // State declarations
@@ -78,20 +82,16 @@ const EnhancedProjectManagement = () => {
     const [form] = Form.useForm();
     const [projectManagers, setProjectManagers] = useState([]);
     const [projectManagersLoading, setProjectManagersLoading] = useState(false);
-    const [projectMetadata, setProjectMetadata] = useState({
-        projectTypes: [],
-        departments: [],
-        priorities: []
-    });
     const [budgetCodes, setBudgetCodes] = useState([]);
     const [loadingBudgetCodes, setLoadingBudgetCodes] = useState(false);
+    const [subMilestoneModalVisible, setSubMilestoneModalVisible] = useState(false);
+    const [selectedMilestone, setSelectedMilestone] = useState(null);
+    const [subMilestoneForm] = Form.useForm();
 
-    // useEffect hooks
     useEffect(() => {
         fetchProjects();
         fetchStats();
         fetchProjectManagers();
-        fetchProjectMetadata();
         fetchBudgetCodes();
     }, []);
 
@@ -100,7 +100,7 @@ const EnhancedProjectManagement = () => {
         try {
             setLoading(true);
             const result = await projectAPI.getProjects(filters);
-            
+
             if (result.success) {
                 setProjects(result.data || []);
             } else {
@@ -137,9 +137,9 @@ const EnhancedProjectManagement = () => {
     const fetchProjectManagers = async () => {
         try {
             setProjectManagersLoading(true);
-            
+
             console.log('Loading active users from database...');
-            
+
             // Try to get actual database users first
             try {
                 const response = await fetch('http://localhost:5001/api/auth/active-users', {
@@ -157,24 +157,22 @@ const EnhancedProjectManagement = () => {
                         return;
                     }
                 }
-                
+
                 console.log('Database users not available, falling back to department structure');
             } catch (error) {
                 console.log('Error fetching database users, using fallback:', error);
             }
-            
+
             // Fallback to department structure if database users are not available
             console.log('Loading all employees from local department structure...');
-            
-            // Get all employees from the local department structure
             const allEmployees = getAllEmployees();
-            
+
             // Format employees to match the expected structure
             const formattedEmployees = allEmployees
-                .filter(employee => employee.name && employee.email) // Only include valid employees
+                .filter(employee => employee.name && employee.email)
                 .map((employee, index) => ({
-                    _id: `emp_${index}_${employee.email}`, // Create unique _id for Select component
-                    id: employee.email, // Keep id as email for compatibility
+                    _id: `emp_${index}_${employee.email}`,
+                    id: employee.email,
                     fullName: employee.name,
                     name: employee.name,
                     email: employee.email,
@@ -184,11 +182,10 @@ const EnhancedProjectManagement = () => {
                     isActive: true
                 }))
                 .sort((a, b) => a.fullName.localeCompare(b.fullName));
-            
+
             console.log(`Successfully loaded ${formattedEmployees.length} employees from department structure`);
-            console.log('⚠️ Note: These are local employees. For production, ensure users are registered in the database.');
             setProjectManagers(formattedEmployees);
-            
+
         } catch (error) {
             console.error('Error loading project managers:', error);
             setProjectManagers([]);
@@ -197,22 +194,11 @@ const EnhancedProjectManagement = () => {
         }
     };
 
-    const fetchProjectMetadata = async () => {
-        try {
-            const result = await projectAPI.getProjectMetadata();
-            if (result.success) {
-                setProjectMetadata(result.data);
-            }
-        } catch (error) {
-            console.error('Error fetching project metadata:', error);
-        }
-    };
-
     const fetchBudgetCodes = async () => {
         try {
             setLoadingBudgetCodes(true);
             const result = await projectAPI.getAvailableBudgetCodes();
-            
+
             if (result.success) {
                 setBudgetCodes(result.data || []);
                 console.log(`Loaded ${result.data?.length || 0} budget codes for project management`);
@@ -232,145 +218,9 @@ const EnhancedProjectManagement = () => {
     const handleCreateProject = async (values) => {
         try {
             setLoading(true);
-            
+
             console.log('Form values before transformation:', values);
-            
-            // Validate required fields with specific error messages
-            if (!values.name) {
-                message.error('Please enter project name');
-                return;
-            }
-            if (!values.description) {
-                message.error('Please enter project description');
-                return;
-            }
-            if (!values.projectType) {
-                message.error('Please select project type');
-                return;
-            }
-            if (!values.priority) {
-                message.error('Please select project priority');
-                return;
-            }
-            if (!values.department) {
-                message.error('Please select department');
-                return;
-            }
-            if (!values.projectManager) {
-                message.error('Please select project manager');
-                return;
-            }
-            if (!values.timeline || values.timeline.length !== 2) {
-                message.error('Please select both start and end dates');
-                return;
-            }
-            
-            // Validate project manager exists
-            const selectedManager = projectManagers.find(pm => pm._id === values.projectManager);
-            if (!selectedManager) {
-                message.error('Selected project manager is no longer available. Please refresh and try again.');
-                return;
-            }
-            
-            // Validate timeline dates
-            const startDate = values.timeline[0];
-            const endDate = values.timeline[1];
-            if (endDate.isBefore(startDate)) {
-                message.error('End date must be after start date');
-                return;
-            }
-            
-            // Validate budget code if selected
-            if (values.budgetCodeId) {
-                const selectedBudgetCode = budgetCodes.find(bc => bc._id === values.budgetCodeId);
-                if (!selectedBudgetCode) {
-                    message.warning('Selected budget code is no longer available. Continuing without budget code.');
-                    values.budgetCodeId = null;
-                }
-            }
-            
-            // Transform form data to match backend schema
-            const projectData = {
-                name: values.name,
-                description: values.description,
-                projectType: values.projectType,
-                priority: values.priority,
-                department: values.department,
-                projectManager: values.projectManager,
-                timeline: {
-                    startDate: values.timeline[0].format('YYYY-MM-DD'),
-                    endDate: values.timeline[1].format('YYYY-MM-DD')
-                },
-                budgetCodeId: values.budgetCodeId || null,
-                milestones: values.milestones?.map(milestone => ({
-                    title: milestone.title,
-                    dueDate: milestone.dueDate ? milestone.dueDate.format('YYYY-MM-DD') : null,
-                    status: 'Pending'
-                })) || []
-            };
 
-            console.log('Transformed project data:', projectData);
-
-            const result = await projectAPI.createProject(projectData);
-            
-            if (result.success) {
-                message.success(`Project "${values.name}" created successfully!`);
-                setProjectModalVisible(false);
-                form.resetFields();
-                
-                // Refresh data to show new project
-                await Promise.all([
-                    fetchProjects(),
-                    fetchStats(),
-                    fetchBudgetCodes()
-                ]);
-            } else {
-                // Handle specific API error messages
-                const errorMessage = result.message || result.error || 'Failed to create project';
-                
-                if (errorMessage.includes('duplicate') || errorMessage.includes('already exists')) {
-                    message.error('A project with this name already exists. Please choose a different name.');
-                } else if (errorMessage.includes('budget')) {
-                    message.error('Budget-related error: ' + errorMessage);
-                } else if (errorMessage.includes('manager')) {
-                    message.error('Project manager error: ' + errorMessage);
-                } else if (errorMessage.includes('permission') || errorMessage.includes('unauthorized')) {
-                    message.error('You do not have permission to create projects. Please contact your administrator.');
-                } else {
-                    message.error(`Failed to create project: ${errorMessage}`);
-                }
-            }
-        } catch (error) {
-            console.error('Error creating project:', error);
-            
-            // Handle network and other errors
-            if (error.response) {
-                const status = error.response.status;
-                const errorData = error.response.data;
-                
-                if (status === 403) {
-                    message.error('You do not have permission to create projects. Please contact your administrator.');
-                } else if (status === 400) {
-                    message.error('Invalid project data: ' + (errorData?.message || 'Please check your inputs.'));
-                } else if (status === 500) {
-                    message.error('Server error occurred. Please try again later or contact support.');
-                } else {
-                    message.error(`Error ${status}: ${errorData?.message || 'Failed to create project'}`);
-                }
-            } else if (error.request) {
-                message.error('Network error: Unable to connect to server. Please check your connection.');
-            } else {
-                message.error('An unexpected error occurred: ' + error.message);
-            }
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleUpdateProject = async (values) => {
-        try {
-            setLoading(true);
-            
             // Validate required fields
             if (!values.name || !values.description || !values.projectType || !values.priority || 
                 !values.department || !values.projectManager || !values.timeline) {
@@ -384,14 +234,6 @@ const EnhancedProjectManagement = () => {
                 return;
             }
 
-            // Validate budget code if selected (no longer validates budget allocation)
-            if (values.budgetCodeId && values.budgetCodeId !== editingProject?.budgetCode?._id) {
-                const selectedBudgetCode = budgetCodes.find(bc => bc._id === values.budgetCodeId);
-                if (!selectedBudgetCode) {
-                    message.warning('Selected budget code is no longer available');
-                }
-            }
-            
             const projectData = {
                 name: values.name,
                 description: values.description,
@@ -406,13 +248,79 @@ const EnhancedProjectManagement = () => {
                 budgetCodeId: values.budgetCodeId || null,
                 milestones: values.milestones?.map(milestone => ({
                     title: milestone.title,
+                    description: milestone.description || '',
                     dueDate: milestone.dueDate ? milestone.dueDate.format('YYYY-MM-DD') : null,
-                    status: milestone.status || 'Pending'
+                    weight: milestone.weight || 20,
+                    subMilestones: (milestone.subMilestones || []).map(sub => ({
+                        title: sub.title,
+                        description: sub.description || '',
+                        dueDate: sub.dueDate ? sub.dueDate.format('YYYY-MM-DD') : null,
+                        weight: sub.weight || 10,
+                        assignedTo: sub.assignedTo || null,
+                        notes: sub.notes || ''
+                    }))
+                })) || []
+            };
+
+            console.log('Transformed project data:', projectData);
+
+            const result = await projectAPI.createProject(projectData);
+
+            if (result.success) {
+                message.success(`Project "${values.name}" created successfully!`);
+                setProjectModalVisible(false);
+                form.resetFields();
+
+                await Promise.all([
+                    fetchProjects(),
+                    fetchStats(),
+                    fetchBudgetCodes()
+                ]);
+            } else {
+                message.error(result.message || 'Failed to create project');
+            }
+        } catch (error) {
+            console.error('Error creating project:', error);
+            message.error('Failed to create project');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateProject = async (values) => {
+        try {
+            setLoading(true);
+
+            if (!values.name || !values.description || !values.projectType || !values.priority || 
+                !values.department || !values.projectManager || !values.timeline) {
+                message.error('Please fill in all required fields');
+                return;
+            }
+
+            const projectData = {
+                name: values.name,
+                description: values.description,
+                projectType: values.projectType,
+                priority: values.priority,
+                department: values.department,
+                projectManager: values.projectManager,
+                timeline: {
+                    startDate: values.timeline[0].format('YYYY-MM-DD'),
+                    endDate: values.timeline[1].format('YYYY-MM-DD')
+                },
+                budgetCodeId: values.budgetCodeId || null,
+                milestones: values.milestones?.map(milestone => ({
+                    ...milestone,
+                    dueDate: milestone.dueDate ? milestone.dueDate.format('YYYY-MM-DD') : null,
+                    subMilestones: (milestone.subMilestones || []).map(sub => ({
+                        ...sub,
+                        dueDate: sub.dueDate ? sub.dueDate.format('YYYY-MM-DD') : null
+                    }))
                 })) || []
             };
 
             const result = await projectAPI.updateProject(editingProject._id, projectData);
-            
+
             if (result.success) {
                 message.success('Project updated successfully');
                 setProjectModalVisible(false);
@@ -434,11 +342,8 @@ const EnhancedProjectManagement = () => {
     const handleUpdateStatus = async (projectId, newStatus) => {
         try {
             setLoading(true);
-            
-            const result = await projectAPI.updateProjectStatus(projectId, { 
-                status: newStatus 
-            });
-            
+            const result = await projectAPI.updateProjectStatus(projectId, { status: newStatus });
+
             if (result.success) {
                 message.success(`Project status updated to ${newStatus}`);
                 fetchProjects();
@@ -450,6 +355,74 @@ const EnhancedProjectManagement = () => {
             message.error('Failed to update project status');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleAddSubMilestone = async (values) => {
+        try {
+            setLoading(true);
+            const result = await projectAPI.addSubMilestone(
+                selectedProject._id,
+                selectedMilestone._id,
+                {
+                    title: values.title,
+                    description: values.description || '',
+                    dueDate: values.dueDate ? values.dueDate.format('YYYY-MM-DD') : null,
+                    weight: values.weight || 10,
+                    assignedTo: values.assignedTo || null,
+                    notes: values.notes || ''
+                }
+            );
+
+            if (result.success) {
+                message.success('Sub-milestone added successfully');
+                setSubMilestoneModalVisible(false);
+                subMilestoneForm.resetFields();
+                await fetchProjects();
+                
+                // Refresh selected project details
+                const updatedResult = await projectAPI.getProjectById(selectedProject._id);
+                if (updatedResult.success) {
+                    setSelectedProject(updatedResult.data);
+                }
+            } else {
+                message.error(result.message || 'Failed to add sub-milestone');
+            }
+        } catch (error) {
+            console.error('Error adding sub-milestone:', error);
+            message.error('Failed to add sub-milestone');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateSubMilestoneProgress = async (projectId, milestoneId, subMilestoneId, progress) => {
+        try {
+            const result = await projectAPI.updateSubMilestoneProgress(
+                projectId,
+                milestoneId,
+                subMilestoneId,
+                progress,
+                null
+            );
+
+            if (result.success) {
+                message.success('Progress updated');
+                await fetchProjects();
+                
+                // Refresh selected project if details modal is open
+                if (detailsModalVisible && selectedProject) {
+                    const updatedResult = await projectAPI.getProjectById(selectedProject._id);
+                    if (updatedResult.success) {
+                        setSelectedProject(updatedResult.data);
+                    }
+                }
+            } else {
+                message.error(result.message || 'Failed to update progress');
+            }
+        } catch (error) {
+            console.error('Error updating progress:', error);
+            message.error('Failed to update progress');
         }
     };
 
@@ -471,7 +444,17 @@ const EnhancedProjectManagement = () => {
                 ],
                 milestones: project.milestones?.map(milestone => ({
                     title: milestone.title,
-                    dueDate: milestone.dueDate ? moment(milestone.dueDate) : null
+                    description: milestone.description || '',
+                    dueDate: milestone.dueDate ? moment(milestone.dueDate) : null,
+                    weight: milestone.weight || 20,
+                    subMilestones: (milestone.subMilestones || []).map(sub => ({
+                        title: sub.title,
+                        description: sub.description || '',
+                        dueDate: sub.dueDate ? moment(sub.dueDate) : null,
+                        weight: sub.weight || 10,
+                        assignedTo: sub.assignedTo?._id || sub.assignedTo || null,
+                        notes: sub.notes || ''
+                    }))
                 })) || []
             });
         } else {
@@ -487,7 +470,9 @@ const EnhancedProjectManagement = () => {
             'In Progress': 'orange',
             'On Hold': 'purple',
             'Completed': 'green',
-            'Cancelled': 'red'
+            'Cancelled': 'red',
+            'Pending': 'default',
+            'Overdue': 'red'
         };
         return colors[status] || 'default';
     };
@@ -559,7 +544,7 @@ const EnhancedProjectManagement = () => {
             render: (_, record) => (
                 <div>
                     <Avatar size="small" icon={<UserOutlined />} style={{ marginRight: 8 }} />
-                    <Text strong>{record.projectManager?.fullName}</Text>
+                    <Text strong>{record.projectManager?.fullName || 'N/A'}</Text>
                     <br />
                     <Text type="secondary" style={{ fontSize: '12px' }}>
                         {record.department}
@@ -569,67 +554,27 @@ const EnhancedProjectManagement = () => {
             width: 180
         },
         {
-            title: 'Budget & Code',
-            key: 'budget',
-            render: (_, record) => {
-                const budget = record.budget || { allocated: 0, spent: 0 };
-                const utilization = budget.allocated > 0 ? 
-                    Math.round((budget.spent / budget.allocated) * 100) : 0;
-                return (
-                    <div>
-                        <Text strong style={{ color: '#1890ff' }}>
-                            XAF {budget.allocated?.toLocaleString() || 0}
-                        </Text>
-                        <br />
-                        <Progress 
-                            percent={utilization} 
-                            size="small" 
-                            status={utilization > 90 ? 'exception' : 'active'}
-                        />
-                        {record.budgetCode && (
-                            <>
-                                <br />
-                                <Text type="secondary" style={{ fontSize: '11px' }}>
-                                    Code: {record.budgetCode.code}
-                                </Text>
-                                <br />
-                                <Text type="secondary" style={{ fontSize: '11px' }}>
-                                    Available: XAF {(record.budgetCode.budget - record.budgetCode.used).toLocaleString()}
-                                </Text>
-                            </>
-                        )}
-                        {!record.budgetCode && (
-                            <>
-                                <br />
-                                <Text type="warning" style={{ fontSize: '11px' }}>
-                                    No Budget Code
-                                </Text>
-                            </>
-                        )}
-                    </div>
-                );
-            },
-            width: 170
-        },
-        {
-            title: 'Progress',
+            title: 'Progress & Milestones',
             key: 'progress',
             render: (_, record) => {
-                const progress = record.progress || { percentage: 0 };
+                const totalMilestones = record.milestones?.length || 0;
+                const totalSubMilestones = record.milestones?.reduce((sum, m) => 
+                    sum + (m.subMilestones?.length || 0), 0) || 0;
+                
                 return (
                     <div>
                         <Progress 
-                            percent={progress.percentage} 
+                            percent={record.progress || 0} 
                             size="small"
-                            status={progress.percentage === 100 ? 'success' : 'active'}
+                            status={record.progress === 100 ? 'success' : 'active'}
                         />
                         <Text type="secondary" style={{ fontSize: '11px' }}>
-                            {record.team?.length || 0} team members
+                            {totalMilestones} milestones • {totalSubMilestones} sub-tasks
                         </Text>
                     </div>
                 );
             },
-            width: 120
+            width: 180
         },
         {
             title: 'Timeline',
@@ -804,10 +749,6 @@ const EnhancedProjectManagement = () => {
                         name="projectManager"
                         label="Project Manager"
                         rules={[{ required: true, message: 'Please select project manager' }]}
-                        help={projectManagers.length > 0 && projectManagers[0]._id?.startsWith('emp_') 
-                            ? "⚠️ Using local employee data. Contact admin to register users in database for production use." 
-                            : "Select any active employee to be the project manager"
-                        }
                     >
                         <Select
                             placeholder={projectManagersLoading ? "Loading employees..." : "Select project manager"}
@@ -819,51 +760,21 @@ const EnhancedProjectManagement = () => {
                                 return (
                                     (manager.fullName || manager.name || '').toLowerCase().includes(input.toLowerCase()) ||
                                     (manager.role || '').toLowerCase().includes(input.toLowerCase()) ||
-                                    (manager.department && manager.department.toLowerCase().includes(input.toLowerCase())) ||
-                                    (manager.email && manager.email.toLowerCase().includes(input.toLowerCase()))
+                                    (manager.department || '').toLowerCase().includes(input.toLowerCase())
                                 );
                             }}
-                            notFoundContent={projectManagersLoading ? <Spin size="small" /> : "No employees found"}
                         >
-                            {projectManagers.map(manager => {
-                                // Define role display mapping with more inclusive roles
-                                const roleDisplayMap = {
-                                    'admin': '👑 Administrator',
-                                    'supervisor': '👔 Supervisor', 
-                                    'manager': '📊 Manager',
-                                    'team_lead': '🎯 Team Lead',
-                                    'supply_chain': '📦 Supply Chain',
-                                    'finance': '💰 Finance',
-                                    'hr': '👥 HR',
-                                    'employee': '👤 Employee',
-                                    'analyst': '📈 Analyst',
-                                    'coordinator': '🔗 Coordinator',
-                                    'specialist': '🔧 Specialist',
-                                    'assistant': '🤝 Assistant'
-                                };
-                                
-                                const roleDisplay = roleDisplayMap[manager.role] || `� ${manager.role || 'Employee'}`;
-                                
-                                return (
-                                    <Option key={manager._id} value={manager._id}>
-                                        <div>
-                                            <Text strong>{manager.fullName || manager.name || 'Unknown Name'}</Text>
-                                            <br />
-                                            <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                {roleDisplay} {manager.department ? `| ${manager.department}` : ''}
-                                            </Text>
-                                            {manager.email && (
-                                                <>
-                                                    <br />
-                                                    <Text type="secondary" style={{ fontSize: '11px' }}>
-                                                        {manager.email}
-                                                    </Text>
-                                                </>
-                                            )}
-                                        </div>
-                                    </Option>
-                                );
-                            })}
+                            {projectManagers.map(manager => (
+                                <Option key={manager._id} value={manager._id}>
+                                    <div>
+                                        <Text strong>{manager.fullName || manager.name || 'Unknown'}</Text>
+                                        <br />
+                                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                                            {manager.role || 'Employee'} {manager.department ? `| ${manager.department}` : ''}
+                                        </Text>
+                                    </div>
+                                </Option>
+                            ))}
                         </Select>
                     </Form.Item>
                 </Col>
@@ -919,253 +830,203 @@ const EnhancedProjectManagement = () => {
                         );
                     }}
                 >
-                    {budgetCodes.map(budgetCode => (
-                        <Option 
-                            key={budgetCode._id} 
-                            value={budgetCode._id}
-                            disabled={budgetCode.status === 'critical'}
-                        >
-                            <div>
-                                <Text strong>{budgetCode.code}</Text> - {budgetCode.name}
-                                <br />
-                                <Text type="secondary" style={{ fontSize: '12px' }}>
-                                    Available: XAF {budgetCode.available.toLocaleString()} 
-                                    ({budgetCode.utilizationRate}% used) | 
-                                    {budgetCode.budgetType} | {budgetCode.department}
-                                </Text>
-                                {budgetCode.status === 'critical' && (
-                                    <Tag size="small" color="red" style={{ marginLeft: 8 }}>
-                                        Critical Usage
-                                    </Tag>
-                                )}
-                                {budgetCode.status === 'high' && (
-                                    <Tag size="small" color="orange" style={{ marginLeft: 8 }}>
-                                        High Usage
-                                    </Tag>
-                                )}
-                            </div>
-                        </Option>
-                    ))}
+                    {budgetCodes.map(budgetCode => {
+                        const totalBudget = budgetCode.totalBudget || budgetCode.budget || 0;
+                        const used = budgetCode.used || 0;
+                        const available = budgetCode.available !== undefined ? budgetCode.available : (totalBudget - used);
+                        const utilizationRate = budgetCode.utilizationRate || 0;
+
+                        return (
+                            <Option 
+                                key={budgetCode._id} 
+                                value={budgetCode._id}
+                                disabled={budgetCode.status === 'critical'}
+                            >
+                                <div>
+                                    <Text strong>{budgetCode.code}</Text> - {budgetCode.name}
+                                    <br />
+                                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                                        Available: XAF {available.toLocaleString()} 
+                                        ({utilizationRate}% used) | 
+                                        {budgetCode.budgetType} | {budgetCode.department}
+                                    </Text>
+                                </div>
+                            </Option>
+                        );
+                    })}
                 </Select>
             </Form.Item>
 
-            {form.getFieldValue('budgetCodeId') && (
-                <Alert
-                    message="Budget Code Information"
-                    description={(() => {
-                        const selectedBudgetCode = budgetCodes.find(bc => bc._id === form.getFieldValue('budgetCodeId'));
-                        return selectedBudgetCode ? (
-                            <div>
-                                <Descriptions column={2} size="small" style={{ marginTop: '8px' }}>
-                                    <Descriptions.Item label="Budget Code">
-                                        {selectedBudgetCode.code} - {selectedBudgetCode.name}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Department">
-                                        {selectedBudgetCode.department}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Total Budget">
-                                        XAF {selectedBudgetCode.totalBudget.toLocaleString()}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Available">
-                                        XAF {selectedBudgetCode.available.toLocaleString()}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Utilization">
-                                        {selectedBudgetCode.utilizationRate}%
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Budget Type">
-                                        {selectedBudgetCode.budgetType}
-                                    </Descriptions.Item>
-                                </Descriptions>
-                                <div style={{ marginTop: '8px' }}>
-                                    <Text type="success">
-                                        <CheckCircleOutlined /> Budget code selected - Project expenses will be tracked under this budget
-                                    </Text>
-                                </div>
-                            </div>
-                        ) : null;
-                    })()}
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: '16px' }}
-                />
-            )}
+            <Divider>Milestones & Sub-Milestones</Divider>
 
-            <Form.Item label="Project Milestones (Optional)">
-                <Form.List name="milestones">
-                    {(fields, { add, remove }) => (
-                        <>
-                            {fields.map(({ key, name, ...restField }) => (
-                                <div key={key} style={{ display: 'flex', marginBottom: 8, alignItems: 'center' }}>
-                                    <Form.Item
-                                        {...restField}
-                                        name={[name, 'title']}
-                                        style={{ flex: 2, marginRight: 8 }}
-                                        rules={[{ required: true, message: 'Milestone title is required' }]}
-                                    >
-                                        <Input placeholder="Milestone title" />
-                                    </Form.Item>
-                                    <Form.Item
-                                        {...restField}
-                                        name={[name, 'dueDate']}
-                                        style={{ flex: 1, marginRight: 8 }}
-                                        rules={[{ required: true, message: 'Due date is required' }]}
-                                    >
-                                        <DatePicker 
-                                            placeholder="Due date" 
-                                            style={{ width: '100%' }}
-                                            disabledDate={(current) => current && current < moment()}
+            <Form.List name="milestones">
+                {(fields, { add, remove }) => (
+                    <>
+                        {fields.map(({ key, name, ...restField }) => (
+                            <Card key={key} size="small" style={{ marginBottom: 16, backgroundColor: '#fafafa' }}>
+                                <Row gutter={16} align="middle">
+                                    <Col span={10}>
+                                        <Form.Item
+                                            {...restField}
+                                            name={[name, 'title']}
+                                            label="Milestone Title"
+                                            rules={[{ required: true, message: 'Required' }]}
+                                        >
+                                            <Input placeholder="e.g., Planning Phase" />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={6}>
+                                        <Form.Item
+                                            {...restField}
+                                            name={[name, 'dueDate']}
+                                            label="Due Date"
+                                        >
+                                            <DatePicker placeholder="Due date" style={{ width: '100%' }} />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={6}>
+                                        <Form.Item
+                                            {...restField}
+                                            name={[name, 'weight']}
+                                            label="Weight"
+                                            initialValue={20}
+                                        >
+                                            <InputNumber
+                                                min={0}
+                                                max={100}
+                                                formatter={value => `${value}%`}
+                                                parser={value => value.replace('%', '')}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={2} style={{ paddingTop: 30 }}>
+                                        <Button 
+                                            type="link" 
+                                            danger
+                                            icon={<MinusCircleOutlined />}
+                                            onClick={() => remove(name)}
                                         />
-                                    </Form.Item>
-                                    <Button 
-                                        type="link" 
-                                        onClick={() => remove(name)}
-                                        icon={<DeleteOutlined />}
-                                        danger
-                                    />
-                                </div>
-                            ))}
-                            <Form.Item>
-                                <Button
-                                    type="dashed"
-                                    onClick={() => add()}
-                                    block
-                                    icon={<PlusOutlined />}
+                                    </Col>
+                                </Row>
+
+                                <Form.Item
+                                    {...restField}
+                                    name={[name, 'description']}
+                                    label="Description"
                                 >
-                                    Add Milestone
-                                </Button>
-                            </Form.Item>
-                        </>
-                    )}
-                </Form.List>
-            </Form.Item>
+                                    <TextArea rows={2} placeholder="Optional milestone description" />
+                                </Form.Item>
 
-            {budgetCodes.length > 0 && (
-                <Alert
-                    message="Budget Code Information"
-                    description={`${budgetCodes.length} budget codes available. ${budgetCodes.filter(bc => bc.status !== 'critical').length} have sufficient funds for new projects.`}
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                    action={
-                        <Button
-                            size="small"
-                            onClick={() => {
-                                Modal.info({
-                                    title: 'Available Budget Codes',
-                                    content: (
-                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                                            {budgetCodes.map(budgetCode => (
-                                                <div key={budgetCode._id} style={{ marginBottom: '12px', padding: '8px', background: '#f5f5f5', borderRadius: '4px' }}>
-                                                    <Text strong>{budgetCode.code}</Text> - {budgetCode.name}
-                                                    <br />
-                                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                        Department: {budgetCode.department} | Type: {budgetCode.budgetType}
-                                                    </Text>
-                                                    <br />
-                                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                        Available: XAF {budgetCode.available.toLocaleString()} 
-                                                        ({budgetCode.utilizationRate}% utilized)
-                                                    </Text>
-                                                    {budgetCode.status === 'critical' && (
-                                                        <Tag size="small" color="red" style={{ marginLeft: 8 }}>
-                                                            Critical Usage
-                                                        </Tag>
-                                                    )}
-                                                </div>
+                                <Divider style={{ margin: '12px 0' }}>Sub-Milestones</Divider>
+
+                                <Form.List name={[name, 'subMilestones']}>
+                                    {(subFields, { add: addSub, remove: removeSub }) => (
+                                        <div style={{ paddingLeft: 16, backgroundColor: 'white', padding: 12, borderRadius: 4 }}>
+                                            {subFields.map(({ key: subKey, name: subName, ...subRest }) => (
+                                                <Card key={subKey} size="small" style={{ marginBottom: 8, backgroundColor: '#f5f5f5' }}>
+                                                    <Row gutter={8} align="middle">
+                                                        <Col span={8}>
+                                                            <Form.Item
+                                                                {...subRest}
+                                                                name={[subName, 'title']}
+                                                                label="Sub-Task"
+                                                                style={{ marginBottom: 8 }}
+                                                                rules={[{ required: true, message: 'Required' }]}
+                                                            >
+                                                                <Input placeholder="Sub-milestone title" size="small" />
+                                                            </Form.Item>
+                                                        </Col>
+                                                        <Col span={6}>
+                                                            <Form.Item
+                                                                {...subRest}
+                                                                name={[subName, 'dueDate']}
+                                                                label="Due Date"
+                                                                style={{ marginBottom: 8 }}
+                                                            >
+                                                                <DatePicker size="small" style={{ width: '100%' }} />
+                                                            </Form.Item>
+                                                        </Col>
+                                                        <Col span={4}>
+                                                            <Form.Item
+                                                                {...subRest}
+                                                                name={[subName, 'weight']}
+                                                                label="Weight"
+                                                                initialValue={10}
+                                                                style={{ marginBottom: 8 }}
+                                                            >
+                                                                <InputNumber
+                                                                    size="small"
+                                                                    min={0}
+                                                                    max={100}
+                                                                    formatter={v => `${v}%`}
+                                                                    parser={v => v.replace('%', '')}
+                                                                    style={{ width: '100%' }}
+                                                                />
+                                                            </Form.Item>
+                                                        </Col>
+                                                        <Col span={5}>
+                                                            <Form.Item
+                                                                {...subRest}
+                                                                name={[subName, 'assignedTo']}
+                                                                label="Assign To"
+                                                                style={{ marginBottom: 8 }}
+                                                            >
+                                                                <Select size="small" placeholder="Assign" allowClear>
+                                                                    {projectManagers.map(pm => (
+                                                                        <Option key={pm._id} value={pm._id}>
+                                                                            {pm.fullName || pm.name}
+                                                                        </Option>
+                                                                    ))}
+                                                                </Select>
+                                                            </Form.Item>
+                                                        </Col>
+                                                        <Col span={1}>
+                                                            <Button
+                                                                type="link"
+                                                                danger
+                                                                size="small"
+                                                                icon={<MinusCircleOutlined />}
+                                                                onClick={() => removeSub(subName)}
+                                                                style={{ marginTop: 22 }}
+                                                            />
+                                                        </Col>
+                                                    </Row>
+                                                    <Form.Item
+                                                        {...subRest}
+                                                        name={[subName, 'description']}
+                                                        style={{ marginBottom: 0 }}
+                                                    >
+                                                        <TextArea 
+                                                            size="small" 
+                                                            rows={1} 
+                                                            placeholder="Optional description"
+                                                        />
+                                                    </Form.Item>
+                                                </Card>
                                             ))}
+                                            <Button
+                                                type="dashed"
+                                                size="small"
+                                                onClick={() => addSub()}
+                                                icon={<PlusOutlined />}
+                                                block
+                                            >
+                                                Add Sub-Milestone
+                                            </Button>
                                         </div>
-                                    ),
-                                    width: 600
-                                });
-                            }}
-                        >
-                            View All Codes
+                                    )}
+                                </Form.List>
+                            </Card>
+                        ))}
+                        <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                            Add Milestone
                         </Button>
-                    }
-                />
-            )}
+                    </>
+                )}
+            </Form.List>
 
-            {budgetCodes.length === 0 && !loadingBudgetCodes && (
-                <Alert
-                    message="No Budget Codes Available"
-                    description="No budget codes found. The project can still be created, but budget tracking will be limited. Contact the Finance team to create budget codes."
-                    type="warning"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                />
-            )}
-
-            {projectManagers.length > 0 && (
-                <Alert
-                    message="Available Employees for Project Management"
-                    description={`${projectManagers.length} active employees are available for selection as project managers. You can choose from any active employee in the organization.`}
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                    action={
-                        <Button
-                            size="small"
-                            onClick={() => {
-                                Modal.info({
-                                    title: 'Available Employees',
-                                    content: (
-                                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                                            {projectManagers.map(manager => {
-                                                const roleDisplayMap = {
-                                                    'admin': '👑 Administrator',
-                                                    'supervisor': '👔 Supervisor', 
-                                                    'manager': '📊 Manager',
-                                                    'team_lead': '🎯 Team Lead',
-                                                    'supply_chain': '📦 Supply Chain',
-                                                    'finance': '💰 Finance',
-                                                    'hr': '👥 HR',
-                                                    'employee': '👤 Employee',
-                                                    'analyst': '📈 Analyst',
-                                                    'coordinator': '🔗 Coordinator',
-                                                    'specialist': '🔧 Specialist',
-                                                    'assistant': '🤝 Assistant'
-                                                };
-                                                const roleDisplay = roleDisplayMap[manager.role] || `� ${manager.role || 'Employee'}`;
-                                                
-                                                return (
-                                                    <div key={manager._id} style={{ marginBottom: '8px', padding: '8px', background: '#f5f5f5', borderRadius: '4px' }}>
-                                                        <Text strong>{manager.fullName || manager.name || 'Unknown Name'}</Text>
-                                                        <br />
-                                                        <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                            {roleDisplay} {manager.department ? `| ${manager.department}` : ''}
-                                                        </Text>
-                                                        {manager.email && (
-                                                            <>
-                                                                <br />
-                                                                <Text type="secondary" style={{ fontSize: '11px' }}>
-                                                                    {manager.email}
-                                                                </Text>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    ),
-                                    width: 600
-                                });
-                            }}
-                        >
-                            View All Employees
-                        </Button>
-                    }
-                />
-            )}
-
-            {projectManagers.length === 0 && !projectManagersLoading && (
-                <Alert
-                    message="No Employees Found"
-                    description="No active employees found in the system. Please contact the HR department to ensure employees are properly registered."
-                    type="error"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                />
-            )}
+            <Divider />
 
             <Form.Item>
                 <Space>
@@ -1262,34 +1123,6 @@ const EnhancedProjectManagement = () => {
                             />
                         </Col>
                     </Row>
-                    <Divider />
-                    <Row gutter={16}>
-                        <Col span={8}>
-                            <Statistic
-                                title="Total Budget Allocated"
-                                value={`XAF ${stats.totalBudget.toLocaleString()}`}
-                                prefix={<DollarOutlined />}
-                                valueStyle={{ color: '#faad14' }}
-                            />
-                        </Col>
-                        <Col span={8}>
-                            <Statistic
-                                title="Budget Utilization"
-                                value={stats.budgetUtilization}
-                                suffix="%"
-                                prefix={<BarChartOutlined />}
-                                valueStyle={{ color: '#13c2c2' }}
-                            />
-                        </Col>
-                        <Col span={8}>
-                            <Statistic
-                                title="Available Budget Codes"
-                                value={budgetCodes.filter(bc => bc.status !== 'critical').length}
-                                prefix={<BankOutlined />}
-                                valueStyle={{ color: '#52c41a' }}
-                            />
-                        </Col>
-                    </Row>
                 </Card>
 
                 {/* Projects Table with Tabs */}
@@ -1343,9 +1176,6 @@ const EnhancedProjectManagement = () => {
                     }}
                     scroll={{ x: 1600 }}
                     size="small"
-                    locale={{ 
-                        emptyText: loading ? <Spin /> : 'No projects found'
-                    }}
                 />
             </Card>
 
@@ -1364,7 +1194,7 @@ const EnhancedProjectManagement = () => {
                     form.resetFields();
                 }}
                 footer={null}
-                width={900}
+                width={1100}
                 destroyOnClose
             >
                 <ProjectForm />
@@ -1375,7 +1205,7 @@ const EnhancedProjectManagement = () => {
                 title={
                     <Space>
                         <ProjectOutlined />
-                        Project Details - {selectedProject?.code}
+                        Project Details - {selectedProject?.name}
                     </Space>
                 }
                 open={detailsModalVisible}
@@ -1399,14 +1229,11 @@ const EnhancedProjectManagement = () => {
                         </Button>
                     </Space>
                 }
-                width={1000}
+                width={1200}
             >
                 {selectedProject ? (
                     <div>
                         <Descriptions bordered column={2} size="small" style={{ marginBottom: '20px' }}>
-                            <Descriptions.Item label="Project Code" span={2}>
-                                <Text code copyable>{selectedProject.code}</Text>
-                            </Descriptions.Item>
                             <Descriptions.Item label="Project Name" span={2}>
                                 <Text strong>{selectedProject.name}</Text>
                             </Descriptions.Item>
@@ -1428,168 +1255,196 @@ const EnhancedProjectManagement = () => {
                             </Descriptions.Item>
                             <Descriptions.Item label="Project Manager">
                                 <Avatar size="small" icon={<UserOutlined />} style={{ marginRight: 8 }} />
-                                {selectedProject.projectManager?.fullName}
+                                {selectedProject.projectManager?.fullName || 'N/A'}
                             </Descriptions.Item>
-                            <Descriptions.Item label="Progress">
-                                <Progress 
-                                    percent={selectedProject.progress?.percentage || 0} 
-                                    size="small" 
-                                />
+                            <Descriptions.Item label="Overall Progress">
+                                <Progress percent={selectedProject.progress || 0} size="small" />
                             </Descriptions.Item>
-                            {selectedProject.budgetCode && (
-                                <>
-                                    <Descriptions.Item label="Budget Code" span={2}>
-                                        <Tag color={getBudgetCodeStatusColor(selectedProject.budgetCode)} icon={<BankOutlined />}>
-                                            {selectedProject.budgetCode.code} - {selectedProject.budgetCode.name}
-                                        </Tag>
-                                        <br />
-                                        <Text type="secondary" style={{ fontSize: '12px' }}>
-                                            Available: XAF {(selectedProject.budgetCode.budget - selectedProject.budgetCode.used).toLocaleString()} 
-                                            ({selectedProject.budgetCode.utilizationRate || 0}% utilized)
-                                        </Text>
-                                    </Descriptions.Item>
-                                </>
-                            )}
                         </Descriptions>
-
-                        <Row gutter={16} style={{ marginBottom: '20px' }}>
-                            <Col span={12}>
-                                <Card size="small" title="Budget Information">
-                                    <Statistic
-                                        title="Allocated"
-                                        value={selectedProject.budget?.allocated || 0}
-                                        prefix="XAF "
-                                        valueStyle={{ color: '#1890ff' }}
-                                        formatter={value => value.toLocaleString()}
-                                    />
-                                    <Divider />
-                                    <Statistic
-                                        title="Spent"
-                                        value={selectedProject.budget?.spent || 0}
-                                        prefix="XAF "
-                                        valueStyle={{ color: '#f5222d' }}
-                                        formatter={value => value.toLocaleString()}
-                                    />
-                                    <Divider />
-                                    <Progress 
-                                        percent={selectedProject.budget?.allocated ? 
-                                            Math.round(((selectedProject.budget.spent || 0) / selectedProject.budget.allocated) * 100) : 0}
-                                        status={(selectedProject.budget?.spent || 0) > (selectedProject.budget?.allocated || 1) * 0.9 ? 'exception' : 'active'}
-                                    />
-                                    {selectedProject.budgetCode && (
-                                        <>
-                                            <Divider />
-                                            <div style={{ padding: '8px', background: '#f0f8ff', borderRadius: '4px' }}>
-                                                <Text strong>Budget Code Details:</Text>
-                                                <br />
-                                                <Text>Code: {selectedProject.budgetCode.code}</Text>
-                                                <br />
-                                                <Text>Department: {selectedProject.budgetCode.department}</Text>
-                                                <br />
-                                                <Text>Available: XAF {(selectedProject.budgetCode.budget - selectedProject.budgetCode.used).toLocaleString()}</Text>
-                                            </div>
-                                        </>
-                                    )}
-                                </Card>
-                            </Col>
-                            <Col span={12}>
-                                <Card size="small" title="Timeline Information">
-                                    <div style={{ marginBottom: '8px' }}>
-                                        <Text strong>Planned:</Text>
-                                        <br />
-                                        <Text>
-                                            {selectedProject.timeline?.startDate ? 
-                                                moment(selectedProject.timeline.startDate).format('MMM DD, YYYY') : 'N/A'} - {' '}
-                                            {selectedProject.timeline?.endDate ? 
-                                                moment(selectedProject.timeline.endDate).format('MMM DD, YYYY') : 'N/A'}
-                                        </Text>
-                                    </div>
-                                    {selectedProject.timeline?.actualStartDate && (
-                                        <div style={{ marginBottom: '8px' }}>
-                                            <Text strong>Actual Start:</Text>
-                                            <br />
-                                            <Text>{moment(selectedProject.timeline.actualStartDate).format('MMM DD, YYYY')}</Text>
-                                        </div>
-                                    )}
-                                    <div>
-                                        <Text strong>Days Remaining:</Text>
-                                        <br />
-                                        <Text style={{ 
-                                            color: selectedProject.timeline?.endDate ? 
-                                                (moment(selectedProject.timeline.endDate).diff(moment(), 'days') < 0 ? '#f5222d' : '#52c41a') : '#d9d9d9'
-                                        }}>
-                                            {selectedProject.timeline?.endDate ? 
-                                                moment(selectedProject.timeline.endDate).diff(moment(), 'days') : 'N/A'} days
-                                        </Text>
-                                    </div>
-                                </Card>
-                            </Col>
-                        </Row>
 
                         <Card size="small" title="Project Description" style={{ marginBottom: '20px' }}>
                             <Paragraph>{selectedProject.description}</Paragraph>
                         </Card>
 
-                        <Row gutter={16} style={{ marginBottom: '20px' }}>
-                            <Col span={12}>
-                                <Card size="small" title="Team Members">
-                                    <List
-                                        dataSource={selectedProject.team || []}
-                                        renderItem={(teamMember) => (
-                                            <List.Item>
-                                                <List.Item.Meta
-                                                    avatar={<Avatar size="small" icon={<UserOutlined />} />}
-                                                    title={teamMember.member?.fullName || 'Unknown User'}
-                                                    description={teamMember.role}
+                        <Card size="small" title="Milestones & Sub-Milestones Tracking" style={{ marginBottom: '20px' }}>
+                            {selectedProject.milestones && selectedProject.milestones.length > 0 ? (
+                                <Collapse>
+                                    {selectedProject.milestones.map((milestone, idx) => (
+                                        <Panel
+                                            header={
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                                    <Space>
+                                                        <Text strong>{milestone.title}</Text>
+                                                        <Tag color={getStatusColor(milestone.status)}>{milestone.status}</Tag>
+                                                        <Text type="secondary">Weight: {milestone.weight}%</Text>
+                                                    </Space>
+                                                    <Progress 
+                                                        percent={milestone.progress || 0} 
+                                                        size="small" 
+                                                        style={{ width: 200 }}
+                                                        status={milestone.progress === 100 ? 'success' : 'active'}
+                                                    />
+                                                </div>
+                                            }
+                                            key={idx}
+                                        >
+                                            {milestone.description && (
+                                                <Alert 
+                                                    message={milestone.description} 
+                                                    type="info" 
+                                                    style={{ marginBottom: 16 }}
+                                                    showIcon
                                                 />
-                                            </List.Item>
-                                        )}
-                                        locale={{ emptyText: 'No team members assigned' }}
-                                    />
+                                            )}
+                                            
+                                            {milestone.dueDate && (
+                                                <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+                                                    <ClockCircleOutlined /> Due: {moment(milestone.dueDate).format('MMM DD, YYYY')}
+                                                </Text>
+                                            )}
+
+                                            {milestone.subMilestones && milestone.subMilestones.length > 0 ? (
+                                                <List
+                                                    size="small"
+                                                    dataSource={milestone.subMilestones}
+                                                    renderItem={(subMilestone) => (
+                                                        <List.Item
+                                                            actions={[
+                                                                <div style={{ width: 200 }}>
+                                                                    <Slider
+                                                                        value={subMilestone.progress || 0}
+                                                                        onChange={(value) => handleUpdateSubMilestoneProgress(
+                                                                            selectedProject._id,
+                                                                            milestone._id,
+                                                                            subMilestone._id,
+                                                                            value
+                                                                        )}
+                                                                        marks={{ 0: '0%', 50: '50%', 100: '100%' }}
+                                                                        tipFormatter={value => `${value}%`}
+                                                                    />
+                                                                </div>
+                                                            ]}
+                                                        >
+                                                            <List.Item.Meta
+                                                                avatar={
+                                                                    <Avatar 
+                                                                        size="small" 
+                                                                        style={{ 
+                                                                            backgroundColor: subMilestone.progress === 100 ? '#52c41a' : 
+                                                                                           subMilestone.progress > 0 ? '#1890ff' : '#d9d9d9'
+                                                                        }}
+                                                                    >
+                                                                        {subMilestone.progress === 100 ? '✓' : `${subMilestone.progress || 0}%`}
+                                                                    </Avatar>
+                                                                }
+                                                                title={
+                                                                    <Space>
+                                                                        <Text strong>{subMilestone.title}</Text>
+                                                                        <Tag size="small" color={getStatusColor(subMilestone.status)}>
+                                                                            {subMilestone.status}
+                                                                        </Tag>
+                                                                        {subMilestone.weight && (
+                                                                            <Tag size="small" color="blue">Weight: {subMilestone.weight}%</Tag>
+                                                                        )}
+                                                                    </Space>
+                                                                }
+                                                                description={
+                                                                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                                                        {subMilestone.description && (
+                                                                            <Text type="secondary">{subMilestone.description}</Text>
+                                                                        )}
+                                                                        {subMilestone.assignedTo && (
+                                                                            <Text type="secondary">
+                                                                                <UserOutlined /> Assigned: {subMilestone.assignedTo.fullName || subMilestone.assignedTo.name}
+                                                                            </Text>
+                                                                        )}
+                                                                        {subMilestone.dueDate && (
+                                                                            <Text type="secondary">
+                                                                                <ClockCircleOutlined /> Due: {moment(subMilestone.dueDate).format('MMM DD, YYYY')}
+                                                                            </Text>
+                                                                        )}
+                                                                        {subMilestone.completedDate && (
+                                                                            <Text type="success">
+                                                                                <CheckCircleOutlined /> Completed: {moment(subMilestone.completedDate).format('MMM DD, YYYY')}
+                                                                            </Text>
+                                                                        )}
+                                                                        {subMilestone.notes && (
+                                                                            <Text type="secondary" italic style={{ fontSize: '12px' }}>
+                                                                                Notes: {subMilestone.notes}
+                                                                            </Text>
+                                                                        )}
+                                                                    </Space>
+                                                                }
+                                                            />
+                                                        </List.Item>
+                                                    )}
+                                                />
+                                            ) : (
+                                                <Alert message="No sub-milestones defined" type="info" showIcon />
+                                            )}
+
+                                            <Divider />
+                                            <Button
+                                                type="dashed"
+                                                size="small"
+                                                icon={<PlusOutlined />}
+                                                onClick={() => {
+                                                    setSelectedMilestone(milestone);
+                                                    setSubMilestoneModalVisible(true);
+                                                }}
+                                            >
+                                                Add Sub-Milestone
+                                            </Button>
+                                        </Panel>
+                                    ))}
+                                </Collapse>
+                            ) : (
+                                <Alert message="No milestones defined for this project" type="info" showIcon />
+                            )}
+                        </Card>
+
+                        <Row gutter={16}>
+                            <Col span={12}>
+                                <Card size="small" title="Timeline Information">
+                                    <Descriptions column={1} size="small">
+                                        <Descriptions.Item label="Start Date">
+                                            {selectedProject.timeline?.startDate ? 
+                                                moment(selectedProject.timeline.startDate).format('MMM DD, YYYY') : 'N/A'}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="End Date">
+                                            {selectedProject.timeline?.endDate ? 
+                                                moment(selectedProject.timeline.endDate).format('MMM DD, YYYY') : 'N/A'}
+                                        </Descriptions.Item>
+                                        <Descriptions.Item label="Days Remaining">
+                                            <Text style={{
+                                                color: selectedProject.timeline?.endDate && moment(selectedProject.timeline.endDate).diff(moment(), 'days') < 0 ? '#f5222d' : '#52c41a'
+                                            }}>
+                                                {selectedProject.timeline?.endDate ? 
+                                                    moment(selectedProject.timeline.endDate).diff(moment(), 'days') : 'N/A'} days
+                                            </Text>
+                                        </Descriptions.Item>
+                                    </Descriptions>
                                 </Card>
                             </Col>
                             <Col span={12}>
-                                <Card size="small" title="Project Milestones">
-                                    <Timeline>
-                                        {selectedProject.milestones?.map((milestone, index) => {
-                                            let color = 'gray';
-                                            let icon = <ClockCircleOutlined />;
-
-                                            if (milestone.status === 'Completed') {
-                                                color = 'green';
-                                                icon = <CheckCircleOutlined />;
-                                            } else if (milestone.status === 'In Progress') {
-                                                color = 'blue';
-                                                icon = <PlayCircleOutlined />;
-                                            }
-
-                                            return (
-                                                <Timeline.Item key={index} color={color} dot={icon}>
-                                                    <div>
-                                                        <Text strong>{milestone.title}</Text>
-                                                        <br />
-                                                        <Text type="secondary">
-                                                            Due: {milestone.dueDate ? 
-                                                                moment(milestone.dueDate).format('MMM DD, YYYY') : 'Not set'}
-                                                        </Text>
-                                                        {milestone.completedDate && (
-                                                            <>
-                                                                <br />
-                                                                <Text type="success">
-                                                                    Completed: {moment(milestone.completedDate).format('MMM DD, YYYY')}
-                                                                </Text>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                </Timeline.Item>
-                                            );
-                                        })}
-                                        {(!selectedProject.milestones || selectedProject.milestones.length === 0) && (
-                                            <Timeline.Item color="gray" dot={<BulbOutlined />}>
-                                                <Text type="secondary">No milestones defined</Text>
-                                            </Timeline.Item>
-                                        )}
-                                    </Timeline>
+                                <Card size="small" title="Budget Information">
+                                    {selectedProject.budgetCode ? (
+                                        <Descriptions column={1} size="small">
+                                            <Descriptions.Item label="Budget Code">
+                                                <Tag color={getBudgetCodeStatusColor(selectedProject.budgetCode)}>
+                                                    {selectedProject.budgetCode.code}
+                                                </Tag>
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="Budget Name">
+                                                {selectedProject.budgetCode.name}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="Available Funds">
+                                                XAF {(selectedProject.budgetCode.available || 0).toLocaleString()}
+                                            </Descriptions.Item>
+                                        </Descriptions>
+                                    ) : (
+                                        <Alert message="No budget code assigned to this project" type="warning" showIcon />
+                                    )}
                                 </Card>
                             </Col>
                         </Row>
@@ -1598,10 +1453,106 @@ const EnhancedProjectManagement = () => {
                     <Spin size="large" />
                 )}
             </Modal>
+
+            {/* Add Sub-Milestone Modal */}
+            <Modal
+                title={<Space><PlusOutlined />Add Sub-Milestone to: {selectedMilestone?.title}</Space>}
+                open={subMilestoneModalVisible}
+                onCancel={() => {
+                    setSubMilestoneModalVisible(false);
+                    setSelectedMilestone(null);
+                    subMilestoneForm.resetFields();
+                }}
+                footer={null}
+                width={600}
+            >
+                <Form
+                    form={subMilestoneForm}
+                    layout="vertical"
+                    onFinish={handleAddSubMilestone}
+                >
+                    <Form.Item
+                        name="title"
+                        label="Sub-Milestone Title"
+                        rules={[{ required: true, message: 'Please enter title' }]}
+                    >
+                        <Input placeholder="Enter sub-milestone title" />
+                    </Form.Item>
+
+                    <Form.Item
+                        name="description"
+                        label="Description"
+                    >
+                        <TextArea rows={3} placeholder="Optional description" />
+                    </Form.Item>
+
+                    <Row gutter={16}>
+                        <Col span={12}>
+                            <Form.Item
+                                name="dueDate"
+                                label="Due Date"
+                            >
+                                <DatePicker style={{ width: '100%' }} />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                            <Form.Item
+                                name="weight"
+                                label="Weight (%)"
+                                initialValue={10}
+                            >
+                                <InputNumber
+                                    min={0}
+                                    max={100}
+                                    style={{ width: '100%' }}
+                                    formatter={value => `${value}%`}
+                                    parser={value => value.replace('%', '')}
+                                />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+
+                    <Form.Item
+                        name="assignedTo"
+                        label="Assign To"
+                    >
+                        <Select placeholder="Select team member" allowClear>
+                            {projectManagers.map(pm => (
+                                <Option key={pm._id} value={pm._id}>
+                                    {pm.fullName || pm.name}
+                                </Option>
+                            ))}
+                        </Select>
+                    </Form.Item>
+
+                    <Form.Item
+                        name="notes"
+                        label="Notes"
+                    >
+                        <TextArea rows={2} placeholder="Optional notes" />
+                    </Form.Item>
+
+                    <Form.Item>
+                        <Space>
+                            <Button onClick={() => {
+                                setSubMilestoneModalVisible(false);
+                                subMilestoneForm.resetFields();
+                            }}>
+                                Cancel
+                            </Button>
+                            <Button type="primary" htmlType="submit" loading={loading}>
+                                Add Sub-Milestone
+                            </Button>
+                        </Space>
+                    </Form.Item>
+                </Form>
+            </Modal>
         </div>
     );
 };
 
 export default EnhancedProjectManagement;
+
+
 
 

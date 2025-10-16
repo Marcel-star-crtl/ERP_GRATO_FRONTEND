@@ -1,10 +1,75 @@
-import api from './api';
+import axios from 'axios';
+import { store } from '../store/store';
+
+// Fix the typo in the environment variable name
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/';
+
+console.log('API Base URL configured:', API_BASE_URL);
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor for auth token
+api.interceptors.request.use(
+  (config) => {
+    const state = store.getState();
+    const token = state.auth.token;
+    
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
+    console.log('API Request:', {
+      method: config.method,
+      url: config.url,
+      baseURL: config.baseURL,
+      fullURL: `${config.baseURL}${config.url}`
+    });
+    
+    return config;
+  },
+  (error) => {
+    console.error('Request interceptor error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => {
+    console.log('API Response:', {
+      url: response.config.url,
+      status: response.status,
+      data: response.data
+    });
+    return response;
+  },
+  (error) => {
+    console.error('API Response Error:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      message: error.message,
+      data: error.response?.data
+    });
+    
+    if (error.response?.status === 401) {
+      // store.dispatch(logout());
+    }
+    return Promise.reject(error);
+  }
+);
+
 
 export const projectAPI = {
   // Get all projects with filtering
   getProjects: async (filters = {}) => {
     try {
-      const response = await api.get('/api/projects', { params: filters });
+      const response = await api.get('/projects', { params: filters });
       return {
         success: true,
         data: response.data.data?.projects || response.data.data || response.data.projects || response.data || [],
@@ -12,11 +77,9 @@ export const projectAPI = {
       };
     } catch (error) {
       console.error('Error fetching projects:', error);
-      
-      // Try alternative endpoint
       try {
         console.log('Trying alternative projects endpoint...');
-        const altResponse = await api.get('/api/supply-chain/projects', { params: filters });
+        const altResponse = await api.get('/supply-chain/projects', { params: filters });
         return {
           success: true,
           data: altResponse.data.data?.projects || altResponse.data.data || altResponse.data.projects || altResponse.data || [],
@@ -36,27 +99,24 @@ export const projectAPI = {
   // Get active projects only
   getActiveProjects: async () => {
     try {
-      const response = await api.get('/api/projects/active');
+      const response = await api.get('/projects/active');
       return {
         success: true,
         data: response.data.data?.projects || response.data.data || response.data.projects || response.data || []
       };
     } catch (error) {
       console.error('Error fetching active projects:', error);
-      
-      // Try alternative endpoint
       try {
         console.log('Trying alternative active projects endpoint...');
-        const altResponse = await api.get('/api/supply-chain/projects/active');
+        const altResponse = await api.get('/supply-chain/projects/active');
         return {
           success: true,
           data: altResponse.data.data?.projects || altResponse.data.data || altResponse.data.projects || altResponse.data || []
         };
       } catch (altError) {
-        // Try getting all projects and filtering for active ones
         try {
           console.log('Trying to get all projects and filter for active...');
-          const allProjectsResponse = await api.get('/api/projects');
+          const allProjectsResponse = await api.get('/projects');
           const allProjects = allProjectsResponse.data.data?.projects || allProjectsResponse.data.data || allProjectsResponse.data.projects || allProjectsResponse.data || [];
           const activeProjects = allProjects.filter(project => 
             ['Planning', 'Approved', 'In Progress', 'Active'].includes(project.status)
@@ -80,7 +140,7 @@ export const projectAPI = {
   // Get project by ID
   getProjectById: async (projectId) => {
     try {
-      const response = await api.get(`/api/projects/${projectId}`);
+      const response = await api.get(`/projects/${projectId}`);
       return {
         success: true,
         data: response.data.data
@@ -97,7 +157,7 @@ export const projectAPI = {
   // Create new project
   createProject: async (projectData) => {
     try {
-      const response = await api.post('/api/projects', projectData);
+      const response = await api.post('/projects', projectData);
       return {
         success: true,
         data: response.data.data,
@@ -115,7 +175,7 @@ export const projectAPI = {
   // Update project
   updateProject: async (projectId, projectData) => {
     try {
-      const response = await api.put(`/api/projects/${projectId}`, projectData);
+      const response = await api.put(`/projects/${projectId}`, projectData);
       return {
         success: true,
         data: response.data.data,
@@ -133,7 +193,7 @@ export const projectAPI = {
   // Update project status
   updateProjectStatus: async (projectId, statusData) => {
     try {
-      const response = await api.patch(`/api/projects/${projectId}/status`, statusData);
+      const response = await api.patch(`/projects/${projectId}/status`, statusData);
       return {
         success: true,
         data: response.data.data,
@@ -148,10 +208,10 @@ export const projectAPI = {
     }
   },
 
-  // Update project progress
-  updateProjectProgress: async (projectId, progressData) => {
+  // Update project progress (recalculates from milestones)
+  updateProjectProgress: async (projectId) => {
     try {
-      const response = await api.patch(`/api/projects/${projectId}/progress`, progressData);
+      const response = await api.patch(`/projects/${projectId}/progress`);
       return {
         success: true,
         data: response.data.data,
@@ -169,15 +229,13 @@ export const projectAPI = {
   // Get project statistics
   getProjectStats: async () => {
     try {
-      const response = await api.get('/api/projects/stats');
+      const response = await api.get('/projects/stats');
       return {
         success: true,
         data: response.data.data || response.data
       };
     } catch (error) {
       console.error('Error fetching project stats:', error);
-      
-      // Try alternative endpoint
       try {
         console.log('Trying alternative stats endpoint...');
         const altResponse = await api.get('/api/supply-chain/projects/stats');
@@ -199,10 +257,9 @@ export const projectAPI = {
     }
   },
 
-  // Get project metadata (types, departments, etc.)
+  // Get project metadata
   getProjectMetadata: async () => {
     try {
-      // You can create a dedicated endpoint for this or return static data
       return {
         success: true,
         data: {
@@ -242,42 +299,6 @@ export const projectAPI = {
           departments: [],
           priorities: []
         }
-      };
-    }
-  },
-
-  // Add team member to project
-  addTeamMember: async (projectId, memberData) => {
-    try {
-      const response = await api.post(`/api/projects/${projectId}/team`, memberData);
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message
-      };
-    } catch (error) {
-      console.error('Error adding team member:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Failed to add team member'
-      };
-    }
-  },
-
-  // Remove team member from project
-  removeTeamMember: async (projectId, userId) => {
-    try {
-      const response = await api.delete(`/api/projects/${projectId}/team/${userId}`);
-      return {
-        success: true,
-        data: response.data.data,
-        message: response.data.message
-      };
-    } catch (error) {
-      console.error('Error removing team member:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Failed to remove team member'
       };
     }
   },
@@ -356,17 +377,16 @@ export const projectAPI = {
     }
   },
 
-  // Get available budget codes for project assignment
+  // Get available budget codes
   getAvailableBudgetCodes: async () => {
     try {
-      const response = await api.get('/api/budget-codes/available');
+      const response = await api.get('/budget-codes/available');
       return {
         success: true,
         data: response.data.data || []
       };
     } catch (error) {
       console.error('Error fetching available budget codes:', error);
-      // Return mock data if API fails
       return {
         success: true,
         data: [
@@ -409,7 +429,92 @@ export const projectAPI = {
         ]
       };
     }
+  },
+
+  // ========== SUB-MILESTONE OPERATIONS ==========
+
+  // Add sub-milestone to milestone
+  addSubMilestone: async (projectId, milestoneId, subMilestoneData) => {
+    try {
+      const response = await api.post(
+        `/projects/${projectId}/milestones/${milestoneId}/sub-milestones`,
+        subMilestoneData
+      );
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('Error adding sub-milestone:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to add sub-milestone'
+      };
+    }
+  },
+
+  // Update sub-milestone
+  updateSubMilestone: async (projectId, milestoneId, subMilestoneId, updateData) => {
+    try {
+      const response = await api.patch(
+        `/projects/${projectId}/milestones/${milestoneId}/sub-milestones/${subMilestoneId}`,
+        updateData
+      );
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('Error updating sub-milestone:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to update sub-milestone'
+      };
+    }
+  },
+
+  // Update sub-milestone progress
+  updateSubMilestoneProgress: async (projectId, milestoneId, subMilestoneId, progress, notes) => {
+    try {
+      const response = await api.patch(
+        `/projects/${projectId}/milestones/${milestoneId}/sub-milestones/${subMilestoneId}/progress`,
+        { progress, notes }
+      );
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('Error updating sub-milestone progress:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to update sub-milestone progress'
+      };
+    }
+  },
+
+  // Delete sub-milestone
+  deleteSubMilestone: async (projectId, milestoneId, subMilestoneId) => {
+    try {
+      const response = await api.delete(
+        `/projects/${projectId}/milestones/${milestoneId}/sub-milestones/${subMilestoneId}`
+      );
+      return {
+        success: true,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('Error deleting sub-milestone:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to delete sub-milestone'
+      };
+    }
   }
 };
+
 
 

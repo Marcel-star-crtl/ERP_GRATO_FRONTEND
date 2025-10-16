@@ -19,16 +19,14 @@ import {
   CloseCircleOutlined,
   ClockCircleOutlined,
   DollarOutlined,
-  UserOutlined,
   CalendarOutlined,
   BankOutlined,
-  AuditOutlined,
   EyeOutlined,
   ReloadOutlined,
   ExclamationCircleOutlined,
   SendOutlined
 } from '@ant-design/icons';
-import api from '../../services/api';
+import { cashRequestAPI } from '../../services/cashRequestAPI';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -54,131 +52,29 @@ const FinanceCashApprovals = () => {
     try {
       setLoading(true);
       console.log('Fetching finance cash approvals...');
-    
-      // Mock data for demonstration
-      const mockResponse = {
-        success: true,
-        data: [
-          {
-            _id: '1',
-            employee: {
-              _id: 'emp1',
-              fullName: 'Ms. Sarah Johnson',
-              email: 'sarah.johnson@gratoengineering.com',
-              department: 'Business Development',
-              position: 'Project Coordinator'
-            },
-            amountRequested: 250000,
-            requestType: 'travel-expenses',
-            purpose: 'Client meeting in Douala - transportation and accommodation costs',
-            urgency: 'medium',
-            expectedDate: '2024-08-20',
-            status: 'pending_finance',
-            createdAt: '2024-08-14T10:30:00Z',
-            supervisorApproval: {
-              approvedBy: 'Mr. Department Head',
-              approvedAt: '2024-08-14T15:30:00Z',
-              comments: 'Approved. Client meeting is essential for project closure.'
-            },
-            justification: 'Need to meet with potential client to discuss new project requirements and finalize contract terms.',
-            attachments: [
-              {
-                fileName: 'travel_itinerary.pdf',
-                fileUrl: '#',
-                uploadedAt: '2024-08-14T10:30:00Z'
-              }
-            ]
-          },
-          {
-            _id: '2',
-            employee: {
-              _id: 'emp2',
-              fullName: 'Mr. John Doe',
-              email: 'john.doe@gratoengineering.com',
-              department: 'Engineering',
-              position: 'Senior Engineer'
-            },
-            amountRequested: 500000,
-            requestType: 'equipment-purchase',
-            purpose: 'New laptop for development work',
-            urgency: 'high',
-            expectedDate: '2024-08-18',
-            status: 'approved',
-            createdAt: '2024-08-13T09:15:00Z',
-            supervisorApproval: {
-              approvedBy: 'Mr. Tech Lead',
-              approvedAt: '2024-08-13T14:30:00Z',
-              comments: 'Current laptop is outdated. Approval granted.'
-            },
-            financeApproval: {
-              approvedBy: 'Ms. Finance Manager',
-              approvedAt: '2024-08-14T11:00:00Z',
-              comments: 'Budget available. Approved for disbursement.'
-            },
-            justification: 'Current development laptop is 5 years old and causing significant delays in project delivery.',
-            attachments: [
-              {
-                fileName: 'laptop_specifications.pdf',
-                fileUrl: '#',
-                uploadedAt: '2024-08-13T09:15:00Z'
-              }
-            ]
-          },
-          {
-            _id: '3',
-            employee: {
-              _id: 'emp3',
-              fullName: 'Ms. Jane Smith',
-              email: 'jane.smith@gratoengineering.com',
-              department: 'Marketing',
-              position: 'Marketing Manager'
-            },
-            amountRequested: 750000,
-            requestType: 'marketing-expenses',
-            purpose: 'Q3 marketing campaign and advertising costs',
-            urgency: 'low',
-            expectedDate: '2024-09-01',
-            status: 'disbursed',
-            createdAt: '2024-08-10T14:20:00Z',
-            supervisorApproval: {
-              approvedBy: 'Mr. Marketing Director',
-              approvedAt: '2024-08-11T10:00:00Z',
-              comments: 'Marketing budget approved for Q3 campaign.'
-            },
-            financeApproval: {
-              approvedBy: 'Ms. Finance Manager',
-              approvedAt: '2024-08-12T09:30:00Z',
-              comments: 'Disbursed. Awaiting justification documents.'
-            },
-            disbursement: {
-              disbursedBy: 'Mr. Finance Officer',
-              disbursedAt: '2024-08-12T16:00:00Z',
-              disbursedAmount: 750000,
-              method: 'Bank Transfer',
-              reference: 'TXN-202408120001'
-            },
-            justification: 'Q3 marketing campaign to increase brand awareness and drive sales growth.',
-            attachments: []
-          }
-        ],
-        stats: {
-          pendingFinance: 1,
-          approved: 1,
-          disbursed: 1,
-          completed: 5,
-          rejected: 2
-        }
-      };
+
+      const response = await cashRequestAPI.getFinanceRequests();
       
-      if (mockResponse.success) {
-        setRequests(mockResponse.data || []);
-        setStats(mockResponse.stats || {});
+      if (response.success) {
+        const requestsData = response.data || [];
+        setRequests(requestsData);
+        
+        // Calculate stats from the data
+        const calculatedStats = {
+          pendingFinance: requestsData.filter(req => req.status === 'pending_finance').length,
+          approved: requestsData.filter(req => req.status === 'approved').length,
+          disbursed: requestsData.filter(req => req.status === 'disbursed').length,
+          completed: requestsData.filter(req => req.status === 'completed').length,
+          rejected: requestsData.filter(req => req.status === 'denied').length
+        };
+        
+        setStats(calculatedStats);
       } else {
         throw new Error('Failed to fetch cash requests');
       }
     } catch (error) {
       console.error('Error fetching cash requests:', error);
-      message.error('Failed to load cash request approvals');
+      message.error(error.response?.data?.message || 'Failed to load cash request approvals');
       setRequests([]);
     } finally {
       setLoading(false);
@@ -194,12 +90,9 @@ const FinanceCashApprovals = () => {
     try {
       console.log('Disbursing cash request:', requestId);
       
-      // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      message.success('Cash request disbursed successfully');
-      await fetchCashRequests();
-      
+      // Navigate to the approval form to handle disbursement
+      navigate(`/finance/cash-request/${requestId}`);
+
     } catch (error) {
       console.error('Error disbursing request:', error);
       message.error('Failed to disburse cash request');
@@ -207,66 +100,30 @@ const FinanceCashApprovals = () => {
   };
 
   // Secure file download handler
-  const handleDownloadAttachment = async (attachment) => {
+  const handleDownloadAttachment = async (requestId, attachment) => {
     try {
-      if (!attachment.publicId && !attachment.fileUrl && !attachment.url) {
-        message.error('No download link available for this attachment');
+      if (!attachment.fileName && !attachment.name) {
+        message.error('No filename available for this attachment');
         return;
       }
 
-      // Try secure download first if publicId is available
-      if (attachment.publicId) {
-        const actualPublicId = attachment.publicId.includes('/') 
-          ? attachment.publicId.split('/').pop() 
-          : attachment.publicId;
-
-        const token = localStorage.getItem('token');
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5001/api'}/files/download/${actualPublicId}?filename=${encodeURIComponent(attachment.fileName || attachment.name)}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = attachment.fileName || attachment.name || 'attachment';
-          
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-
-          message.success(`Downloaded ${attachment.fileName || attachment.name}`);
-          return;
-        }
-      }
-
-      // Fallback to direct URL (fileUrl or url)
-      const downloadUrl = attachment.fileUrl || attachment.url;
-      if (downloadUrl) {
-        window.open(downloadUrl, '_blank');
-      } else {
-        message.error('No download URL available');
-      }
+      const fileName = attachment.fileName || attachment.name;
+      const blob = await cashRequestAPI.downloadAttachment(requestId, fileName);
+      
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      message.success(`Downloaded ${fileName}`);
     } catch (error) {
       console.error('Error downloading attachment:', error);
-      
-      // Final fallback: try direct URL if available
-      const downloadUrl = attachment.fileUrl || attachment.url;
-      if (downloadUrl) {
-        try {
-          window.open(downloadUrl, '_blank');
-          message.info('Opened attachment in new tab');
-        } catch (fallbackError) {
-          message.error('Failed to download attachment');
-        }
-      } else {
-        message.error('Failed to download attachment');
-      }
+      message.error('Failed to download attachment');
     }
   };
 
@@ -292,7 +149,7 @@ const FinanceCashApprovals = () => {
         icon: <CheckCircleOutlined />, 
         text: 'Completed' 
       },
-      'rejected': { 
+      'denied': { 
         color: 'red', 
         icon: <CloseCircleOutlined />, 
         text: 'Rejected' 
@@ -303,7 +160,7 @@ const FinanceCashApprovals = () => {
       color: 'default', 
       text: status?.replace('_', ' ') || 'Unknown' 
     };
-    
+
     return (
       <Tag color={statusInfo.color} icon={statusInfo.icon}>
         {statusInfo.text}
@@ -319,7 +176,7 @@ const FinanceCashApprovals = () => {
     };
 
     const urgencyInfo = urgencyMap[urgency] || { color: 'default', text: urgency };
-    
+
     return (
       <Tag color={urgencyInfo.color}>
         {urgencyInfo.text}
@@ -338,7 +195,7 @@ const FinanceCashApprovals = () => {
       case 'completed':
         return requests.filter(req => req.status === 'completed');
       case 'rejected':
-        return requests.filter(req => req.status === 'rejected');
+        return requests.filter(req => req.status === 'denied');
       default:
         return requests;
     }
@@ -366,7 +223,9 @@ const FinanceCashApprovals = () => {
       key: 'requestDetails',
       render: (_, record) => (
         <div>
-          <Text strong style={{ color: '#1890ff' }}>XAF {Number(record.amountRequested || 0).toLocaleString()}</Text>
+          <Text strong style={{ color: '#1890ff' }}>
+            XAF {Number(record.amountRequested || 0).toLocaleString()}
+          </Text>
           <br />
           <Text type="secondary" style={{ fontSize: '12px' }}>
             Type: {record.requestType?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'N/A'}
@@ -392,7 +251,7 @@ const FinanceCashApprovals = () => {
           {getUrgencyTag(record.urgency)}
           <br />
           <Text type="secondary" style={{ fontSize: '11px' }}>
-            <CalendarOutlined /> Expected: {record.expectedDate ? new Date(record.expectedDate).toLocaleDateString('en-GB') : 'N/A'}
+            <CalendarOutlined /> Expected: {record.requiredDate ? new Date(record.requiredDate).toLocaleDateString('en-GB') : 'N/A'}
           </Text>
           <br />
           <Text type="secondary" style={{ fontSize: '11px' }}>
@@ -406,37 +265,42 @@ const FinanceCashApprovals = () => {
     {
       title: 'Supervisor Approval',
       key: 'supervisorApproval',
-      render: (_, record) => (
-        <div>
-          {record.supervisorApproval ? (
-            <>
-              <Tag color="green" size="small">
-                <CheckCircleOutlined /> Approved
+      render: (_, record) => {
+        // Check approval chain for supervisor approval
+        const supervisorApproval = record.approvalChain?.find(step => step.level === 1 && step.status === 'approved');
+        
+        return (
+          <div>
+            {supervisorApproval ? (
+              <>
+                <Tag color="green" size="small">
+                  <CheckCircleOutlined /> Approved
+                </Tag>
+                <br />
+                <Text type="secondary" style={{ fontSize: '11px' }}>
+                  By: {supervisorApproval.approver?.name || 'Supervisor'}
+                </Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: '11px' }}>
+                  {supervisorApproval.actionDate ? new Date(supervisorApproval.actionDate).toLocaleDateString('en-GB') : 'N/A'}
+                </Text>
+                {supervisorApproval.comments && (
+                  <Tooltip title={supervisorApproval.comments}>
+                    <br />
+                    <Text style={{ fontSize: '10px', color: '#666' }}>
+                      💬 View comments
+                    </Text>
+                  </Tooltip>
+                )}
+              </>
+            ) : (
+              <Tag color="orange" size="small">
+                <ClockCircleOutlined /> Pending
               </Tag>
-              <br />
-              <Text type="secondary" style={{ fontSize: '11px' }}>
-                By: {record.supervisorApproval.approvedBy}
-              </Text>
-              <br />
-              <Text type="secondary" style={{ fontSize: '11px' }}>
-                {new Date(record.supervisorApproval.approvedAt).toLocaleDateString('en-GB')}
-              </Text>
-              {record.supervisorApproval.comments && (
-                <Tooltip title={record.supervisorApproval.comments}>
-                  <br />
-                  <Text style={{ fontSize: '10px', color: '#666' }}>
-                    💬 View comments
-                  </Text>
-                </Tooltip>
-              )}
-            </>
-          ) : (
-            <Tag color="orange" size="small">
-              <ClockCircleOutlined /> Pending
-            </Tag>
-          )}
-        </div>
-      ),
+            )}
+          </div>
+        );
+      },
       width: 140
     },
     {
@@ -451,22 +315,18 @@ const FinanceCashApprovals = () => {
       key: 'disbursement',
       render: (_, record) => (
         <div>
-          {record.disbursement ? (
+          {record.disbursementDetails ? (
             <>
               <Tag color="cyan" size="small">
                 <DollarOutlined /> Disbursed
               </Tag>
               <br />
               <Text type="secondary" style={{ fontSize: '11px' }}>
-                Amount: XAF {Number(record.disbursement.disbursedAmount || 0).toLocaleString()}
+                Amount: XAF {Number(record.disbursementDetails.amount || 0).toLocaleString()}
               </Text>
               <br />
               <Text type="secondary" style={{ fontSize: '11px' }}>
-                Method: {record.disbursement.method}
-              </Text>
-              <br />
-              <Text type="secondary" style={{ fontSize: '10px' }}>
-                Ref: {record.disbursement.reference}
+                Date: {record.disbursementDetails.date ? new Date(record.disbursementDetails.date).toLocaleDateString('en-GB') : 'N/A'}
               </Text>
             </>
           ) : record.status === 'approved' ? (
@@ -494,12 +354,12 @@ const FinanceCashApprovals = () => {
                   key={index}
                   size="small" 
                   type="link"
-                  onClick={() => handleDownloadAttachment(attachment)}
+                  onClick={() => handleDownloadAttachment(record._id, attachment)}
                   style={{ padding: 0, fontSize: '11px' }}
                 >
-                  📎 {attachment.fileName.length > 15 ? 
-                    `${attachment.fileName.substring(0, 15)}...` : 
-                    attachment.fileName
+                  📎 {(attachment.fileName || attachment.name).length > 15 ? 
+                    `${(attachment.fileName || attachment.name).substring(0, 15)}...` : 
+                    (attachment.fileName || attachment.name)
                   }
                 </Button>
               ))}
@@ -533,7 +393,7 @@ const FinanceCashApprovals = () => {
             <Button 
               type="primary"
               size="small"
-              icon={<AuditOutlined />}
+              icon={<CheckCircleOutlined />}
               onClick={() => navigate(`/finance/cash-request/${record._id}`)}
             >
               Process Approval
@@ -583,7 +443,7 @@ const FinanceCashApprovals = () => {
               </div>
             </Badge>
           </Card>
-          
+
           <Card size="small" style={{ minWidth: '150px' }}>
             <Badge count={readyForDisbursement} offset={[10, 0]} color="#52c41a">
               <div>
@@ -594,7 +454,7 @@ const FinanceCashApprovals = () => {
               </div>
             </Badge>
           </Card>
-          
+
           <Card size="small" style={{ minWidth: '150px' }}>
             <div>
               <Text type="secondary">Disbursed</Text>
@@ -603,7 +463,7 @@ const FinanceCashApprovals = () => {
               </div>
             </div>
           </Card>
-          
+
           <Card size="small" style={{ minWidth: '150px' }}>
             <div>
               <Text type="secondary">Completed</Text>
@@ -692,7 +552,7 @@ const FinanceCashApprovals = () => {
               }}
             />
           </TabPane>
-          
+
           <TabPane 
             tab={
               <Badge count={stats.approved} offset={[10, 0]} color="#52c41a">
@@ -798,7 +658,7 @@ const FinanceCashApprovals = () => {
         </Tabs>
       </Card>
 
-      <style jsx>{`
+      <style>{`
         .highlight-row-urgent {
           background-color: #fff7e6 !important;
           border-left: 4px solid #faad14 !important;
@@ -819,3 +679,8 @@ const FinanceCashApprovals = () => {
 };
 
 export default FinanceCashApprovals;
+
+
+
+
+

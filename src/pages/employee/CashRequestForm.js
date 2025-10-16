@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { Form, Input, Button, Select, DatePicker, InputNumber, Upload, message, Card, Typography, Space, Alert } from 'antd';
+import { Form, Input, Button, Select, DatePicker, InputNumber, Upload, message, Card, Typography, Space, Alert, Spin } from 'antd';
 import { UploadOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import api from '../../services/api';
+import cashRequestAPI from '../../services/cashRequestAPI';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -14,6 +14,11 @@ const CashRequestForm = ({ editMode }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [fileList, setFileList] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
 
@@ -27,6 +32,103 @@ const CashRequestForm = ({ editMode }) => {
     { value: 'other', label: 'Other' }
   ];
 
+  // Fetch projects when user focuses on the project code field
+  const handleProjectFieldFocus = async () => {
+    if (!projectsLoaded && projects.length === 0) {
+      await fetchActiveProjects();
+    }
+  };
+
+  const fetchActiveProjects = async () => {
+    try {
+      setLoadingProjects(true);
+      console.log('=== FETCHING ACTIVE PROJECTS ===');
+      console.log('API Base URL:', process.env.REACT_APP_API_UR || 'http://localhost:5001/api');
+      
+      const response = await cashRequestAPI.get('/projects/active');
+      
+      console.log('Projects API Response:', response);
+      console.log('Response data:', response.data);
+
+      if (response.data.success) {
+        const projectsList = response.data.data || [];
+        console.log(`Successfully fetched ${projectsList.length} projects`);
+        
+        setProjects(projectsList);
+        setProjectsLoaded(true);
+        
+        if (projectsList.length === 0) {
+          message.info('No active projects found. You can still submit without selecting a project.');
+        } else {
+          message.success(`Loaded ${projectsList.length} active projects`);
+        }
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch projects');
+      }
+    } catch (error) {
+      console.error('=== ERROR FETCHING PROJECTS ===');
+      console.error('Error details:', error);
+      console.error('Error response:', error.response);
+      console.error('Error message:', error.message);
+      
+      // More specific error handling
+      if (error.response) {
+        // Server responded with error status
+        console.error('Server error status:', error.response.status);
+        console.error('Server error data:', error.response.data);
+        
+        if (error.response.status === 404) {
+          message.warning('Projects endpoint not found. Please contact your administrator.');
+        } else if (error.response.status === 401) {
+          message.error('Not authorized to view projects. Please log in again.');
+        } else {
+          message.error(`Failed to load projects: ${error.response.data?.message || error.message}`);
+        }
+      } else if (error.request) {
+        // Request made but no response
+        console.error('No response received:', error.request);
+        message.error('No response from server. Please check your connection.');
+      } else {
+        // Error setting up request
+        console.error('Request setup error:', error.message);
+        message.error('Failed to load projects. You can still submit without selecting a project.');
+      }
+      
+      setProjects([]);
+      setProjectsLoaded(true); // Mark as loaded to prevent repeated attempts
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  const handleProjectChange = (projectId) => {
+    console.log('=== PROJECT SELECTED ===');
+    console.log('Project ID:', projectId);
+    
+    if (projectId) {
+      const project = projects.find(p => p._id === projectId);
+      console.log('Project details:', project);
+      
+      setSelectedProject(project);
+      
+      // Display budget information if available
+      if (project && project.budgetCodeId) {
+        const remaining = project.budgetCodeId.remaining || 0;
+        console.log(`Project budget available: XAF ${remaining.toLocaleString()}`);
+        
+        if (remaining <= 0) {
+          message.warning('Selected project has no remaining budget. Finance will need to assign a budget code.');
+        }
+      } else {
+        console.log('Project has no assigned budget code');
+        message.info('Selected project has no budget code assigned. Finance will assign one during approval.');
+      }
+    } else {
+      setSelectedProject(null);
+      console.log('Project selection cleared');
+    }
+  };
+
   const handleSubmit = async (values) => {
     try {
       const amount = parseFloat(values.amountRequested);
@@ -34,9 +136,27 @@ const CashRequestForm = ({ editMode }) => {
         message.error('Please enter a valid amount greater than 0');
         return;
       }
-  
+
+      // Check budget availability if project is selected
+      if (selectedProject && selectedProject.budgetCodeId) {
+        const availableBudget = selectedProject.budgetCodeId.remaining || 0;
+        if (amount > availableBudget) {
+          const proceed = window.confirm(
+            `Warning: Requested amount (XAF ${amount.toLocaleString()}) exceeds available budget (XAF ${availableBudget.toLocaleString()}). ` +
+            `Finance may need to allocate additional funds or select a different budget code. Continue?`
+          );
+          
+          if (!proceed) {
+            return;
+          }
+        }
+      }
+
       setLoading(true);
-      
+      console.log('=== SUBMITTING CASH REQUEST ===');
+      console.log('Form values:', values);
+      console.log('Selected project:', selectedProject);
+
       const formData = new FormData();
       formData.append('requestType', values.requestType);
       formData.append('amountRequested', amount); 
@@ -44,11 +164,15 @@ const CashRequestForm = ({ editMode }) => {
       formData.append('businessJustification', values.businessJustification);
       formData.append('urgency', values.urgency);
       formData.append('requiredDate', values.requiredDate.format('YYYY-MM-DD'));
-      
+
+      // Add project information
       if (values.projectCode) {
-        formData.append('projectCode', values.projectCode);
+        // projectCode now contains the projectId from the select
+        formData.append('projectId', values.projectCode);
+        console.log('Project ID attached to request:', values.projectCode);
       }
-      
+
+      // Add file attachments
       fileList.forEach((file, index) => {
         if (file.originFileObj) {
           formData.append('attachments', file.originFileObj, file.name);
@@ -56,24 +180,28 @@ const CashRequestForm = ({ editMode }) => {
           formData.append('attachments', file, file.name);
         }
       });
-  
-      // Debug log
-      console.log('Submitting cash request:', {
-        requestType: values.requestType,
-        amount: amount,
-        employee: user?.fullName,
-        department: user?.department,
-        attachments: fileList.length
-      });
-  
+
+      // Debug FormData
+      console.log('FormData contents:');
+      for (let pair of formData.entries()) {
+        if (pair[1] instanceof File) {
+          console.log(`${pair[0]}: File - ${pair[1].name} (${pair[1].size} bytes)`);
+        } else {
+          console.log(`${pair[0]}:`, pair[1]);
+        }
+      }
+
       // Submit to backend
-      const response = await api.post('/api/cash-requests', formData, {
+      const response = await cashRequestAPI.post('/cash-requests', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
-  
+
+      console.log('=== REQUEST SUBMITTED SUCCESSFULLY ===');
+      console.log('Response:', response.data);
+
       if (response.data.success) {
         message.success(
           <div>
@@ -88,11 +216,14 @@ const CashRequestForm = ({ editMode }) => {
         message.error(response.data.message || 'Request submission failed');
       }
     } catch (error) {
-      console.error('Submission error:', error);
-      
+      console.error('=== SUBMISSION ERROR ===');
+      console.error('Error:', error);
+
       if (error.response) {
         const { status, data } = error.response;
-        
+        console.error('Error status:', status);
+        console.error('Error data:', data);
+
         if (status === 400 && data.message?.includes('approval chain')) {
           message.error('Unable to determine approval chain for your department. Please contact HR.');
         } else if (status === 413) {
@@ -126,10 +257,10 @@ const CashRequestForm = ({ editMode }) => {
         'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'text/plain', 'text/csv', 'application/rtf'
       ];
-      
+
       const isValidType = allowedTypes.some(type => file.type.startsWith(type));
       const isLt10M = file.size / 1024 / 1024 < 10;
-      
+
       if (!isValidType) {
         message.error('You can upload images, PDFs, Word docs, Excel files, text files, and other documents!');
         return false;
@@ -138,7 +269,7 @@ const CashRequestForm = ({ editMode }) => {
         message.error('File must be smaller than 10MB!');
         return false;
       }
-      
+
       setFileList([...fileList, file]);
       return false; 
     },
@@ -156,13 +287,13 @@ const CashRequestForm = ({ editMode }) => {
   return (
     <Card>
       <Title level={3}>{editMode ? 'Edit' : 'New'} Cash Request</Title>
-      
+
       {/* Information Alert */}
       <Alert
-        message="Automatic Approval Process"
+        message="Automatic Approval Process with Budget Tracking"
         description={
           <div>
-            <Text>Your request will be automatically routed through the appropriate approval chain based on your department hierarchy.</Text>
+            <Text>Your request will be automatically routed through the approval chain. If you select a project, the budget will be tracked automatically.</Text>
             <br />
             <Text type="secondary">
               Current Employee: <Text strong>{user?.fullName}</Text> | 
@@ -283,23 +414,82 @@ const CashRequestForm = ({ editMode }) => {
           />
         </Form.Item>
 
+        {/* PROJECT SELECTION - Using existing Project Code field */}
         <Form.Item
           name="projectCode"
           label="Project Code (Optional)"
-          extra="Enter the project code if this expense is related to a specific project"
+          extra="Click here to select a project. If you select a project with a budget code, funds will be deducted automatically upon approval."
         >
-          <Input 
-            placeholder="e.g., PROJ-2024-001" 
-            style={{ textTransform: 'uppercase' }}
-            onChange={(e) => {
-              e.target.value = e.target.value.toUpperCase();
-            }}
-          />
+          <Select
+            placeholder="Click to load and select a project (optional)"
+            allowClear
+            loading={loadingProjects}
+            onFocus={handleProjectFieldFocus}
+            onChange={handleProjectChange}
+            showSearch
+            notFoundContent={loadingProjects ? <Spin size="small" /> : (projectsLoaded ? 'No projects found' : 'Click to load projects')}
+            filterOption={(input, option) =>
+              option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+            }
+          >
+            {projects.map(project => (
+              <Option key={project._id} value={project._id}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{project.name} ({project.department})</span>
+                  {project.budgetCodeId && (
+                    <span style={{ fontSize: '12px', color: '#8c8c8c' }}>
+                      Budget: XAF {project.budgetCodeId.remaining?.toLocaleString() || '0'}
+                    </span>
+                  )}
+                </div>
+              </Option>
+            ))}
+          </Select>
         </Form.Item>
+
+        {/* Budget Information Display */}
+        {selectedProject && (
+          <Alert
+            message="Project Budget Information"
+            description={
+              <div>
+                <p><strong>Project:</strong> {selectedProject.name}</p>
+                <p><strong>Department:</strong> {selectedProject.department}</p>
+                {selectedProject.budgetCodeId ? (
+                  <>
+                    <p><strong>Budget Code:</strong> {selectedProject.budgetCodeId.code} - {selectedProject.budgetCodeId.name}</p>
+                    <p><strong>Total Budget:</strong> XAF {selectedProject.budgetCodeId.budget?.toLocaleString()}</p>
+                    <p><strong>Used:</strong> XAF {selectedProject.budgetCodeId.used?.toLocaleString()}</p>
+                    <p><strong>Available:</strong> <Text strong style={{ color: selectedProject.budgetCodeId.remaining > 0 ? '#52c41a' : '#f5222d' }}>
+                      XAF {selectedProject.budgetCodeId.remaining?.toLocaleString()}
+                    </Text></p>
+                  </>
+                ) : (
+                  <p style={{ color: '#faad14' }}>
+                    <InfoCircleOutlined /> This project does not have a budget code assigned yet. Finance will assign one during approval.
+                  </p>
+                )}
+              </div>
+            }
+            type={selectedProject.budgetCodeId && selectedProject.budgetCodeId.remaining > 0 ? "success" : "warning"}
+            showIcon
+            style={{ marginBottom: '24px' }}
+          />
+        )}
+
+        {!selectedProject && projectsLoaded && (
+          <Alert
+            message="No Project Selected"
+            description="You haven't selected a project. Finance will assign this request to an appropriate budget code during the approval process."
+            type="info"
+            showIcon
+            style={{ marginBottom: '24px' }}
+          />
+        )}
 
         <Form.Item
           label="Supporting Documents"
-          extra="Upload receipts, quotes, or other supporting documents (Images or PDF, max 5 files, 5MB each)"
+          extra="Upload receipts, quotes, or other supporting documents (Images or PDF, max 5 files, 10MB each)"
         >
           <Upload {...uploadProps}>
             {fileList.length >= 5 ? null : (

@@ -230,7 +230,35 @@ const EmployeeInvoicesDashboard = () => {
     }
   };
 
-  // Handle approval decision
+  // // Handle approval decision
+  // const handleApprovalDecision = async (invoiceId, decision, comments) => {
+  //   try {
+  //     setApprovalLoading(true);
+
+  //     const response = await api.put(`/api/invoices/approvals/${invoiceId}/decision`, {
+  //       decision,
+  //       comments
+  //     });
+
+  //     if (response.data.success) {
+  //       const action = decision === 'approved' ? 'approved' : 'rejected';
+  //       message.success(`Invoice ${action} successfully!`);
+  //       setApprovalDrawerVisible(false);
+  //       setSelectedInvoice(null);
+  //       approvalForm.resetFields();
+  //       await fetchAllData();
+  //     } else {
+  //       throw new Error(response.data.message || 'Failed to process approval');
+  //     }
+  //   } catch (error) {
+  //     console.error('Approval error:', error);
+  //     message.error(error.response?.data?.message || 'Failed to process approval');
+  //   } finally {
+  //     setApprovalLoading(false);
+  //   }
+  // };
+
+
   const handleApprovalDecision = async (invoiceId, decision, comments) => {
     try {
       setApprovalLoading(true);
@@ -877,7 +905,8 @@ const EmployeeInvoicesDashboard = () => {
               </Space>
             </Card>
 
-            {/* Approval Chain */}
+
+
             {selectedInvoice.approvalChain && selectedInvoice.approvalChain.length > 0 && (
               <Card size="small" title="Approval Chain Progress" style={{ marginBottom: '16px' }}>
                 <Progress 
@@ -897,24 +926,32 @@ const EmployeeInvoicesDashboard = () => {
                     } else if (step.status === 'rejected') {
                       color = 'red';
                       icon = <CloseCircleOutlined />;
+                    } else if (step.level === selectedInvoice.currentApprovalLevel) {
+                      color = 'blue';
+                      icon = <ClockCircleOutlined />;
                     }
 
                     const isCurrentUserStep = step.approver.email === user.email;
+                    const isActiveStep = step.level === selectedInvoice.currentApprovalLevel;
 
                     return (
                       <Timeline.Item key={index} color={color} dot={icon}>
                         <div>
                           <Text strong>Level {step.level}: {step.approver.name}</Text>
                           {isCurrentUserStep && <Tag color="blue" size="small" style={{ marginLeft: 8 }}>YOU</Tag>}
+                          {isActiveStep && <Tag color="orange" size="small" style={{ marginLeft: 8 }}>CURRENT</Tag>}
                           <br />
                           <Text type="secondary">{step.approver.role} - {step.approver.email}</Text>
                           <br />
-                          {step.status === 'pending' && (
-                            <Tag color="orange">Pending Action</Tag>
+                          {step.status === 'pending' && isActiveStep && (
+                            <Tag color="orange">⏳ Awaiting Action</Tag>
+                          )}
+                          {step.status === 'pending' && !isActiveStep && (
+                            <Tag color="default">Pending</Tag>
                           )}
                           {step.status === 'approved' && (
                             <>
-                              <Tag color="green">Approved</Tag>
+                              <Tag color="green">✅ Approved</Tag>
                               <Text type="secondary">
                                 {new Date(step.actionDate).toLocaleDateString('en-GB')} at {step.actionTime}
                               </Text>
@@ -927,7 +964,7 @@ const EmployeeInvoicesDashboard = () => {
                           )}
                           {step.status === 'rejected' && (
                             <>
-                              <Tag color="red">Rejected</Tag>
+                              <Tag color="red">❌ Rejected</Tag>
                               <Text type="secondary">
                                 {new Date(step.actionDate).toLocaleDateString('en-GB')} at {step.actionTime}
                               </Text>
@@ -945,6 +982,7 @@ const EmployeeInvoicesDashboard = () => {
                 </Timeline>
               </Card>
             )}
+
 
             {/* Approval Actions - Only show if user can approve this specific invoice */}
             {canApprove && selectedInvoice.approvalChain?.some(step => 

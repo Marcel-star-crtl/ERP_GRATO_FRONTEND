@@ -85,7 +85,7 @@ const FinanceInvoiceApprovalPage = () => {
     status: null,
     dateRange: null,
     employee: null,
-    invoiceType: 'all', // 'employee', 'supplier', 'all'
+    invoiceType: 'all',
     serviceCategory: null,
     supplierType: null
   });
@@ -104,7 +104,6 @@ const FinanceInvoiceApprovalPage = () => {
         limit: pagination.pageSize
       });
       
-      // Add filters to params
       if (filters.status) params.append('status', filters.status);
       if (filters.department) params.append('department', filters.department);
       if (filters.dateRange && filters.dateRange.length === 2) {
@@ -142,7 +141,6 @@ const FinanceInvoiceApprovalPage = () => {
         limit: pagination.pageSize
       });
       
-      // Add filters to params
       if (filters.status) params.append('status', filters.status);
       if (filters.serviceCategory) params.append('serviceCategory', filters.serviceCategory);
       if (filters.dateRange && filters.dateRange.length === 2) {
@@ -157,7 +155,6 @@ const FinanceInvoiceApprovalPage = () => {
           ...invoice,
           invoiceType: 'supplier',
           key: `sup_${invoice._id}`,
-          // Map supplier fields to match employee invoice structure for table display
           employeeDetails: {
             name: invoice.supplierDetails?.companyName || 'N/A',
             position: invoice.supplierDetails?.contactName || 'Contact',
@@ -177,7 +174,6 @@ const FinanceInvoiceApprovalPage = () => {
     }
   }, [filters, pagination.current, pagination.pageSize]);
 
-
   const downloadFile = async (fileData, type = 'file') => {
     if (!fileData || !fileData.url) {
       message.error('File not available');
@@ -185,7 +181,6 @@ const FinanceInvoiceApprovalPage = () => {
     }
   
     try {
-      // Method 1: Create a backend endpoint for secure file downloads
       const response = await api.get(`/api/files/download/${fileData.publicId}`, {
         responseType: 'blob',
         params: { 
@@ -194,7 +189,6 @@ const FinanceInvoiceApprovalPage = () => {
         }
       });
   
-      // Create blob URL and trigger download
       const blob = new Blob([response.data]);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -209,7 +203,6 @@ const FinanceInvoiceApprovalPage = () => {
     } catch (error) {
       console.error('Download error:', error);
       
-      // Fallback: Try direct URL access
       try {
         const link = document.createElement('a');
         link.href = fileData.url;
@@ -244,7 +237,6 @@ const FinanceInvoiceApprovalPage = () => {
       
       const [employeeResults, supplierResults] = await Promise.all(promises);
       
-      // Combine and sort by upload date
       const combined = [...employeeResults, ...supplierResults].sort((a, b) => {
         const dateA = new Date(a.uploadedDate || a.createdAt || 0);
         const dateB = new Date(b.uploadedDate || b.createdAt || 0);
@@ -253,7 +245,6 @@ const FinanceInvoiceApprovalPage = () => {
       
       setCombinedInvoices(combined);
       
-      // Update pagination total
       setPagination(prev => ({
         ...prev,
         total: combined.length
@@ -273,7 +264,6 @@ const FinanceInvoiceApprovalPage = () => {
     try {
       const promises = [];
       
-      // Fetch employee invoice analytics
       if (showEmployeeInvoices) {
         const empParams = new URLSearchParams();
         if (filters.department) empParams.append('department', filters.department);
@@ -284,7 +274,6 @@ const FinanceInvoiceApprovalPage = () => {
         promises.push(api.get(`/api/invoices/analytics/dashboard?${empParams}`));
       }
       
-      // Fetch supplier invoice analytics
       if (showSupplierInvoices) {
         const supParams = new URLSearchParams();
         if (filters.serviceCategory) supParams.append('serviceCategory', filters.serviceCategory);
@@ -307,7 +296,6 @@ const FinanceInvoiceApprovalPage = () => {
         supplierStats: null
       };
       
-      // Process employee analytics
       if (results[0] && results[0].status === 'fulfilled' && results[0].value.data.success) {
         combinedAnalytics.employeeStats = results[0].value.data.data;
         if (results[0].value.data.data.overall) {
@@ -321,7 +309,6 @@ const FinanceInvoiceApprovalPage = () => {
         }
       }
       
-      // Process supplier analytics
       const supplierIndex = showEmployeeInvoices ? 1 : 0;
       if (results[supplierIndex] && results[supplierIndex].status === 'fulfilled' && results[supplierIndex].value.data.success) {
         combinedAnalytics.supplierStats = results[supplierIndex].value.data.data;
@@ -339,7 +326,6 @@ const FinanceInvoiceApprovalPage = () => {
         }
       }
       
-      // Sort recent activity by date
       combinedAnalytics.recentActivity.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
       combinedAnalytics.recentActivity = combinedAnalytics.recentActivity.slice(0, 15);
       
@@ -354,7 +340,7 @@ const FinanceInvoiceApprovalPage = () => {
     fetchAnalytics();
   }, [fetchAllInvoices, fetchAnalytics]);
 
-  // Handle bulk assignment for both invoice types
+  // UPDATED: Handle bulk assignment - generates approval chains for employee invoices
   const handleBulkAssignment = async (values) => {
     if (selectedInvoices.length === 0) {
       message.warning('Please select invoices to assign');
@@ -364,7 +350,6 @@ const FinanceInvoiceApprovalPage = () => {
     try {
       setLoading(true);
       
-      // Separate employee and supplier invoices
       const employeeInvoiceIds = [];
       const supplierInvoiceIds = [];
       
@@ -378,7 +363,7 @@ const FinanceInvoiceApprovalPage = () => {
       
       const results = { successful: [], failed: [] };
       
-      // Process employee invoices
+      // Process employee invoices - THIS NOW GENERATES APPROVAL CHAINS
       if (employeeInvoiceIds.length > 0) {
         try {
           const empResponse = await api.post('/api/invoices/finance/bulk-assign', {
@@ -390,6 +375,15 @@ const FinanceInvoiceApprovalPage = () => {
           if (empResponse.data.success) {
             results.successful.push(...empResponse.data.data.successful.map(item => ({...item, type: 'employee'})));
             results.failed.push(...empResponse.data.data.failed.map(item => ({...item, type: 'employee'})));
+            
+            // Show notification about approval chains created
+            if (empResponse.data.data.successful.length > 0) {
+              notification.success({
+                message: 'Employee Invoices Assigned',
+                description: `${empResponse.data.data.successful.length} employee invoice(s) assigned with approval chains created. First approvers have been notified.`,
+                duration: 5
+              });
+            }
           }
         } catch (error) {
           results.failed.push(...employeeInvoiceIds.map(id => ({
@@ -400,7 +394,7 @@ const FinanceInvoiceApprovalPage = () => {
         }
       }
       
-      // Process supplier invoices
+      // Process supplier invoices - REMAINS THE SAME
       if (supplierInvoiceIds.length > 0) {
         try {
           const supResponse = await api.post('/api/suppliers/admin/invoices/bulk-assign', {
@@ -412,6 +406,14 @@ const FinanceInvoiceApprovalPage = () => {
           if (supResponse.data.success) {
             results.successful.push(...supResponse.data.data.successful.map(item => ({...item, type: 'supplier'})));
             results.failed.push(...supResponse.data.data.failed.map(item => ({...item, type: 'supplier'})));
+            
+            if (supResponse.data.data.successful.length > 0) {
+              notification.success({
+                message: 'Supplier Invoices Assigned',
+                description: `${supResponse.data.data.successful.length} supplier invoice(s) assigned successfully.`,
+                duration: 5
+              });
+            }
           }
         } catch (error) {
           results.failed.push(...supplierInvoiceIds.map(id => ({
@@ -426,10 +428,10 @@ const FinanceInvoiceApprovalPage = () => {
       const totalFailed = results.failed.length;
       
       if (totalSuccessful > 0) {
-        message.success(`Successfully assigned ${totalSuccessful} invoices`);
+        message.success(`Successfully assigned ${totalSuccessful} invoice(s)`);
       }
       if (totalFailed > 0) {
-        message.warning(`Failed to assign ${totalFailed} invoices`);
+        message.warning(`Failed to assign ${totalFailed} invoice(s)`);
       }
       
       setSelectedInvoices([]);
@@ -444,7 +446,7 @@ const FinanceInvoiceApprovalPage = () => {
     }
   };
 
-  // Handle single assignment for both types
+  // UPDATED: Handle single assignment - generates approval chain for employee invoices
   const handleSingleAssignment = async (invoice, department, comments) => {
     try {
       setLoading(true);
@@ -460,7 +462,11 @@ const FinanceInvoiceApprovalPage = () => {
       });
       
       if (response.data.success) {
-        message.success('Invoice assigned successfully');
+        if (isSupplierInvoice) {
+          message.success('Supplier invoice assigned successfully');
+        } else {
+          message.success('Employee invoice assigned successfully. Approval chain has been created and first approver notified.');
+        }
         fetchAllInvoices();
       } else {
         throw new Error(response.data.message);
@@ -472,8 +478,7 @@ const FinanceInvoiceApprovalPage = () => {
     }
   };
 
-  // Handle mark as processed
-  // Handle mark as processed (NEW WORKFLOW: pending_finance_processing -> processed)
+  // UPDATED: Handle mark as processed - only for invoices that completed approval chain
   const handleMarkAsProcessed = async (invoice) => {
     try {
       setLoading(true);
@@ -482,13 +487,16 @@ const FinanceInvoiceApprovalPage = () => {
       let endpoint, data;
       
       if (isSupplierInvoice) {
-        // For supplier invoices, mark as processed (not payment yet)
         endpoint = `/api/suppliers/admin/invoices/${invoice._id}/process`;
         data = {
           comments: 'Invoice processed by finance and ready for payment'
         };
       } else {
-        // For employee invoices, mark as processed
+        // For employee invoices - only process if fully approved
+        if (invoice.approvalStatus !== 'approved') {
+          message.warning('Employee invoice must be fully approved before processing');
+          return;
+        }
         endpoint = `/api/invoices/finance/process/${invoice._id}`;
         data = {
           comments: 'Invoice processed by finance'
@@ -510,7 +518,7 @@ const FinanceInvoiceApprovalPage = () => {
     }
   };
 
-  // Handle payment processing (NEW: processed -> paid)
+  // Handle payment processing
   const handleMarkAsPaid = async (invoice) => {
     try {
       setLoading(true);
@@ -519,7 +527,6 @@ const FinanceInvoiceApprovalPage = () => {
       let endpoint, data;
       
       if (isSupplierInvoice) {
-        // For supplier invoices, process payment
         endpoint = `/api/suppliers/admin/invoices/${invoice._id}/payment`;
         data = {
           paymentAmount: invoice.invoiceAmount,
@@ -527,7 +534,6 @@ const FinanceInvoiceApprovalPage = () => {
           comments: 'Payment processed by finance'
         };
       } else {
-        // For employee invoices, mark as paid
         endpoint = `/api/invoices/finance/process/${invoice._id}`;
         data = {
           paymentAmount: invoice.invoiceAmount,
@@ -595,7 +601,10 @@ const FinanceInvoiceApprovalPage = () => {
       'Status': invoice.statusDisplay || invoice.approvalStatus?.replace(/_/g, ' ').toUpperCase(),
       'Assigned Department': invoice.assignedDepartment || 'Not assigned',
       'Assignment Date': invoice.assignmentDate ? new Date(invoice.assignmentDate).toLocaleDateString('en-GB') : 'N/A',
-      'Approval Progress': `${getApprovalProgress(invoice)}%`
+      'Approval Progress': `${getApprovalProgress(invoice)}%`,
+      'Current Approver': invoice.currentApprovalLevel > 0 && invoice.approvalChain 
+        ? invoice.approvalChain.find(step => step.level === invoice.currentApprovalLevel)?.approver?.name || 'N/A'
+        : 'N/A'
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -608,19 +617,24 @@ const FinanceInvoiceApprovalPage = () => {
     message.success('Invoice data exported successfully');
   };
 
+  // UPDATED: Status tags with new approval statuses
   const getStatusTag = (status) => {
     const statusMap = {
+      // Employee invoice statuses (approval chain)
       'pending_finance_assignment': { color: 'orange', text: 'Pending Assignment', icon: <ClockCircleOutlined /> },
+      'pending_department_approval': { color: 'blue', text: 'In Approval Chain', icon: <TeamOutlined /> },
+      'approved': { color: 'green', text: 'Fully Approved', icon: <CheckCircleOutlined /> },
+      'rejected': { color: 'red', text: 'Rejected', icon: <CloseCircleOutlined /> },
+      'processed': { color: 'cyan', text: 'Processed', icon: <CheckCircleOutlined /> },
+      
+      // Supplier invoice statuses (remain the same)
       'pending_department_head_approval': { color: 'blue', text: 'Department Head Review', icon: <TeamOutlined /> },
       'pending_head_of_business_approval': { color: 'geekblue', text: 'Head of Business Review', icon: <CrownOutlined /> },
       'pending_finance_processing': { color: 'purple', text: 'Pending Finance Processing', icon: <DollarOutlined /> },
-      'approved': { color: 'green', text: 'Approved', icon: <CheckCircleOutlined /> },
-      'rejected': { color: 'red', text: 'Rejected', icon: <CloseCircleOutlined /> },
-      'processed': { color: 'cyan', text: 'Processed', icon: <CheckCircleOutlined /> },
       'paid': { color: 'lime', text: 'Paid', icon: <DollarOutlined /> }
     };
 
-    const config = statusMap[status] || { color: 'default', text: status, icon: null };
+    const config = statusMap[status] || { color: 'default', text: status?.replace(/_/g, ' ') || 'Unknown', icon: null };
     return <Tag color={config.color} icon={config.icon}>{config.text}</Tag>;
   };
 
@@ -630,13 +644,16 @@ const FinanceInvoiceApprovalPage = () => {
     return Math.round((approved / invoice.approvalChain.length) * 100);
   };
 
+  // UPDATED: Tab counts with new statuses
   const getTabCount = (status) => {
     return combinedInvoices.filter(inv => {
       switch (status) {
         case 'unassigned':
           return inv.approvalStatus === 'pending_finance_assignment';
         case 'pending':
-          return inv.approvalStatus === 'pending_department_head_approval' || 
+          // Employee invoices in approval chain + Supplier invoices in review
+          return inv.approvalStatus === 'pending_department_approval' ||
+                 inv.approvalStatus === 'pending_department_head_approval' || 
                  inv.approvalStatus === 'pending_head_of_business_approval';
         case 'ready_for_processing':
           return inv.approvalStatus === 'pending_finance_processing';
@@ -661,7 +678,6 @@ const FinanceInvoiceApprovalPage = () => {
           <DashboardOutlined /> Combined Invoice Analytics Dashboard
         </Title>
         
-        {/* Summary Statistics */}
         <Row gutter={16} style={{ marginBottom: '20px' }}>
           <Col span={6}>
             <Statistic
@@ -696,7 +712,6 @@ const FinanceInvoiceApprovalPage = () => {
           </Col>
         </Row>
 
-        {/* Invoice Type Distribution */}
         <Card title="Invoice Type Distribution" style={{ marginBottom: '20px' }}>
           <Row gutter={16}>
             <Col span={12}>
@@ -718,7 +733,6 @@ const FinanceInvoiceApprovalPage = () => {
           </Row>
         </Card>
 
-        {/* Top Suppliers */}
         {analytics.topSuppliers && analytics.topSuppliers.length > 0 && (
           <Card title="Top Suppliers by Value" style={{ marginBottom: '20px' }}>
             <Table
@@ -751,10 +765,8 @@ const FinanceInvoiceApprovalPage = () => {
                 }
               ]}
             />
-          </Card>
-        )}
+          </Card>)}
 
-        {/* Department Performance */}
         {analytics.byDepartment && analytics.byDepartment.length > 0 && (
           <Card title="Department Performance (Employee Invoices)" style={{ marginBottom: '20px' }}>
             <Table
@@ -792,7 +804,6 @@ const FinanceInvoiceApprovalPage = () => {
           </Card>
         )}
 
-        {/* Service Categories */}
         {analytics.byCategory && analytics.byCategory.length > 0 && (
           <Card title="Service Categories (Supplier Invoices)" style={{ marginBottom: '20px' }}>
             <Table
@@ -828,7 +839,6 @@ const FinanceInvoiceApprovalPage = () => {
           </Card>
         )}
 
-        {/* Recent Activity */}
         {analytics.recentActivity && analytics.recentActivity.length > 0 && (
           <Card title="Recent Activity" style={{ marginBottom: '20px' }}>
             <List
@@ -964,13 +974,13 @@ const FinanceInvoiceApprovalPage = () => {
           {amount > 0 ? (
             <>
               <Text strong>{record.currency || 'XAF'} {amount.toLocaleString()}</Text>
-              {record.invoiceType === 'supplier' && (
-                <br />
-              )}
               {record.invoiceType === 'supplier' && record.dueDate && (
-                <Text type="secondary" style={{ fontSize: '11px' }}>
-                  Due: {new Date(record.dueDate).toLocaleDateString('en-GB')}
-                </Text>
+                <>
+                  <br />
+                  <Text type="secondary" style={{ fontSize: '11px' }}>
+                    Due: {new Date(record.dueDate).toLocaleDateString('en-GB')}
+                  </Text>
+                </>
               )}
             </>
           ) : (
@@ -1012,9 +1022,26 @@ const FinanceInvoiceApprovalPage = () => {
       title: 'Status',
       dataIndex: 'approvalStatus',
       key: 'status',
-      render: (status) => getStatusTag(status),
+      render: (status, record) => (
+        <div>
+          {getStatusTag(status)}
+          {/* Show current approver for employee invoices in approval chain */}
+          {record.invoiceType === 'employee' && 
+           status === 'pending_department_approval' && 
+           record.currentApprovalLevel > 0 && 
+           record.approvalChain && (
+            <>
+              <br />
+              <Text type="secondary" style={{ fontSize: '11px' }}>
+                Current: {record.approvalChain.find(step => step.level === record.currentApprovalLevel)?.approver?.name || 'N/A'}
+              </Text>
+            </>
+          )}
+        </div>
+      ),
       filters: [
         { text: 'Pending Assignment', value: 'pending_finance_assignment' },
+        { text: 'In Approval Chain', value: 'pending_department_approval' },
         { text: 'Department Head Review', value: 'pending_department_head_approval' },
         { text: 'Head of Business Review', value: 'pending_head_of_business_approval' },
         { text: 'Pending Finance Processing', value: 'pending_finance_processing' },
@@ -1023,7 +1050,7 @@ const FinanceInvoiceApprovalPage = () => {
         { text: 'Processed', value: 'processed' },
         { text: 'Paid', value: 'paid' }
       ],
-      width: 140
+      width: 180
     },
     {
       title: 'Assigned Department',
@@ -1039,7 +1066,8 @@ const FinanceInvoiceApprovalPage = () => {
         const progress = getApprovalProgress(record);
         let status = 'active';
         if (record.approvalStatus === 'rejected') status = 'exception';
-        if (record.approvalStatus === 'pending_finance_processing' || 
+        if (record.approvalStatus === 'approved' || 
+            record.approvalStatus === 'pending_finance_processing' || 
             record.approvalStatus === 'processed' || 
             record.approvalStatus === 'paid') status = 'success';
         
@@ -1052,6 +1080,14 @@ const FinanceInvoiceApprovalPage = () => {
               showInfo={false}
             />
             <Text style={{ fontSize: '11px' }}>{progress}%</Text>
+            {/* Show approval level for employee invoices */}
+            {record.invoiceType === 'employee' && 
+             record.currentApprovalLevel > 0 && 
+             record.approvalChain && (
+              <Text style={{ fontSize: '10px', display: 'block', color: '#1890ff' }}>
+                L{record.currentApprovalLevel}/{record.approvalChain.length}
+              </Text>
+            )}
           </div>
         );
       },
@@ -1104,7 +1140,7 @@ const FinanceInvoiceApprovalPage = () => {
           </Tooltip>
           
           {record.approvalStatus === 'pending_finance_assignment' && (
-            <Tooltip title="Assign Department">
+            <Tooltip title={record.invoiceType === 'employee' ? 'Assign & Create Approval Chain' : 'Assign Department'}>
               <Button 
                 size="small" 
                 type="primary"
@@ -1120,10 +1156,12 @@ const FinanceInvoiceApprovalPage = () => {
             </Tooltip>
           )}
           
-          {record.approvalStatus === 'pending_finance_processing' && (
+          {/* Only show Process button for approved invoices or supplier invoices at finance processing */}
+          {(record.approvalStatus === 'approved' || 
+            (record.invoiceType === 'supplier' && record.approvalStatus === 'pending_finance_processing')) && (
             <Popconfirm
               title="Mark as processed?"
-              description="This will mark the invoice as processed and ready for payment."
+              description={`This will mark the ${record.invoiceType} invoice as processed and ready for payment.`}
               onConfirm={() => handleMarkAsProcessed(record)}
               okText="Yes"
               cancelText="No"
@@ -1267,8 +1305,8 @@ const FinanceInvoiceApprovalPage = () => {
                 onChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
               >
                 <Option value="pending_finance_assignment">Pending Assignment</Option>
-                <Option value="pending_department_approval">Department Review</Option>
-                <Option value="approved">Approved</Option>
+                <Option value="pending_department_approval">In Approval Chain</Option>
+                <Option value="approved">Fully Approved</Option>
                 <Option value="rejected">Rejected</Option>
                 <Option value="processed">Processed</Option>
                 <Option value="paid">Paid</Option>
@@ -1300,6 +1338,16 @@ const FinanceInvoiceApprovalPage = () => {
         {selectedInvoices.length > 0 && (
           <Alert
             message={`${selectedInvoices.length} invoice(s) selected`}
+            description={
+              <div>
+                {selectedInvoices.filter(id => id.startsWith('emp_')).length > 0 && (
+                  <Text>Employee: {selectedInvoices.filter(id => id.startsWith('emp_')).length} (will create approval chains) </Text>
+                )}
+                {selectedInvoices.filter(id => id.startsWith('sup_')).length > 0 && (
+                  <Text>Supplier: {selectedInvoices.filter(id => id.startsWith('sup_')).length} </Text>
+                )}
+              </div>
+            }
             type="info"
             showIcon
             action={
@@ -1382,7 +1430,8 @@ const FinanceInvoiceApprovalPage = () => {
               case 'unassigned':
                 return invoice.approvalStatus === 'pending_finance_assignment';
               case 'pending':
-                return invoice.approvalStatus === 'pending_department_head_approval' || 
+                return invoice.approvalStatus === 'pending_department_approval' ||
+                       invoice.approvalStatus === 'pending_department_head_approval' || 
                        invoice.approvalStatus === 'pending_head_of_business_approval';
               case 'ready_for_processing':
                 return invoice.approvalStatus === 'pending_finance_processing';
@@ -1407,7 +1456,7 @@ const FinanceInvoiceApprovalPage = () => {
               setPagination(prev => ({ ...prev, current: page, pageSize }));
             }
           }}
-          scroll={{ x: 1400 }}
+          scroll={{ x: 1500 }}
           size="small"
           rowClassName={(record) => 
             record.invoiceType === 'supplier' ? 'supplier-invoice-row' : 'employee-invoice-row'
@@ -1435,23 +1484,47 @@ const FinanceInvoiceApprovalPage = () => {
       >
         <Alert
           message={selectedInvoices.length > 1 ? "Bulk Invoice Assignment" : "Invoice Assignment"}
-          description={`Assigning ${selectedInvoices.length} invoice(s) to the appropriate department for approval chain processing.`}
-          type="info"
+          description={
+            <div>
+              <Paragraph>
+                Assigning {selectedInvoices.length} invoice(s) to the appropriate department.
+              </Paragraph>
+              {selectedInvoices.filter(id => id.startsWith('emp_')).length > 0 && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="Employee Invoice Approval Chain"
+                  description={`${selectedInvoices.filter(id => id.startsWith('emp_')).length} employee invoice(s) will have approval chains created based on department hierarchy. First approvers will be notified automatically.`}
+                  style={{ marginTop: '8px' }}
+                />
+              )}
+              {selectedInvoices.filter(id => id.startsWith('sup_')).length > 0 && (
+                <Alert
+                  type="success"
+                  showIcon
+                  message="Supplier Invoice Assignment"
+                  description={`${selectedInvoices.filter(id => id.startsWith('sup_')).length} supplier invoice(s) will be assigned for department review.`}
+                  style={{ marginTop: '8px' }}
+                />
+              )}
+            </div>
+          }
+          type="warning"
           showIcon
           style={{ marginBottom: '16px' }}
         />
 
-        {/* Show breakdown of selected invoice types */}
         {selectedInvoices.length > 1 && (
           <div style={{ marginBottom: '16px' }}>
-            <Text strong>Selected Invoices:</Text>
+            <Text strong>Selected Invoices Breakdown:</Text>
             <Row gutter={16} style={{ marginTop: '8px' }}>
               <Col span={12}>
                 <Statistic
                   title="Employee Invoices"
                   value={selectedInvoices.filter(id => id.startsWith('emp_')).length}
                   prefix={<UserOutlined />}
-                  valueStyle={{ fontSize: '16px' }}
+                  valueStyle={{ fontSize: '16px', color: '#1890ff' }}
+                  suffix="(with approval chains)"
                 />
               </Col>
               <Col span={12}>
@@ -1459,7 +1532,7 @@ const FinanceInvoiceApprovalPage = () => {
                   title="Supplier Invoices"
                   value={selectedInvoices.filter(id => id.startsWith('sup_')).length}
                   prefix={<ShopOutlined />}
-                  valueStyle={{ fontSize: '16px' }}
+                  valueStyle={{ fontSize: '16px', color: '#52c41a' }}
                 />
               </Col>
             </Row>
@@ -1475,6 +1548,7 @@ const FinanceInvoiceApprovalPage = () => {
             name="department"
             label="Select Department"
             rules={[{ required: true, message: 'Please select a department' }]}
+            help="For employee invoices, this will determine the approval chain hierarchy"
           >
             <Select placeholder="Choose department for approval" size="large">
               <Option value="Technical">
@@ -1486,7 +1560,7 @@ const FinanceInvoiceApprovalPage = () => {
                   </Text>
                 </div>
               </Option>
-              <Option value="Business Development">
+              <Option value="Business Development & Supply Chain">
                 <div>
                   <Text strong>Business Development & Supply Chain</Text>
                   <br />
@@ -1501,15 +1575,6 @@ const FinanceInvoiceApprovalPage = () => {
                   <br />
                   <Text type="secondary" style={{ fontSize: '12px' }}>
                     Head: Mrs. Bruiline Tsitoh
-                  </Text>
-                </div>
-              </Option>
-              <Option value="Finance">
-                <div>
-                  <Text strong>Finance</Text>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: '12px' }}>
-                    Head: Ms. Ranibell Mambo
                   </Text>
                 </div>
               </Option>
@@ -1528,16 +1593,6 @@ const FinanceInvoiceApprovalPage = () => {
             />
           </Form.Item>
 
-          {selectedInvoices.length > 1 && (
-            <Alert
-              message={`You are about to assign ${selectedInvoices.length} invoices`}
-              description="This action will create approval chains for all selected invoices and notify the appropriate approvers."
-              type="warning"
-              showIcon
-              style={{ marginBottom: '16px' }}
-            />
-          )}
-
           <Form.Item>
             <Space>
               <Button onClick={() => {
@@ -1554,7 +1609,7 @@ const FinanceInvoiceApprovalPage = () => {
                 loading={loading}
                 icon={<SendOutlined />}
               >
-                {selectedInvoices.length > 1 ? `Assign ${selectedInvoices.length} Invoices` : 'Assign to Department'}
+                {selectedInvoices.length > 1 ? `Assign ${selectedInvoices.length} Invoices` : 'Assign & Create Approval Chain'}
               </Button>
             </Space>
           </Form.Item>
@@ -1587,7 +1642,7 @@ const FinanceInvoiceApprovalPage = () => {
         onCancel={() => {
           setDetailsModalVisible(false);
           setSelectedInvoice(null);
-        }}
+          }}
         footer={null}
         width={900}
       >
@@ -1598,6 +1653,11 @@ const FinanceInvoiceApprovalPage = () => {
                 <Tag color={selectedInvoice.invoiceType === 'supplier' ? 'green' : 'blue'} icon={selectedInvoice.invoiceType === 'supplier' ? <ShopOutlined /> : <UserOutlined />}>
                   {selectedInvoice.invoiceType === 'supplier' ? 'Supplier Invoice' : 'Employee Invoice'}
                 </Tag>
+                {selectedInvoice.invoiceType === 'employee' && selectedInvoice.approvalChain && (
+                  <Tag color="purple" style={{ marginLeft: 8 }}>
+                    {selectedInvoice.approvalChain.length} Level Approval Chain
+                  </Tag>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="PO Number" span={2}>
                 <Text code copyable>{selectedInvoice.poNumber}</Text>
@@ -1660,6 +1720,17 @@ const FinanceInvoiceApprovalPage = () => {
                   <Descriptions.Item label="Department">
                     <Tag color="geekblue">{selectedInvoice.employeeDetails?.department}</Tag>
                   </Descriptions.Item>
+                  {selectedInvoice.currentApprovalLevel > 0 && selectedInvoice.approvalChain && (
+                    <Descriptions.Item label="Current Approval Level" span={2}>
+                      <div>
+                        <Tag color="blue">Level {selectedInvoice.currentApprovalLevel} of {selectedInvoice.approvalChain.length}</Tag>
+                        <br />
+                        <Text type="secondary">
+                          Current Approver: {selectedInvoice.approvalChain.find(step => step.level === selectedInvoice.currentApprovalLevel)?.approver?.name || 'N/A'}
+                        </Text>
+                      </div>
+                    </Descriptions.Item>
+                  )}
                 </>
               )}
               
@@ -1694,7 +1765,7 @@ const FinanceInvoiceApprovalPage = () => {
                 {selectedInvoice.poFile && (
                   <Button 
                     icon={<FileOutlined />}
-                    onClick={() => window.open(selectedInvoice.poFile.url, '_blank')}
+                    onClick={() => downloadFile(selectedInvoice.poFile, 'po')}
                   >
                     Download PO File ({selectedInvoice.poFile.originalName})
                   </Button>
@@ -1702,7 +1773,7 @@ const FinanceInvoiceApprovalPage = () => {
                 {selectedInvoice.invoiceFile && (
                   <Button 
                     icon={<FileOutlined />}
-                    onClick={() => window.open(selectedInvoice.invoiceFile.url, '_blank')}
+                    onClick={() => downloadFile(selectedInvoice.invoiceFile, 'invoice')}
                   >
                     Download Invoice File ({selectedInvoice.invoiceFile.originalName})
                   </Button>
@@ -1720,7 +1791,144 @@ const FinanceInvoiceApprovalPage = () => {
               </Card>
             )}
 
-            {selectedInvoice.approvalChain && selectedInvoice.approvalChain.length > 0 && (
+            {/* UPDATED: Employee Invoice Approval Chain - Sequential Display */}
+            {selectedInvoice.invoiceType === 'employee' && selectedInvoice.approvalChain && selectedInvoice.approvalChain.length > 0 && (
+              <>
+                <Title level={4}>
+                  <HistoryOutlined /> Sequential Approval Chain Progress
+                </Title>
+                
+                <Alert
+                  message="Employee Invoice Approval Chain"
+                  description={`This invoice follows a ${selectedInvoice.approvalChain.length}-level sequential approval process. Each level must be completed before the next can proceed.`}
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: '16px' }}
+                />
+
+                <Progress 
+                  percent={getApprovalProgress(selectedInvoice)} 
+                  status={selectedInvoice.approvalStatus === 'rejected' ? 'exception' : 
+                          selectedInvoice.approvalStatus === 'approved' ? 'success' : 'active'}
+                  style={{ marginBottom: '20px' }}
+                  strokeColor={{
+                    '0%': '#108ee9',
+                    '100%': '#87d068',
+                  }}
+                />
+                
+                <Timeline>
+                  {selectedInvoice.approvalChain.map((step, index) => {
+                    let color = 'gray';
+                    let icon = <ClockCircleOutlined />;
+                    
+                    if (step.status === 'approved') {
+                      color = 'green';
+                      icon = <CheckCircleOutlined />;
+                    } else if (step.status === 'rejected') {
+                      color = 'red';
+                      icon = <CloseCircleOutlined />;
+                    } else if (step.level === selectedInvoice.currentApprovalLevel) {
+                      color = 'blue';
+                      icon = <ClockCircleOutlined spin />;
+                    }
+
+                    const isCurrentLevel = step.level === selectedInvoice.currentApprovalLevel;
+                    const isCompleted = step.status !== 'pending';
+                    const isWaiting = step.status === 'pending' && step.level > selectedInvoice.currentApprovalLevel;
+
+                    return (
+                      <Timeline.Item key={index} color={color} dot={icon}>
+                        <div>
+                          <Space>
+                            <Text strong>Level {step.level}: {step.approver.name}</Text>
+                            {isCurrentLevel && <Tag color="blue">CURRENT LEVEL</Tag>}
+                            {isWaiting && <Tag color="default">WAITING</Tag>}
+                          </Space>
+                          <br />
+                          <Text type="secondary">{step.approver.role} - {step.approver.email}</Text>
+                          <br />
+                          <Tag size="small" color="purple">{step.approver.department}</Tag>
+                          <br />
+                          
+                          {step.status === 'pending' && isCurrentLevel && (
+                            <div style={{ marginTop: 8 }}>
+                              <Tag color="orange" icon={<ClockCircleOutlined />}>⏳ Awaiting Action</Tag>
+                              <br />
+                              <Text type="secondary" style={{ fontSize: '11px' }}>
+                                Activated: {step.activatedDate ? new Date(step.activatedDate).toLocaleDateString('en-GB') : 'N/A'}
+                              </Text>
+                            </div>
+                          )}
+                          
+                          {step.status === 'pending' && isWaiting && (
+                            <div style={{ marginTop: 8 }}>
+                              <Tag color="default">⏸ Waiting for previous level</Tag>
+                            </div>
+                          )}
+                          
+                          {step.status === 'approved' && (
+                            <div style={{ marginTop: 8 }}>
+                              <Tag color="green" icon={<CheckCircleOutlined />}>✅ Approved</Tag>
+                              <br />
+                              <Text type="secondary">
+                                {new Date(step.actionDate).toLocaleDateString('en-GB')} at {step.actionTime}
+                              </Text>
+                              {step.comments && (
+                                <div style={{ marginTop: 4, padding: '8px', backgroundColor: '#f6ffed', borderRadius: '4px', borderLeft: '3px solid #52c41a' }}>
+                                  <Text italic style={{ fontSize: '12px' }}>"{step.comments}"</Text>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {step.status === 'rejected' && (
+                            <div style={{ marginTop: 8 }}>
+                              <Tag color="red" icon={<CloseCircleOutlined />}>❌ Rejected</Tag>
+                              <br />
+                              <Text type="secondary">
+                                {new Date(step.actionDate).toLocaleDateString('en-GB')} at {step.actionTime}
+                              </Text>
+                              {step.comments && (
+                                <div style={{ marginTop: 4, padding: '8px', backgroundColor: '#fff2f0', borderRadius: '4px', borderLeft: '3px solid #ff4d4f' }}>
+                                  <Text strong style={{ color: '#ff4d4f', fontSize: '12px' }}>Rejection Reason:</Text>
+                                  <br />
+                                  <Text style={{ fontSize: '12px' }}>"{step.comments}"</Text>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </Timeline.Item>
+                    );
+                  })}
+                </Timeline>
+
+                {/* Show notification status */}
+                {selectedInvoice.currentApprovalLevel > 0 && (
+                  <Card size="small" style={{ backgroundColor: '#e6f7ff', marginTop: '16px' }}>
+                    <Space>
+                      <BellOutlined style={{ color: '#1890ff' }} />
+                      <div>
+                        <Text strong>Notification Status:</Text>
+                        <br />
+                        {selectedInvoice.approvalChain.find(step => step.level === selectedInvoice.currentApprovalLevel)?.notificationSent ? (
+                          <Text type="secondary">
+                            Current approver was notified on{' '}
+                            {new Date(selectedInvoice.approvalChain.find(step => step.level === selectedInvoice.currentApprovalLevel).notificationSentAt).toLocaleDateString('en-GB')}
+                          </Text>
+                        ) : (
+                          <Text type="secondary">Notification pending</Text>
+                        )}
+                      </div>
+                    </Space>
+                  </Card>
+                )}
+              </>
+            )}
+
+            {/* Supplier Invoice Approval Chain (remains the same) */}
+            {selectedInvoice.invoiceType === 'supplier' && selectedInvoice.approvalChain && selectedInvoice.approvalChain.length > 0 && (
               <>
                 <Title level={4}>
                   <HistoryOutlined /> Approval Chain Progress
@@ -1789,10 +1997,11 @@ const FinanceInvoiceApprovalPage = () => {
               </>
             )}
 
+            {/* Action Buttons based on status */}
             {selectedInvoice.approvalStatus === 'pending_finance_assignment' && (
               <Alert
                 message="Action Required"
-                description={`This ${selectedInvoice.invoiceType} invoice is waiting to be assigned to a department for approval processing.`}
+                description={`This ${selectedInvoice.invoiceType} invoice is waiting to be assigned to a department ${selectedInvoice.invoiceType === 'employee' ? 'to create the approval chain' : 'for approval processing'}.`}
                 type="warning"
                 showIcon
                 action={
@@ -1808,6 +2017,40 @@ const FinanceInvoiceApprovalPage = () => {
                     Assign Now
                   </Button>
                 }
+                style={{ marginTop: '20px' }}
+              />
+            )}
+
+            {selectedInvoice.invoiceType === 'employee' && selectedInvoice.approvalStatus === 'pending_department_approval' && (
+              <Alert
+                message="In Approval Process"
+                description={`This employee invoice is currently at Level ${selectedInvoice.currentApprovalLevel} of ${selectedInvoice.approvalChain?.length || 0}. Waiting for ${selectedInvoice.approvalChain?.find(step => step.level === selectedInvoice.currentApprovalLevel)?.approver?.name || 'approver'} to review.`}
+                type="info"
+                showIcon
+                style={{ marginTop: '20px' }}
+              />
+            )}
+
+            {selectedInvoice.approvalStatus === 'approved' && (
+              <Alert
+                message="Fully Approved"
+                description={`This ${selectedInvoice.invoiceType} invoice has completed all approval levels and is ready for finance processing.`}
+                type="success"
+                showIcon
+                action={
+                  <Button 
+                    size="small" 
+                    type="primary"
+                    icon={<AuditOutlined />}
+                    onClick={() => {
+                      setDetailsModalVisible(false);
+                      handleMarkAsProcessed(selectedInvoice);
+                    }}
+                  >
+                    Process Now
+                  </Button>
+                }
+                style={{ marginTop: '20px' }}
               />
             )}
 
@@ -1822,7 +2065,7 @@ const FinanceInvoiceApprovalPage = () => {
               </Card>
             )}
 
-            {/* Additional supplier-specific information */}
+            {/* Supplier-specific additional information */}
             {selectedInvoice.invoiceType === 'supplier' && (
               <>
                 {selectedInvoice.lineItems && selectedInvoice.lineItems.length > 0 && (
@@ -1907,6 +2150,8 @@ const FinanceInvoiceApprovalPage = () => {
 };
 
 export default FinanceInvoiceApprovalPage;
+
+
 
 
 

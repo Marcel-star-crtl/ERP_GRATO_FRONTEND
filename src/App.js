@@ -59,7 +59,7 @@ import SupervisorPurchaseRequisitions from './pages/supervisor/SupervisorPurchas
 import SupervisorBudgetCodeApprovals from './pages/supervisor/SupervisorBudgetCodeApprovals';
 import SupervisorITApprovals from './pages/supervisor/SupervisorITApprovals';
 import SupervisorSuggestions from './pages/supervisor/SupervisorSuggestions';
-
+import SupervisorJustificationForm from './pages/supervisor/SupervisorJustificationForm';
 
 // Finance components
 import FinanceApprovalList from './pages/finance/FinanceApprovalList';
@@ -74,6 +74,7 @@ import FinanceSupplierManagement from './pages/finance/FinanceSupplierManagement
 import FinancePaymentProcessing from './pages/finance/FinancePaymentProcessing';
 import FinancePurchaseRequisitions from './pages/finance/FinancePurchaseRequisitions';
 import FinanceITApprovals from './pages/finance/FinanceITApprovals';
+import FinanceBudgetCodeApprovals from './pages/finance/FinanceBudgetCodeApprovals';
 
 // Supply Chain components
 import SupplyChainRequisitionManagement from './pages/supply-chain/SupplyChainRequisitionManagement';
@@ -86,7 +87,7 @@ import SupplyChainVendorOnboarding from './pages/supply-chain/SupplyChainSupplie
 import SupplyChainContracts from './pages/supply-chain/SupplyChainContractManagement';
 import SupplyChainProjectManagement from './pages/supply-chain/SupplyChainProjectManagement';
 
-// NEW: Buyer components
+// Buyer components
 import BuyerRequisitionPortal from './pages/buyer/BuyerRequisitionPortal';
 import BuyerDashboard from './pages/buyer/BuyerDashboard';
 import BuyerProcurementTasks from './pages/buyer/BuyerProcurementTasks';
@@ -125,10 +126,25 @@ import AdminSystemSettings from './pages/admin/AdminSystemSettings';
 import AdminSupplierManagement from './pages/admin/AdminSupplierManagement';
 import AdminUserManagement from './pages/admin/AdminUserManagement';
 import AdminPurchaseRequisitions from './pages/admin/AdminPurchaseRequisitions';
+import AdminBudgetCodeApprovals from './pages/admin/BudgetCodeApprovals';
+import AdminCashApprovals from './pages/admin/AdminCashApprovals';
+
+// sharepoint
+import SharePointPortal from './pages/SharePoint/SharePointPortal';
+import SharePointAdmin from './pages/SharePoint/SharePointAdmin';
+import SharePointAnalytics from './pages/admin/SharePointAnalytics';
+import MyUploads from './pages/SharePoint/MyUploads';
+import AdminDashboard from './pages/SharePoint/AdminDashboard';
+import Analytics from './pages/SharePoint/Analytics';
 
 // Item Components
 import SupplyChainItemManagement from './pages/supply-chain/SupplyChainItemManagement';
 import EmployeeItemRequests from './pages/employee/EmployeeItemRequests';
+
+// Action Components
+import ActionItemsManagement from './pages/supply-chain/ActionItemsManagement';
+import EmployeeActionItems from './pages/employee/EmployeeItemRequests';
+
 
 // Common components
 import Dashboard from './components/Dashboard';
@@ -146,7 +162,7 @@ const EnhancedProtectedRoute = ({ children, allowedRoles, fallbackRole = null })
     hr: 3,
     it: 3,
     supply_chain: 3,
-    buyer: 3, // NEW: Added buyer role at management level
+    buyer: 3,
     admin: 4
   };
 
@@ -185,8 +201,8 @@ const AppRoutes = () => {
         <Route path="/supplier/register" element={<SupplierRegistration />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          {/* External Quote Routes - Public access with token validation */}
-          <Route 
+        {/* External Quote Routes */}
+        <Route 
           path="/external-quote" 
           element={
             <div style={{ 
@@ -226,17 +242,11 @@ const AppRoutes = () => {
             </div>
           } 
         />
-
-        {/* External Quote Form with Token */}
         <Route path="/external-quote/:token" element={<ExternalQuoteForm />} />
-
-        {/* External Quote Status Check */}
         <Route path="/external-quote/:token/status" element={<ExternalQuoteForm />} />
-
-        {/* External Quote Update */}
         <Route path="/external-quote/:token/edit" element={<ExternalQuoteForm />} />
 
-        {/* Main Dashboard - Available to all authenticated users */}
+        {/* Main Dashboard */}
         <Route 
           path="/dashboard" 
           element={
@@ -248,7 +258,7 @@ const AppRoutes = () => {
           <Route index element={<Dashboard />} />
         </Route>
 
-        {/* Supplier Routes - Separate ecosystem */}
+        {/* Supplier Routes */}
         <Route 
           path="/supplier" 
           element={
@@ -267,7 +277,7 @@ const AppRoutes = () => {
           <Route path="settings" element={<SupplierProfile />} />
         </Route>
 
-        {/* Employee Routes - Base level access (ALL roles get these) */}
+        {/* Employee Routes */}
         <Route 
           path="/employee" 
           element={
@@ -276,100 +286,98 @@ const AppRoutes = () => {
             </ProtectedRoute>
           }
         >
-          {/* Cash Request Routes */}
           <Route path="cash-requests" element={<EmployeeCashRequests />} />
           <Route path="cash-request/new" element={<CashRequestForm />} />
           <Route path="cash-request/:requestId" element={<RequestDetails />} /> 
           <Route path="cash-request/:requestId/justify" element={<JustificationForm />} />
-
-          {/* Purchase Requisition Routes */}
           <Route path="purchase-requisitions" element={<EmployeePurchaseRequisitions />} />
           <Route path="purchase-requisitions/new" element={<PurchaseRequisitionForm />} />
           <Route path="purchase-requisitions/:requisitionId" element={<RequestDetails />} />
-
-          {/* Invoice Routes */}
           <Route path="invoices" element={<EmployeeInvoices />} />
-
-          {/* Incident Report Routes */}
           <Route path="incident-reports" element={<EmployeeIncidentReports />} />
           <Route path="incident-reports/new" element={<IncidentReportForm />} />
           <Route path="incident-reports/:id" element={<EmployeeIncidentReportDetails />} />
           <Route path="incident-reports/:id/edit" element={<IncidentReportForm editMode={true} />} />
-
-          {/* IT Support Routes */}
           <Route path="it-support" element={<EmployeeITSupport />} />
           <Route path="it-support/materials/new" element={<ITMaterialRequestForm />} />
           <Route path="it-support/issues/new" element={<ITIssueReportForm />} />
           <Route path="it-support/:requestId" element={<RequestDetails />} />
-
-          {/* Suggestion Routes */}
           <Route path="suggestions" element={<EmployeeSuggestions />} />
           <Route path="suggestions/new" element={<SuggestionForm />} />
           <Route path="suggestions/:suggestionId" element={<SuggestionDetails />} />
-
-          {/* Leave Management Routes */}
           <Route path="leave" element={<EmployeeSickLeave />} />
           <Route path="leave/new" element={<SickLeaveForm />} />
           <Route path="leave/:requestId" element={<EmployeeLeaveDetail />} />
-          
-          {/* Legacy Sick Leave Routes - Redirect to new routes */}
           <Route path="sick-leave" element={<Navigate to="/employee/leave" replace />} />
           <Route path="sick-leave/new" element={<Navigate to="/employee/leave/new" replace />} />
-
-          {/* Item Routes */}
           <Route path="item-requests" element={<EmployeeItemRequests />} />
           <Route path="item-requests/new" element={<EmployeeItemRequests />} />
+
+          <Route path="action-items" element={<EmployeeActionItems />} />
+          <Route path="action-items/new" element={<EmployeeActionItems />} />
         </Route>
 
-        {/* Supervisor Routes - Enhanced access for team management */}
-        <Route 
+        {/* Supervisor Routes */}
+        {/* <Route 
           path="/supervisor" 
           element={
             <EnhancedProtectedRoute allowedRoles={['supervisor', 'hr', 'admin']}>
               <PettyCashLayout />
             </EnhancedProtectedRoute>
           }
+        > */}
+        <Route 
+          path="/supervisor" 
+          element={
+            <EnhancedProtectedRoute allowedRoles={['supervisor', 'finance', 'hr', 'it', 'supply_chain', 'admin']}>
+              <PettyCashLayout />
+            </EnhancedProtectedRoute>
+          }
         >
-          {/* Team Dashboard */}
           <Route path="dashboard" element={<SupervisorTeamDashboard />} />
           
-          {/* Cash Request Approvals */}
+          {/* Cash Approvals Routes */}
           <Route path="cash-approvals" element={<SupervisorCashApprovals />} />
           <Route path="cash-request/:requestId" element={<RequestDetails />} />
-
-          {/* NEW: Project Management Routes for Supervisors */}
+          <Route path="cash-approvals/justification/:requestId/review" element={<SupervisorJustificationForm />} />
+          
+          {/* Project Management Routes */}
           <Route path="projects" element={<SupplyChainProjectManagement />} />
           <Route path="projects/team" element={<SupplyChainProjectManagement />} />
           <Route path="projects/new" element={<SupplyChainProjectManagement />} />
           <Route path="projects/reports" element={<SupplyChainProjectManagement />} />
           <Route path="projects/:projectId" element={<RequestDetails />} />
           
-          {/* Purchase Requisition Approvals */}
+          {/* Purchase Requisitions Routes */}
           <Route path="purchase-requisitions" element={<SupervisorPurchaseRequisitions />} />
           <Route path="purchase-requisitions/:requisitionId" element={<RequestDetails />} />
           
-          {/* Invoice Approvals */}
+          {/* Invoice Approvals Routes */}
           <Route path="invoice-approvals" element={<SupervisorInvoiceApprovals />} />
           
-          {/* Incident Reports Management */}
+          {/* Incident Reports Routes */}
           <Route path="incident-reports" element={<SupervisorIncidentReports />} />
           <Route path="incident-reports/pending" element={<SupervisorIncidentReports />} />
           <Route path="safety-review" element={<SupervisorIncidentReports />} />
           
-          {/* Sick Leave Management */}
+          {/* Sick Leave Routes */}
           <Route path="sick-leave" element={<SupervisorSickLeaveApprovals />} />
           <Route path="sick-leave/pending" element={<SupervisorSickLeaveApprovals />} />
           <Route path="team-calendar" element={<SupervisorSickLeaveApprovals />} />
           
-          {/* Team Management */}
+          {/* IT Support Routes */}
           <Route path="it-support" element={<SupervisorITApprovals />} />
           <Route path="it-support/:requestId" element={<RequestDetails />} />
+          
+          {/* Suggestions Routes */}
           <Route path="team-suggestions" element={<SupervisorSuggestions />} />
+          
+          {/* Budget Codes Routes */}
           <Route path="budget-codes" element={<SupervisorBudgetCodeApprovals />} />
           <Route path="budget-codes/:budgetId" element={<RequestDetails />} />
         </Route>
 
-        {/* NEW: Buyer Routes - Specialized procurement management */}
+        {/* Buyer Routes */}
         <Route 
           path="/buyer" 
           element={
@@ -378,53 +386,36 @@ const AppRoutes = () => {
             </EnhancedProtectedRoute>
           }
         >
-          {/* Buyer Dashboard */}
           <Route path="dashboard" element={<BuyerDashboard />} />
-          
-          {/* Purchase Requisition Management - MAIN PORTAL */}
           <Route path="requisitions" element={<BuyerRequisitionPortal />} />
           <Route path="requisitions/:requisitionId" element={<RequestDetails />} />
-          
-          {/* Procurement Task Management */}
           <Route path="procurement" element={<BuyerProcurementTasks />} />
           <Route path="procurement/:taskId" element={<RequestDetails />} />
-          
-          {/* Quote Management */}
           <Route path="quotes" element={<BuyerQuoteManagement />} />
           <Route path="quotes/:quoteId" element={<RequestDetails />} />
           <Route path="quotes/:quoteId/evaluate" element={<BuyerQuoteManagement />} />
           <Route path="quotes/:quoteId/compare" element={<BuyerQuoteManagement />} />
-          
-          {/* Supplier Management */}
           <Route path="suppliers" element={<BuyerSupplierManagement />} />
           <Route path="suppliers/:supplierId" element={<RequestDetails />} />
           <Route path="suppliers/:supplierId/performance" element={<BuyerSupplierManagement />} />
           <Route path="suppliers/:supplierId/communication" element={<BuyerSupplierManagement />} />
-          
-          {/* Purchase Order Management */}
           <Route path="purchase-orders" element={<BuyerPurchaseOrders />} />
           <Route path="purchase-orders/new" element={<BuyerPurchaseOrders />} />
           <Route path="purchase-orders/:poId" element={<RequestDetails />} />
           <Route path="purchase-orders/:poId/edit" element={<BuyerPurchaseOrders />} />
-          
-          {/* Delivery Tracking */}
           <Route path="deliveries" element={<BuyerDeliveryTracking />} />
           <Route path="deliveries/:deliveryId" element={<RequestDetails />} />
           <Route path="deliveries/:deliveryId/track" element={<BuyerDeliveryTracking />} />
-          
-          {/* Performance Analytics */}
           <Route path="analytics" element={<BuyerPerformanceAnalytics />} />
           <Route path="analytics/procurement" element={<BuyerPerformanceAnalytics />} />
           <Route path="analytics/suppliers" element={<BuyerPerformanceAnalytics />} />
           <Route path="analytics/performance" element={<BuyerPerformanceAnalytics />} />
-          
-          {/* Reports */}
           <Route path="reports" element={<BuyerPerformanceAnalytics />} />
           <Route path="reports/procurement" element={<BuyerPerformanceAnalytics />} />
           <Route path="reports/savings" element={<BuyerPerformanceAnalytics />} />
         </Route>
 
-        {/* Supply Chain Routes - Procurement and requisition management */}
+        {/* Supply Chain Routes */}
         <Route 
           path="/supply-chain" 
           element={
@@ -433,14 +424,9 @@ const AppRoutes = () => {
             </EnhancedProtectedRoute>
           }
         >
-          {/* Supply Chain Dashboard */}
           <Route path="dashboard" element={<SupplyChainDashboard />} />
-          
-          {/* Purchase Requisition Management */}
           <Route path="requisitions" element={<SupplyChainRequisitionManagement />} />
           <Route path="requisitions/:requisitionId" element={<RequestDetails />} />
-
-          {/* NEW: Project Management Routes */}
           <Route path="project-management" element={<SupplyChainProjectManagement />} />
           <Route path="projects" element={<SupplyChainProjectManagement />} />
           <Route path="projects/new" element={<SupplyChainProjectManagement />} />
@@ -448,20 +434,19 @@ const AppRoutes = () => {
           <Route path="projects/analytics" element={<SupplyChainProjectManagement />} />
           <Route path="projects/:projectId" element={<RequestDetails />} />
           <Route path="projects/:projectId/edit" element={<SupplyChainProjectManagement />} />
-          
-          {/* Procurement Management */}
           <Route path="procurement-planning" element={<SupplyChainProcurementPlanning />} />
           <Route path="suppliers" element={<SupplyChainVendorManagement />} />
           <Route path="analytics" element={<SupplyChainAnalytics />} />
           <Route path="buyer-assignment" element={<SupplyChainBuyerAssignment />} />
           <Route path="vendor-onboarding" element={<SupplyChainVendorOnboarding />} />
           <Route path="contracts" element={<SupplyChainContracts />} />
-
-          {/* Item management */}
           <Route path="item-management" element={<SupplyChainItemManagement />} />
+
+          <Route path="action-items" element={<ActionItemsManagement />} />
+          <Route path="action-items/:projectId" element={<ActionItemsManagement />} />
         </Route>
         
-        {/* Finance Routes - Enhanced financial management + all employee access */}
+        {/* Finance Routes */}
         <Route 
           path="/finance" 
           element={
@@ -470,35 +455,29 @@ const AppRoutes = () => {
             </EnhancedProtectedRoute>
           }
         >
-          {/* Finance Dashboard */}
           <Route path="dashboard" element={<FinanceDashboard />} />
-          
-          {/* Enhanced Cash Management */}
           <Route path="cash-approvals" element={<FinanceCashApprovals />} />
           <Route path="cash-request/:requestId" element={<FinanceCashApprovalForm />} />
           <Route path="cash-management" element={<FinanceCashApprovals />} />
           <Route path="cash-reports" element={<FinanceReports />} />
-
-          {/* Purchase Requisition Budget Verification */}
           <Route path="purchase-requisitions" element={<FinancePurchaseRequisitions />} />
           <Route path="purchase-requisitions/:requisitionId" element={<RequestDetails />} />
-          
-          {/* IT Support Budget Approvals */}
           <Route path="it-approvals" element={<FinanceITApprovals />} />
           <Route path="it-approvals/:requestId" element={<RequestDetails />} />
-
-          {/* Enhanced Invoice Management */}
           <Route path="invoice-management" element={<FinanceInvoiceApproval />} />
           <Route path="invoice-analytics" element={<InvoiceAnalytics />} />
           <Route path="suppliers" element={<FinanceSupplierManagement />} />
           <Route path="payments" element={<FinancePaymentProcessing />} />
-          
-          {/* Financial Reports */}
           <Route path="reports" element={<FinanceReports />} />
           <Route path="analytics" element={<InvoiceAnalytics />} />
+          {/* Budget Code Routes */}
+          <Route path="budget-codes" element={<FinanceBudgetCodeApprovals />} />
+          <Route path="budget-codes/pending" element={<FinanceBudgetCodeApprovals />} />
+          <Route path="budget-codes/:budgetId" element={<RequestDetails />} />
+          <Route path="budget-codes/:budgetId/approve" element={<FinanceBudgetCodeApprovals />} />
         </Route>
 
-        {/* HR Routes - Enhanced HR management + all employee access */}
+        {/* HR Routes */}
         <Route 
           path="/hr" 
           element={
@@ -507,37 +486,27 @@ const AppRoutes = () => {
             </EnhancedProtectedRoute>
           }
         >
-          {/* HR Dashboard */}
           <Route path="dashboard" element={<HRDashboard />} />
-          
-          {/* Enhanced Incident Reports Management */}
           <Route path="incident-reports" element={<HRIncidentReports />} />
           <Route path="incident-reports/analytics" element={<HRIncidentReports />} />
           <Route path="incident-reports/:reportId" element={<RequestDetails />} />
           <Route path="incident-investigation" element={<HRIncidentReports />} />
           <Route path="safety-policies" element={<HRPolicyManagement />} />
-
-          {/* Enhanced Employee Suggestions Management */}
           <Route path="suggestions" element={<HRSuggestions />} />
           <Route path="suggestions/analytics" element={<HRSuggestions />} />
           <Route path="suggestions/:suggestionId" element={<RequestDetails />} />
           <Route path="suggestion-implementation" element={<HRSuggestions />} />
           <Route path="employee-engagement" element={<HREmployeeEngagement />} />
-
-          {/* Enhanced Sick Leave Management */}
           <Route path="sick-leave" element={<HRSickLeaveManagement />} />
           <Route path="sick-leave/analytics" element={<HRSickLeaveManagement />} />
           <Route path="sick-leave/:leaveId" element={<RequestDetails />} />
           <Route path="leave-policies" element={<HRPolicyManagement />} />
           <Route path="medical-certificates" element={<HRSickLeaveManagement />} />
-
-          {/* Employee Welfare & Engagement */}
           <Route path="employee-welfare" element={<HREmployeeWelfare />} />
-          <Route path="employee-engagement" element={<HREmployeeEngagement />} />
           <Route path="policy-management" element={<HRPolicyManagement />} />
         </Route>
 
-        {/* IT Department Routes - Enhanced IT management + all employee access */}
+        {/* IT Routes */}
         <Route 
           path="/it" 
           element={
@@ -546,23 +515,16 @@ const AppRoutes = () => {
             </EnhancedProtectedRoute>
           }
         >
-          {/* IT Dashboard */}
           <Route path="dashboard" element={<ITDashboard />} />
-          
-          {/* Enhanced IT Support Management */}
           <Route path="support-requests" element={<ITSupportRequests />} />
           <Route path="support-requests/:requestId" element={<RequestDetails />} />
-          
-          {/* Asset & Inventory Management */}
           <Route path="asset-management" element={<ITAssetManagement />} />
           <Route path="inventory" element={<ITInventoryManagement />} />
-          
-          {/* System Management */}
           <Route path="system-monitoring" element={<ITSystemMonitoring />} />
           <Route path="user-accounts" element={<ITUserAccountManagement />} />
         </Route>
 
-        {/* Admin Routes - Full system access + all other role capabilities */}
+        {/* Admin Routes */}
         <Route 
           path="/admin" 
           element={
@@ -571,69 +533,58 @@ const AppRoutes = () => {
             </EnhancedProtectedRoute>
           }
         >
-          {/* System Overview */}
           <Route path="dashboard" element={<AdminAnalyticsDashboard />} />
-          
-          {/* Cash Request System Management */}
           <Route path="cash-management" element={<SupervisorCashApprovals />} />
-          {/* <Route path="cash-management" element={<AdminRequestsList />} /> */}
           <Route path="cash-analytics" element={<AdminAnalyticsDashboard />} />
           <Route path="cash-users" element={<AdminUserManagement />} />
-
-          {/* Purchase Requisition System Management */}
           <Route path="purchase-requisitions" element={<AdminPurchaseRequisitions />} />
           <Route path="purchase-analytics" element={<AdminAnalyticsDashboard />} />
           <Route path="procurement-budget" element={<AdminAnalyticsDashboard />} />
           <Route path="buyer-management" element={<AdminUserManagement />} />
           <Route path="workflow-config" element={<AdminSystemSettings />} />
-
-          {/* NEW: Project Management System Routes */}
           <Route path="project-management" element={<SupplyChainProjectManagement />} />
           <Route path="projects" element={<SupplyChainProjectManagement />} />
           <Route path="projects/analytics" element={<AdminAnalyticsDashboard />} />
           <Route path="projects/resources" element={<SupplyChainProjectManagement />} />
           <Route path="projects/:projectId" element={<RequestDetails />} />
-
-          {/* Invoice System Management */}
           <Route path="invoice-management" element={<AdminRequestsList />} />
           <Route path="invoice-settings" element={<AdminSystemSettings />} />
-
-          {/* Supplier Management */}
           <Route path="suppliers" element={<AdminSupplierManagement />} />
           <Route path="suppliers/dashboard" element={<AdminSupplierManagement />} />
           <Route path="suppliers/:supplierId" element={<RequestDetails />} />
-
-          {/* Incident Reports System Management */}
           <Route path="incident-reports" element={<AdminIncidentReports />} />
           <Route path="incident-reports/dashboard" element={<AdminIncidentReports />} />
           <Route path="incident-reports/:reportId" element={<RequestDetails />} />
           <Route path="incident-compliance" element={<AdminIncidentReports />} />
-
-          {/* IT Support System Management */}
           <Route path="it-support" element={<AdminITSupport />} />
           <Route path="it-support/dashboard" element={<AdminITSupport />} />
           <Route path="it-support/:requestId" element={<RequestDetails />} />
           <Route path="it-budget" element={<AdminAnalyticsDashboard />} />
-
-          {/* Suggestions System Management */}
           <Route path="suggestions" element={<AdminSuggestions />} />
           <Route path="suggestions/reports" element={<AdminSuggestions />} />
           <Route path="suggestions/:suggestionId" element={<RequestDetails />} />
           <Route path="strategic-suggestions" element={<AdminSuggestions />} />
-
-          {/* Sick Leave System Management */}
           <Route path="sick-leave" element={<AdminSickLeave />} />
           <Route path="sick-leave/reports" element={<AdminSickLeave />} />
           <Route path="sick-leave/:leaveId" element={<RequestDetails />} />
           <Route path="leave-compliance" element={<AdminSickLeave />} />
-
-          {/* System Analytics & Settings */}
           <Route path="analytics" element={<AdminAnalyticsDashboard />} />
           <Route path="system-settings" element={<AdminSystemSettings />} />
           <Route path="user-management" element={<AdminUserManagement />} />
+          <Route path='cash-approvals' element={<AdminCashApprovals/>} />
+          <Route path="invoice-approvals" element={<SupervisorInvoiceApprovals />} />
+          {/* Budget Code Management Routes */}
+          <Route path="budget-codes" element={<AdminBudgetCodeApprovals />} />
+          <Route path="budget-codes/pending" element={<AdminBudgetCodeApprovals />} />
+          <Route path="budget-codes/analytics" element={<AdminAnalyticsDashboard />} />
+          <Route path="budget-codes/:budgetId" element={<RequestDetails />} />
+          <Route path="budget-code-config" element={<AdminSystemSettings />} />
+
+          <Route path="action-items" element={<ActionItemsManagement />} />
+          <Route path="action-items/:projectId" element={<ActionItemsManagement />} />
         </Route>
 
-        {/* Legacy PettyCash Routes - Maintained for backward compatibility */}
+        {/* Legacy PettyCash Routes */}
         <Route 
           path="/pettycash" 
           element={
@@ -657,7 +608,34 @@ const AppRoutes = () => {
           <Route path="request-form" element={<PCRequestForm />} />
         </Route>
 
-        {/* Universal Access Routes - Available to all authenticated users */}
+        <Route 
+          path="/action-items" 
+          element={
+            <ProtectedRoute>
+              <PettyCashLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<ActionItemsManagement />} />
+        </Route>
+
+        <Route 
+          path="/sharepoint" 
+          element={
+            <ProtectedRoute>
+              <PettyCashLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="portal" element={<SharePointPortal />} />
+          <Route path="my-files" element={<MyUploads />} />
+          <Route path="admin" element={<AdminDashboard />} />
+          <Route path="analytics" element={<Analytics />} />
+          <Route path="manage" element={<AdminDashboard />} />
+          <Route path="access" element={<AdminDashboard />} />
+        </Route>
+
+        {/* Universal Access Routes */}
         <Route 
           path="/account-settings" 
           element={
@@ -744,3 +722,4 @@ const App = () => {
 };
 
 export default App;
+

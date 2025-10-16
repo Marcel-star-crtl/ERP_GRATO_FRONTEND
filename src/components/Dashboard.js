@@ -46,9 +46,19 @@ import {
   ProjectOutlined,
   PlayCircleOutlined,
   DownOutlined,
-  UpOutlined
+  UpOutlined,
+  ShareAltOutlined,
+  FolderOutlined,
+  UploadOutlined,
+  FileOutlined,
+  FolderPlusOutlined,
+  HistoryOutlined,
+  LockOutlined
+
 } from '@ant-design/icons';
 import api from '../services/api';
+// import SharePointPortal from '../pages/SharePoint/SharePointPortal';
+// import sharepointAPI from '../../src/services/sharepointAPI';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -64,14 +74,15 @@ const Dashboard = () => {
     suggestions: { pending: 0, total: 0 },
     sickLeave: { pending: 0, total: 0 },
     purchaseRequisitions: { pending: 0, total: 0 },
-    // Buyer-specific stats
     buyerRequisitions: { pending: 0, inProgress: 0, quotesReceived: 0, completed: 0 },
     quotes: { pending: 0, evaluated: 0, selected: 0 },
     suppliers: { active: 0, pending: 0 },
     purchaseOrders: { active: 0, delivered: 0 },
-    // Corrected: Initial state for new project management module
-    projects: { pending: 0, inProgress: 0, completed: 0, total: 0 }
+    projects: { pending: 0, inProgress: 0, completed: 0, total: 0 },
+    actionItems: { pending: 0, total: 0 },
+    sharepoint: { pending: 0, total: 12 }
   });
+  
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,10 +93,8 @@ const Dashboard = () => {
     try {
       setLoading(true);
       
-      // Role-specific API calls
       const apiCalls = [];
       
-      // Cash requests - Different endpoint based on role
       if (user?.role === 'supervisor') {
         apiCalls.push(api.get('/api/cash-requests/supervisor/stats').catch(() => ({ data: { pending: 0, total: 0 } })));
         apiCalls.push(api.get('/api/it-support/supervisor').catch(() => ({ data: [] })));
@@ -100,7 +109,6 @@ const Dashboard = () => {
 
       const [cashRequestsResponse, itSupportResponse, sickLeaveResponse, suggestionsResponse] = await Promise.allSettled(apiCalls);
 
-      // Process results
       const cashStats = cashRequestsResponse.status === 'fulfilled' 
         ? cashRequestsResponse.value.data 
         : { pending: 0, total: 0 };
@@ -108,14 +116,12 @@ const Dashboard = () => {
       let itStats = { pending: 0, total: 0 };
       if (itSupportResponse.status === 'fulfilled') {
         if (user?.role === 'supervisor') {
-          // For supervisors, data is an array of requests
           const requests = itSupportResponse.value.data || [];
           itStats = {
             pending: requests.filter(r => ['pending_supervisor', 'pending_it_review'].includes(r.status)).length,
             total: requests.length
           };
         } else {
-          // For other roles, use summary data
           itStats = itSupportResponse.value.data?.summary || { pending: 0, total: 0 };
         }
       }
@@ -130,23 +136,22 @@ const Dashboard = () => {
 
       setStats({
         cashRequests: cashStats,
-        invoices: { pending: 5, total: 23 }, // Mock for now
-        incidentReports: { pending: 1, total: 8 }, // Mock for now
+        invoices: { pending: 5, total: 23 }, 
+        incidentReports: { pending: 1, total: 8 }, 
         itSupport: { pending: itStats.pending, total: itStats.total },
         suggestions: { pending: suggestionsStats.pending, total: suggestionsStats.total },
         sickLeave: { pending: leaveStats.pending, total: leaveStats.total },
-        purchaseRequisitions: { pending: 2, total: 8 }, // Mock for now
-        // Buyer-specific stats - Mock for now
+        purchaseRequisitions: { pending: 2, total: 8 }, 
         buyerRequisitions: { pending: 5, inProgress: 8, quotesReceived: 3, completed: 12 },
         quotes: { pending: 15, evaluated: 8, selected: 3 },
         suppliers: { active: 25, pending: 3 },
         purchaseOrders: { active: 6, delivered: 18 },
-        // Project management stats - Mock for now
-        projects: { pending: 4, inProgress: 6, completed: 15, total: 25 }
+        projects: { pending: 4, inProgress: 6, completed: 15, total: 25 },
+        actionItems: { pending: 3, total: 12 },
+        sharepoint: { pending: 0, total: 12 }
       });
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
-      // Fallback to safe defaults
       setStats({
         cashRequests: { pending: 0, total: 0 },
         invoices: { pending: 0, total: 0 },
@@ -159,7 +164,9 @@ const Dashboard = () => {
         quotes: { pending: 0, evaluated: 0, selected: 0 },
         suppliers: { active: 0, pending: 0 },
         purchaseOrders: { active: 0, delivered: 0 },
-        projects: { pending: 0, inProgress: 0, completed: 0, total: 0 }
+        projects: { pending: 0, inProgress: 0, completed: 0, total: 0 },
+        actionItems: { pending: 0, total: 0 },
+        sharepoint: { pending: 0, total: 0 }
       });
     } finally {
       setLoading(false);
@@ -173,56 +180,63 @@ const Dashboard = () => {
     }));
   };
 
-  // Define role hierarchy and capabilities
   const getRoleCapabilities = (role) => {
     const capabilities = {
       employee: {
         level: 1,
         canView: ['all'],
         canManage: [],
-        canApprove: []
+        canApprove: [],
+        hasTeamAccess: false
       },
       supervisor: {
         level: 2,
         canView: ['all'],
         canManage: ['team-incidents', 'team-sick-leave'],
-        canApprove: ['cash-requests', 'sick-leave', 'purchase-requisitions']
+        canApprove: ['cash-requests', 'sick-leave', 'purchase-requisitions'],
+        hasTeamAccess: true
       },
       finance: {
         level: 3,
         canView: ['all'],
         canManage: ['cash-requests', 'invoices', 'financial-reports'],
-        canApprove: ['cash-requests', 'invoices']
+        canApprove: ['cash-requests', 'invoices'],
+        hasTeamAccess: true
       },
       hr: {
         level: 3,
         canView: ['all'],
         canManage: ['incident-reports', 'suggestions', 'sick-leave', 'employee-welfare'],
-        canApprove: ['sick-leave', 'incident-reports']
+        canApprove: ['sick-leave', 'incident-reports'],
+        hasTeamAccess: true
       },
       it: {
         level: 3,
         canView: ['all'],
         canManage: ['it-support', 'it-inventory', 'system-maintenance'],
-        canApprove: ['it-requests']
+        canApprove: ['it-requests'],
+        hasTeamAccess: true
       },
       supply_chain: {
         level: 3,
         canView: ['all'],
         canManage: ['purchase-requisitions', 'procurement', 'vendor-management'],
-        canApprove: ['purchase-requisitions']
+        canApprove: ['purchase-requisitions'],
+        hasTeamAccess: true
       },
       buyer: {
         level: 3,
         canView: ['all'],
         canManage: ['assigned-requisitions', 'supplier-sourcing', 'quote-evaluation', 'purchase-orders'],
-        canApprove: ['quotes', 'supplier-selection', 'purchase-orders']
+        canApprove: ['quotes', 'supplier-selection', 'purchase-orders'],
+        hasTeamAccess: true
       },
       admin: {
         level: 4,
         canView: ['all'],
         canManage: ['all'],
-        canApprove: ['all']
+        canApprove: ['all'],
+        hasTeamAccess: true
       }
     };
 
@@ -241,7 +255,7 @@ const Dashboard = () => {
         color: '#f6ffed',
         borderColor: '#52c41a',
         stats: stats.cashRequests,
-        managementRoles: ['finance', 'admin'],
+        managementRoles: ['finance', 'hr', 'admin'],
         actions: {
           base: [
             { label: 'My Requests', path: '/employee/cash-requests', icon: <UserOutlined /> },
@@ -252,17 +266,21 @@ const Dashboard = () => {
           ],
           finance: [
             { label: 'Finance Dashboard', path: '/finance/cash-approvals', icon: <CrownOutlined />, primary: true, badge: true },
+            { label: 'Team Cash Requests', path: '/supervisor/cash-approvals', icon: <TeamOutlined />, badge: true },
             { label: 'All Requests', path: '/finance/cash-management', icon: <BarChartOutlined /> },
             { label: 'Financial Reports', path: '/finance/cash-reports', icon: <FileTextOutlined /> }
           ],
+          hr: [
+            { label: 'Team Requests', path: '/supervisor/cash-approvals', icon: <TeamOutlined />, badge: true }
+          ],
           admin: [
-            { label: 'Admin Dashboard', path: '/admin/cash-management', icon: <SettingOutlined />, primary: true },
+            { label: 'Admin Dashboard', path: '/admin/cash-approvals', icon: <SettingOutlined />, primary: true },
+            { label: 'Team Requests', path: '/supervisor/cash-approvals', icon: <TeamOutlined />, badge: true },
             { label: 'System Analytics', path: '/admin/cash-analytics', icon: <BarChartOutlined /> },
             { label: 'User Management', path: '/admin/cash-users', icon: <TeamOutlined /> }
           ]
         }
       },
-      // NEW: Project Management Module
       ...(user?.role === 'supply_chain' || user?.role === 'supervisor' || user?.role === 'admin' ? [{
         key: 'project-management',
         title: 'Project Management',
@@ -303,7 +321,7 @@ const Dashboard = () => {
         color: '#f9f0ff',
         borderColor: '#722ed1',
         stats: user?.role === 'buyer' ? stats.buyerRequisitions : stats.purchaseRequisitions,
-        managementRoles: ['finance', 'supply_chain', 'buyer', 'admin', 'employee'],
+        managementRoles: ['finance', 'supply_chain', 'buyer', 'hr', 'it', 'admin', 'employee'],
         actions: {
           base: [
             { label: 'My Requisitions', path: '/employee/purchase-requisitions', icon: <UserOutlined /> },
@@ -311,21 +329,27 @@ const Dashboard = () => {
             { label: 'Request Items', path: '/employee/item-requests', icon: <PlusOutlined /> }
           ],
           supervisor: [
-            { label: 'New Requisition', path: '/employee/purchase-requisitions/new', icon: <ArrowRightOutlined /> },
-            { label: 'My Requisitions', path: '/employee/purchase-requisitions', icon: <UserOutlined /> },
             { label: 'Team Requisitions', path: '/supervisor/purchase-requisitions', icon: <TeamOutlined />, badge: true },
             { label: 'Request Items', path: '/employee/item-requests', icon: <PlusOutlined /> }
           ],
           finance: [
-            { label: 'New Requisition', path: '/employee/purchase-requisitions/new', icon: <ArrowRightOutlined /> },
-            { label: 'My Requisitions', path: '/employee/purchase-requisitions', icon: <UserOutlined /> },
-            { label: 'Request Items', path: '/employee/item-requests', icon: <PlusOutlined /> },
             { label: 'Budget Verification', path: '/finance/purchase-requisitions', icon: <CrownOutlined />, primary: true, badge: true },
+            { label: 'Team Requisitions', path: '/supervisor/purchase-requisitions', icon: <TeamOutlined />, badge: true },
+            { label: 'Request Items', path: '/employee/item-requests', icon: <PlusOutlined /> },
             { label: 'Finance Dashboard', path: '/finance/dashboard', icon: <BankOutlined /> },
             { label: 'Budget Analytics', path: '/finance/purchase-analytics', icon: <BarChartOutlined /> }
           ],
+          hr: [
+            { label: 'Team Requisitions', path: '/supervisor/purchase-requisitions', icon: <TeamOutlined />, badge: true },
+            { label: 'Request Items', path: '/employee/item-requests', icon: <PlusOutlined /> }
+          ],
+          it: [
+            { label: 'Team Requisitions', path: '/supervisor/purchase-requisitions', icon: <TeamOutlined />, badge: true },
+            { label: 'Request Items', path: '/employee/item-requests', icon: <PlusOutlined /> }
+          ],
           supply_chain: [
             { label: 'SC Dashboard', path: '/supply-chain/requisitions', icon: <CrownOutlined />, primary: true, badge: true },
+            { label: 'Team Requisitions', path: '/supervisor/purchase-requisitions', icon: <TeamOutlined />, badge: true },
             { label: 'Head Approval', path: '/supply-chain/head-approval', icon: <CheckCircleOutlined />, badge: true },
             { label: 'Procurement Planning', path: '/supply-chain/procurement-planning', icon: <TruckOutlined /> },
             { label: 'Item Management', path: '/supply-chain/item-management', icon: <DatabaseOutlined /> },
@@ -333,13 +357,7 @@ const Dashboard = () => {
             { label: 'Contract Management', path: '/supply-chain/contracts', icon: <FileTextOutlined /> }
           ],
           buyer: [
-            { label: 'New Requisition', path: '/employee/purchase-requisitions/new', icon: <ArrowRightOutlined /> },
-            { label: 'My Requisitions', path: '/employee/purchase-requisitions', icon: <UserOutlined /> },
-            { label: 'Request Items', path: '/employee/item-requests', icon: <PlusOutlined /> },
-            { label: 'My Assignments', path: '/buyer/requisitions', icon: <CrownOutlined />, primary: true, badge: true },
-            { label: 'Procurement Tasks', path: '/buyer/procurement', icon: <ShoppingCartOutlined />, badge: true },
-            { label: 'Quote Management', path: '/buyer/quotes', icon: <FileTextOutlined />, badge: true },
-            { label: 'Supplier Relations', path: '/buyer/suppliers', icon: <ContactsOutlined /> }
+            { label: 'My Assignments', path: '/buyer/requisitions', icon: <CrownOutlined />, primary: true, badge: true }
           ],
           employee: [
             { label: 'My Requisitions', path: '/employee/purchase-requisitions', icon: <UserOutlined /> },
@@ -348,6 +366,8 @@ const Dashboard = () => {
           ],
           admin: [
             { label: 'Admin Dashboard', path: '/admin/purchase-requisitions', icon: <SettingOutlined />, primary: true },
+            { label: 'Team Requisitions', path: '/supervisor/purchase-requisitions', icon: <TeamOutlined />, badge: true },
+            { label: 'Budget Code Approvals', path: '/admin/budget-codes', icon: <BankOutlined />, badge: true },
             { label: 'System Analytics', path: '/admin/purchase-analytics', icon: <BarChartOutlined /> },
             { label: 'Workflow Management', path: '/admin/workflow-config', icon: <SettingOutlined /> },
             { label: 'Buyer Management', path: '/admin/buyer-management', icon: <TeamOutlined /> },
@@ -356,7 +376,6 @@ const Dashboard = () => {
           ]
         }
       },
-      // Buyer-specific module - Only visible to buyers
       ...(user?.role === 'buyer' || user?.role === 'admin' ? [{
         key: 'buyer-procurement',
         title: 'Procurement Management',
@@ -369,10 +388,8 @@ const Dashboard = () => {
         actions: {
           buyer: [
             { label: 'Procurement Dashboard', path: '/buyer/dashboard', icon: <CrownOutlined />, primary: true },
-            { label: 'Active Sourcing', path: '/buyer/procurement', icon: <ShoppingCartOutlined />, badge: true },
             { label: 'Quote Evaluation', path: '/buyer/quotes', icon: <BarChartOutlined />, badge: true },
             { label: 'Purchase Orders', path: '/buyer/purchase-orders', icon: <FileTextOutlined /> },
-            { label: 'Delivery Tracking', path: '/buyer/deliveries', icon: <TruckOutlined /> },
             { label: 'Performance Analytics', path: '/buyer/analytics/performance', icon: <FundOutlined /> }
           ],
           admin: [
@@ -382,7 +399,6 @@ const Dashboard = () => {
           ]
         }
       }] : []),
-      // Supplier Management module - Enhanced for buyers
       ...(user?.role === 'buyer' || user?.role === 'supply_chain' || user?.role === 'admin' ? [{
         key: 'supplier-management',
         title: 'Supplier Relations',
@@ -399,12 +415,10 @@ const Dashboard = () => {
             { label: 'Supplier Dashboard', path: '/buyer/suppliers', icon: <CrownOutlined />, primary: true },
             { label: 'Performance Review', path: '/buyer/suppliers/performance', icon: <BarChartOutlined /> },
             { label: 'Communication Log', path: '/buyer/suppliers/communication', icon: <TeamOutlined /> },
-            { label: 'Supplier Analytics', path: '/buyer/analytics/suppliers', icon: <FundOutlined /> },
-            { label: 'Supplier Onboarding', path: '/buyer/suppliers/onboarding', icon: <UserOutlined /> },
-            { label: 'Contract Management', path: '/buyer/suppliers/contracts', icon: <FileTextOutlined /> }
+            { label: 'Supplier Analytics', path: '/buyer/analytics/suppliers', icon: <FundOutlined /> }
           ],
           supply_chain: [
-            { label: 'Vendor Management', path: '/supply-chain/suppliers', icon: <CrownOutlined />, primary: true },
+            { label: 'Supplier Management', path: '/supply-chain/suppliers', icon: <CrownOutlined />, primary: true },
             { label: 'Supplier Onboarding', path: '/supply-chain/vendor-onboarding', icon: <UserOutlined /> },
             { label: 'Contract Management', path: '/supply-chain/contracts', icon: <FileTextOutlined /> },
             { label: 'Performance Tracking', path: '/supply-chain/supplier-performance', icon: <BarChartOutlined /> }
@@ -423,7 +437,7 @@ const Dashboard = () => {
         color: '#f0f8ff',
         borderColor: '#1890ff',
         stats: stats.invoices,
-        managementRoles: ['finance', 'admin'],
+        managementRoles: ['finance', 'hr', 'it', 'admin', 'supervisor'],
         actions: {
           base: [
             { label: 'My Invoices', path: '/employee/invoices', icon: <UserOutlined /> }
@@ -433,15 +447,23 @@ const Dashboard = () => {
           ],
           finance: [
             { label: 'Invoice Dashboard', path: '/finance/invoice-management', icon: <CrownOutlined />, primary: true, badge: true },
+            { label: 'Team Invoices', path: '/supervisor/invoice-approvals', icon: <TeamOutlined />, badge: true },
             { label: 'Supplier Management', path: '/finance/suppliers', icon: <BankOutlined /> },
             { label: 'Invoice Analytics', path: '/finance/invoice-analytics', icon: <BarChartOutlined /> },
             { label: 'Payment Processing', path: '/finance/payments', icon: <DollarOutlined /> },
             { label: 'Financial Reports', path: '/finance/financial-reports', icon: <FileTextOutlined /> },
             { label: 'Budget Management', path: '/finance/budget-management', icon: <FundOutlined /> }
           ],
+          hr: [
+            { label: 'Team Invoices', path: '/supervisor/invoice-approvals', icon: <TeamOutlined />, badge: true }
+          ],
+          it: [
+            { label: 'Team Invoices', path: '/supervisor/invoice-approvals', icon: <TeamOutlined />, badge: true }
+          ],
           admin: [
             { label: 'Admin Dashboard', path: '/admin/invoice-management', icon: <SettingOutlined />, primary: true },
-            { label: 'System Settings', path: '/admin/invoice-settings', icon: <SettingOutlined /> }
+            { label: 'Team Invoices', path: '/supervisor/invoice-approvals', icon: <TeamOutlined />, badge: true },
+            { label: 'System Settings', path: '/admin/invoice-approvals', icon: <SettingOutlined /> }
           ]
         }
       },
@@ -465,6 +487,7 @@ const Dashboard = () => {
           ],
           hr: [
             { label: 'HR Dashboard', path: '/hr/incident-reports', icon: <CrownOutlined />, primary: true, badge: true },
+            { label: 'Team Reports', path: '/supervisor/incident-reports', icon: <TeamOutlined />, badge: true },
             { label: 'Investigation Tools', path: '/hr/incident-investigation', icon: <EyeOutlined /> },
             { label: 'Safety Analytics', path: '/hr/incident-reports/analytics', icon: <BarChartOutlined /> },
             { label: 'Policy Management', path: '/hr/safety-policies', icon: <SafetyCertificateOutlined /> },
@@ -473,6 +496,7 @@ const Dashboard = () => {
           ],
           admin: [
             { label: 'Admin Dashboard', path: '/admin/incident-reports', icon: <SettingOutlined />, primary: true },
+            { label: 'Team Reports', path: '/supervisor/incident-reports', icon: <TeamOutlined />, badge: true },
             { label: 'Compliance Reports', path: '/admin/incident-compliance', icon: <FileTextOutlined /> }
           ]
         }
@@ -497,6 +521,7 @@ const Dashboard = () => {
           ],
           it: [
             { label: 'IT Dashboard', path: '/it/support-requests', icon: <CrownOutlined />, primary: true, badge: true },
+            { label: 'Team IT Requests', path: '/supervisor/it-support', icon: <TeamOutlined />, badge: true },
             { label: 'Asset Management', path: '/it/asset-management', icon: <ToolOutlined /> },
             { label: 'Inventory Control', path: '/it/inventory', icon: <BarChartOutlined /> },
             { label: 'System Monitoring', path: '/it/system-monitoring', icon: <EyeOutlined /> },
@@ -506,6 +531,7 @@ const Dashboard = () => {
           ],
           admin: [
             { label: 'Admin Dashboard', path: '/admin/it-support', icon: <SettingOutlined />, primary: true },
+            { label: 'Team IT Requests', path: '/supervisor/it-support', icon: <TeamOutlined />, badge: true },
             { label: 'IT Budget', path: '/admin/it-budget', icon: <DollarOutlined /> }
           ]
         }
@@ -529,6 +555,7 @@ const Dashboard = () => {
           ],
           hr: [
             { label: 'HR Dashboard', path: '/hr/suggestions', icon: <CrownOutlined />, primary: true },
+            { label: 'Team Feedback', path: '/supervisor/team-suggestions', icon: <TeamOutlined />, badge: true },
             { label: 'Feedback Analysis', path: '/hr/suggestions/analytics', icon: <BarChartOutlined /> },
             { label: 'Implementation Tracking', path: '/hr/suggestion-implementation', icon: <CheckCircleOutlined /> },
             { label: 'Employee Engagement', path: '/hr/employee-engagement', icon: <TeamOutlined /> },
@@ -537,6 +564,7 @@ const Dashboard = () => {
           ],
           admin: [
             { label: 'Admin Dashboard', path: '/admin/suggestions', icon: <SettingOutlined />, primary: true },
+            { label: 'Team Feedback', path: '/supervisor/team-suggestions', icon: <TeamOutlined />, badge: true },
             { label: 'Strategic Planning', path: '/admin/strategic-suggestions', icon: <BulbOutlined /> }
           ]
         }
@@ -562,6 +590,7 @@ const Dashboard = () => {
           ],
           hr: [
             { label: 'HR Dashboard', path: '/hr/sick-leave', icon: <CrownOutlined />, primary: true },
+            { label: 'Team Leave', path: '/supervisor/sick-leave', icon: <TeamOutlined />, badge: true },
             { label: 'Leave Analytics', path: '/hr/sick-leave/analytics', icon: <BarChartOutlined /> },
             { label: 'Policy Management', path: '/hr/leave-policies', icon: <SafetyCertificateOutlined /> },
             { label: 'Medical Certificates', path: '/hr/medical-certificates', icon: <MedicineBoxOutlined /> },
@@ -570,7 +599,59 @@ const Dashboard = () => {
           ],
           admin: [
             { label: 'Admin Dashboard', path: '/admin/sick-leave', icon: <SettingOutlined />, primary: true },
+            { label: 'Team Leave', path: '/supervisor/sick-leave', icon: <TeamOutlined />, badge: true },
             { label: 'Compliance Reports', path: '/admin/leave-compliance', icon: <FileTextOutlined /> }
+          ]
+        }
+      },
+      {
+        key: 'action-items',
+        title: 'Action Items & Tasks',
+        description: 'Track and manage your daily tasks and project action items',
+        icon: <CheckCircleOutlined style={{ fontSize: '48px', color: '#722ed1' }} />,
+        color: '#f9f0ff',
+        borderColor: '#722ed1',
+        stats: stats.actionItems,
+        managementRoles: ['supply_chain', 'admin'],
+        actions: {
+          base: [
+            { label: 'My Tasks', path: '/action-items', icon: <UserOutlined /> },
+            { label: 'New Task', path: '/action-items/new', icon: <PlusOutlined /> }
+          ],
+          supply_chain: [
+            { label: 'Task Management', path: '/supply-chain/action-items', icon: <CrownOutlined />, primary: true, badge: true },
+            { label: 'Team Tasks', path: '/supply-chain/action-items?view=team', icon: <TeamOutlined /> },
+            { label: 'Project Tasks', path: '/supply-chain/action-items?view=projects', icon: <ProjectOutlined /> }
+          ],
+          supervisor: [
+            { label: 'Team Reports', path: '/supervisor/incident-reports', icon: <TeamOutlined />, badge: true }
+          ],
+          admin: [
+            { label: 'Admin Dashboard', path: '/admin/action-items', icon: <SettingOutlined />, primary: true },
+            { label: 'All Tasks', path: '/admin/action-items?view=all', icon: <CheckCircleOutlined /> }
+          ]
+        }
+      },
+      {
+        key: 'sharepoint',
+        title: 'File Sharing Portal',
+        description: 'Upload, organize, and share files across departments and company-wide',
+        icon: <ShareAltOutlined style={{ fontSize: '48px', color: '#667eea' }} />,
+        color: '#f0ebff',
+        borderColor: '#667eea',
+        stats: stats.sharepoint,
+        managementRoles: ['admin', 'supervisor', 'finance', 'hr', 'it', 'supply_chain', 'buyer', 'employee'],
+        actions: {
+          base: [
+            { label: 'Browse Files', path: '/sharepoint/portal', icon: <FolderOutlined /> },
+            { label: 'Upload Files', path: '/sharepoint/portal', icon: <UploadOutlined /> },
+            { label: 'My Uploads', path: '/sharepoint/my-files', icon: <FileOutlined /> }
+          ],
+          admin: [
+            { label: 'Admin Dashboard', path: '/sharepoint/admin', icon: <CrownOutlined />, primary: true },
+            { label: 'Browse Files', path: '/sharepoint/portal', icon: <FolderOutlined /> },
+            { label: 'Storage Stats', path: '/sharepoint/analytics', icon: <BarChartOutlined /> },
+            { label: 'Activity Log', path: '/sharepoint/activity', icon: <HistoryOutlined /> }
           ]
         }
       }
@@ -579,18 +660,14 @@ const Dashboard = () => {
     return modules.map(module => {
       const hasManagementAccess = module.managementRoles.includes(user?.role);
 
-      // Collect all relevant actions for the user's role
       const availableActions = [];
 
-      // Everyone gets base actions
       availableActions.push(...(module.actions.base || []));
 
-      // Add role-specific actions
       if (module.actions[user?.role]) {
         availableActions.push(...module.actions[user?.role]);
       }
 
-      // Split actions into visible and expandable
       const visibleActions = availableActions.slice(0, 3);
       const expandableActions = availableActions.slice(3);
       const isExpanded = expandedCards[module.key];
@@ -608,7 +685,6 @@ const Dashboard = () => {
             }}
             bodyStyle={{ padding: '24px' }}
           >
-            {/* Management Badge */}
             {hasManagementAccess && (
               <div style={{
                 position: 'absolute',
@@ -642,7 +718,6 @@ const Dashboard = () => {
 
             <Divider />
 
-            {/* Stats - Enhanced for buyer role */}
             {user?.role === 'buyer' && module.key === 'purchase-requisitions' ? (
               <Row gutter={[8, 8]} style={{ marginBottom: '20px' }}>
                 <Col span={12}>
@@ -724,8 +799,42 @@ const Dashboard = () => {
                   />
                 </Col>
               </Row>
+            ) : module.key === 'project-management' ? (
+              <Row gutter={[8, 8]} style={{ marginBottom: '20px' }}>
+                <Col span={12}>
+                  <Statistic
+                    title="Pending"
+                    value={module.stats.pending}
+                    prefix={<ClockCircleOutlined />}
+                    valueStyle={{ color: '#faad14', fontSize: '16px' }}
+                  />
+                </Col>
+                <Col span={12}>
+                  <Statistic
+                    title="In Progress"
+                    value={module.stats.inProgress}
+                    prefix={<PlayCircleOutlined />}
+                    valueStyle={{ color: '#1890ff', fontSize: '16px' }}
+                  />
+                </Col>
+                <Col span={12}>
+                  <Statistic
+                    title="Completed"
+                    value={module.stats.completed}
+                    prefix={<CheckCircleOutlined />}
+                    valueStyle={{ color: '#52c41a', fontSize: '16px' }}
+                  />
+                </Col>
+                <Col span={12}>
+                  <Statistic
+                    title="Total"
+                    value={module.stats.total}
+                    prefix={<ProjectOutlined />}
+                    valueStyle={{ color: '#722ed1', fontSize: '16px' }}
+                  />
+                </Col>
+              </Row>
             ) : (
-              // Default stats layout
               <Row gutter={[16, 16]} style={{ marginBottom: '20px' }}>
                 <Col span={12}>
                   <Statistic
@@ -746,9 +855,7 @@ const Dashboard = () => {
               </Row>
             )}
 
-            {/* Action Buttons - Enhanced with Expandable Functionality */}
             <Space direction="vertical" style={{ width: '100%' }} size="small">
-              {/* Always visible actions */}
               {visibleActions.map((action, index) => {
                 const isPrimary = action.primary || (hasManagementAccess && index === 0);
                 const showBadge = action.badge && (
@@ -789,7 +896,6 @@ const Dashboard = () => {
                 );
               })}
 
-              {/* Expandable section */}
               {expandableActions.length > 0 && (
                 <>
                   <Collapse
@@ -885,25 +991,25 @@ const Dashboard = () => {
       },
       finance: {
         title: 'Finance Dashboard',
-        description: 'All services + financial management and oversight',
+        description: 'All services + financial management and team oversight',
         icon: <BankOutlined />,
         color: '#722ed1'
       },
       hr: {
         title: 'HR Dashboard',
-        description: 'All services + HR management and employee relations',
+        description: 'All services + HR management and team employee relations',
         icon: <SafetyCertificateOutlined />,
         color: '#13c2c2'
       },
       it: {
         title: 'IT Dashboard',
-        description: 'All services + IT infrastructure and support management',
+        description: 'All services + IT infrastructure and team support management',
         icon: <ToolOutlined />,
         color: '#722ed1'
       },
       supply_chain: {
         title: 'Supply Chain Dashboard',
-        description: 'All services + procurement and vendor management',
+        description: 'All services + procurement and team vendor management',
         icon: <ShoppingCartOutlined />,
         color: '#fa8c16'
       },
@@ -915,7 +1021,7 @@ const Dashboard = () => {
       },
       admin: {
         title: 'Administrator Dashboard',
-        description: 'Full system access and comprehensive management',
+        description: 'Full system access and comprehensive team management',
         icon: <SettingOutlined />,
         color: '#fa541c'
       }
@@ -927,7 +1033,6 @@ const Dashboard = () => {
   const roleInfo = getRoleInfo();
   const userCapabilities = getRoleCapabilities(user?.role);
 
-  // Enhanced pending calculation for buyer role
   const getTotalPending = () => {
     if (user?.role === 'buyer') {
       return (
@@ -945,11 +1050,11 @@ const Dashboard = () => {
   const managementModules = ['pettycash', 'purchase-requisitions', 'buyer-procurement', 'supplier-management', 'invoices', 'incident-reports', 'it-support', 'suggestions', 'sick-leave']
     .filter(module => {
       const moduleConfig = {
-        'pettycash': ['finance', 'admin'],
-        'purchase-requisitions': ['supply_chain', 'buyer', 'admin'],
+        'pettycash': ['finance', 'hr', 'admin'],
+        'purchase-requisitions': ['supply_chain', 'buyer', 'hr', 'it', 'finance', 'admin'],
         'buyer-procurement': ['buyer', 'admin'],
         'supplier-management': ['buyer', 'supply_chain', 'admin'],
-        'invoices': ['finance', 'admin'],
+        'invoices': ['finance', 'hr', 'it', 'admin'],
         'incident-reports': ['hr', 'admin'],
         'it-support': ['it', 'admin'],
         'suggestions': ['hr', 'admin'],
@@ -960,7 +1065,6 @@ const Dashboard = () => {
 
   return (
     <div style={{ padding: '24px' }}>
-      {/* Header Section */}
       <Card style={{ marginBottom: '24px' }}>
         <Row align="middle" gutter={[16, 16]}>
           <Col>
@@ -1013,15 +1117,19 @@ const Dashboard = () => {
                   {managementModules.length} Management Module{managementModules.length !== 1 ? 's' : ''}
                 </Tag>
               )}
+              {userCapabilities.hasTeamAccess && (
+                <Tag color="green" icon={<TeamOutlined />}>
+                  Team Access Enabled
+                </Tag>
+              )}
             </div>
           </Col>
         </Row>
       </Card>
 
-      {/* Enhanced Role Info for Buyer */}
       {userCapabilities.level > 1 && (
         <Alert
-          message={`Enhanced Access Level ${userCapabilities.level}`}
+          message={`Enhanced Access Level ${userCapabilities.level}${userCapabilities.hasTeamAccess ? ' - Team Management Enabled' : ''}`}
           description={
             <div>
               <Text strong>Management Access:</Text> {managementModules.join(', ')}
@@ -1030,6 +1138,13 @@ const Dashboard = () => {
                 You have administrative privileges for {managementModules.length} module{managementModules.length !== 1 ? 's' : ''}
                 while maintaining access to all employee services.
               </Text>
+              {userCapabilities.hasTeamAccess && (
+                <>
+                  <br />
+                  <Text strong style={{ color: '#52c41a' }}>Team Access:</Text>
+                  <Text type="secondary"> You can view and approve requests from your team members across all modules.</Text>
+                </>
+              )}
               {user?.role === 'buyer' && (
                 <>
                   <br />
@@ -1046,7 +1161,6 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Enhanced Quick Stats Alert for Buyer */}
       {totalPending > 0 && (
         <Alert
           message={`${totalPending} Pending Actions Required`}
@@ -1091,11 +1205,10 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Module Selection */}
       <Title level={3} style={{ marginBottom: '24px' }}>
         Service Modules
         <Text type="secondary" style={{ fontSize: '14px', marginLeft: '16px' }}>
-          All services available • Enhanced management for your role
+          All services available • Enhanced management for your role{userCapabilities.hasTeamAccess && ' • Team access enabled'}
         </Text>
       </Title>
 
@@ -1103,7 +1216,6 @@ const Dashboard = () => {
         {getModuleCards()}
       </Row>
 
-      {/* Enhanced Quick Links Section for Buyer */}
       <Card style={{ marginTop: '24px' }} title="Quick Links">
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} md={6}>
@@ -1126,26 +1238,15 @@ const Dashboard = () => {
             </Button>
           </Col>
           {user?.role === 'buyer' && (
-            <>
-              <Col xs={24} sm={12} md={6}>
-                <Button
-                  block
-                  icon={<DeliveredProcedureOutlined />}
-                  onClick={() => navigate('/buyer/deliveries')}
-                >
-                  Delivery Tracking
-                </Button>
-              </Col>
-              <Col xs={24} sm={12} md={6}>
-                <Button
-                  block
-                  icon={<FundOutlined />}
-                  onClick={() => navigate('/buyer/analytics/performance')}
-                >
-                  Performance Reports
-                </Button>
-              </Col>
-            </>
+            <Col xs={24} sm={12} md={6}>
+              <Button
+                block
+                icon={<FundOutlined />}
+                onClick={() => navigate('/buyer/analytics/performance')}
+              >
+                Performance Reports
+              </Button>
+            </Col>
           )}
           {['hr', 'admin'].includes(user?.role) && (
             <Col xs={24} sm={12} md={6}>
@@ -1172,7 +1273,6 @@ const Dashboard = () => {
         </Row>
       </Card>
 
-      {/* Buyer-specific Performance Summary */}
       {user?.role === 'buyer' && (
         <Card style={{ marginTop: '24px' }} title="Procurement Performance Summary">
           <Row gutter={[16, 16]}>
@@ -1240,6 +1340,5 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
 
 
