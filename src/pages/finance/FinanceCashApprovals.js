@@ -41,39 +41,51 @@ const FinanceCashApprovals = () => {
     approved: 0,
     disbursed: 0,
     completed: 0,
-    rejected: 0
+    rejected: 0,
+    justificationsPending: 0
   });
+  const [justifications, setJustifications] = useState([]);
 
   useEffect(() => {
-    fetchCashRequests();
-  }, []);
+    // Fetch requests or justifications depending on activeTab
+    if (activeTab === 'justifications') {
+      fetchJustifications();
+    } else {
+      fetchCashRequests();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   const fetchCashRequests = async () => {
     try {
       setLoading(true);
-      console.log('Fetching finance cash approvals...');
+      console.log('Fetching cash approvals using supervisor logic...');
 
-      const response = await cashRequestAPI.getFinanceRequests();
-      
-      if (response.success) {
+      // Use the same backend logic as the supervisor view: fetch requests where the current user
+      // appears in the approvalChain and the server has already applied hierarchy checks.
+      const response = await cashRequestAPI.getSupervisorRequests();
+
+      if (response && response.success) {
         const requestsData = response.data || [];
         setRequests(requestsData);
-        
-        // Calculate stats from the data
+
+        // The supervisor endpoint enriches requests with teamRequestMetadata which indicates
+        // whether the current user has pending approvals or has approved specific levels.
         const calculatedStats = {
-          pendingFinance: requestsData.filter(req => req.status === 'pending_finance').length,
-          approved: requestsData.filter(req => req.status === 'approved').length,
+          pendingFinance: requestsData.filter(req => req.teamRequestMetadata?.userHasPendingApproval).length,
+          approved: requestsData.filter(req => req.teamRequestMetadata?.userHasApproved).length,
           disbursed: requestsData.filter(req => req.status === 'disbursed').length,
           completed: requestsData.filter(req => req.status === 'completed').length,
-          rejected: requestsData.filter(req => req.status === 'denied').length
+          rejected: requestsData.filter(req => req.status === 'denied').length,
+          justificationsPending: requestsData.filter(req => (req.status || '').startsWith('justification')).length
         };
-        
+
         setStats(calculatedStats);
       } else {
         throw new Error('Failed to fetch cash requests');
       }
     } catch (error) {
-      console.error('Error fetching cash requests:', error);
+      console.error('Error fetching cash requests (supervisor logic):', error);
       message.error(error.response?.data?.message || 'Failed to load cash request approvals');
       setRequests([]);
     } finally {
@@ -97,6 +109,32 @@ const FinanceCashApprovals = () => {
       console.error('Error disbursing request:', error);
       message.error('Failed to disburse cash request');
     }
+  };
+
+  const fetchJustifications = async () => {
+    try {
+      setLoading(true);
+      console.log('Fetching finance justifications...');
+      const response = await cashRequestAPI.getFinanceJustifications();
+      if (response.success) {
+        const data = response.data || [];
+        setJustifications(data);
+        setStats(prev => ({ ...prev, justificationsPending: data.filter(d => d.status === 'justification_pending_finance' || d.status === 'justification_pending').length }));
+      } else {
+        throw new Error('Failed to fetch justifications');
+      }
+    } catch (error) {
+      console.error('Error fetching justifications:', error);
+      message.error(error.response?.data?.message || 'Failed to load justifications');
+      setJustifications([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReviewJustification = (requestId) => {
+    // Navigate to the finance request detail where the justification can be reviewed
+    navigate(`/finance/cash-request/${requestId}`);
   };
 
   // Secure file download handler
@@ -187,9 +225,21 @@ const FinanceCashApprovals = () => {
   const getFilteredRequests = () => {
     switch (activeTab) {
       case 'pending':
-        return requests.filter(req => req.status === 'pending_finance');
+        // Use supervisor-style metadata when available so "pending" matches the counts
+        return requests.filter(req => {
+          if (req.teamRequestMetadata && typeof req.teamRequestMetadata.userHasPendingApproval !== 'undefined') {
+            return req.teamRequestMetadata.userHasPendingApproval;
+          }
+          // Fallback to status-based filtering
+          return req.status === 'pending_finance';
+        });
       case 'approved':
-        return requests.filter(req => req.status === 'approved');
+        return requests.filter(req => {
+          if (req.teamRequestMetadata && typeof req.teamRequestMetadata.userHasApproved !== 'undefined') {
+            return req.teamRequestMetadata.userHasApproved || req.status === 'approved';
+          }
+          return req.status === 'approved';
+        });
       case 'disbursed':
         return requests.filter(req => req.status === 'disbursed');
       case 'completed':
@@ -416,7 +466,8 @@ const FinanceCashApprovals = () => {
     }
   ];
 
-  const pendingForMe = requests.filter(req => req.status === 'pending_finance').length;
+  // Use teamRequestMetadata from supervisor endpoint so "pending for me" matches the same logic
+  const pendingForMe = requests.filter(req => req.teamRequestMetadata?.userHasPendingApproval).length;
   const readyForDisbursement = requests.filter(req => req.status === 'approved').length;
 
   if (loading) {
@@ -550,6 +601,93 @@ const FinanceCashApprovals = () => {
                 }
                 return '';
               }}
+            />
+          </TabPane>
+
+          <TabPane
+            tab={
+              <Badge count={justifications.length} offset={[10, 0]} color="#1890ff">
+                <span>
+                  <ExclamationCircleOutlined />
+                  Justifications ({justifications.length})
+                </span>
+              </Badge>
+            }
+            key="justifications"
+          >
+            <Table
+              columns={[
+                {
+                  title: 'Request ID',
+                  dataIndex: '_id',
+                  key: '_id',
+                  width: 140,
+                  render: (id) => <Tag color="blue">REQ-{id.toString().slice(-6).toUpperCase()}</Tag>
+                },
+                {
+                  title: 'Employee',
+                  dataIndex: ['employee', 'fullName'],
+                  key: 'employee',
+                  width: 200
+                },
+                {
+                  title: 'Disbursed Amount',
+                  dataIndex: ['disbursementDetails', 'amount'],
+                  key: 'disbursedAmount',
+                  width: 150,
+                  render: (amount) => (
+                    <span style={{ fontWeight: 'bold' }}>XAF {parseFloat(amount || 0).toLocaleString()}</span>
+                  )
+                },
+                {
+                  title: 'Amount Spent',
+                  dataIndex: ['justification', 'amountSpent'],
+                  key: 'amountSpent',
+                  width: 140,
+                  render: (amount) => <span>XAF {parseFloat(amount || 0).toLocaleString()}</span>
+                },
+                {
+                  title: 'Documents',
+                  dataIndex: ['justification', 'documents'],
+                  key: 'documents',
+                  width: 100,
+                  render: (documents) => (
+                    <Badge count={documents?.length || 0} showZero style={{ backgroundColor: '#1890ff' }} />
+                  )
+                },
+                {
+                  title: 'Status',
+                  dataIndex: 'status',
+                  key: 'status',
+                  width: 180,
+                  render: (status) => {
+                    const tag = status === 'justification_pending_finance' || status === 'justification_pending' ?
+                      { color: 'orange', text: 'Pending Finance Review' } : { color: 'default', text: status };
+                    return <Tag color={tag.color}>{tag.text}</Tag>;
+                  }
+                },
+                {
+                  title: 'Submitted',
+                  dataIndex: ['justification', 'justificationDate'],
+                  key: 'submittedDate',
+                  width: 140,
+                  render: (date) => date ? new Date(date).toLocaleDateString('en-GB') : 'N/A'
+                },
+                {
+                  title: 'Action',
+                  key: 'action',
+                  width: 120,
+                  render: (_, record) => (
+                    <Space size="small">
+                      <Button type="link" size="small" onClick={() => handleReviewJustification(record._id)}>Review</Button>
+                    </Space>
+                  )
+                }
+              ]}
+              dataSource={justifications}
+              loading={loading}
+              rowKey="_id"
+              pagination={{ pageSize: 10, showSizeChanger: true }}
             />
           </TabPane>
 

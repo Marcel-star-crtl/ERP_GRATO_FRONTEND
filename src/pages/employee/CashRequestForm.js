@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Form, Input, Button, Select, DatePicker, InputNumber, Upload, message, Card, Typography, Space, Alert, Spin } from 'antd';
-import { UploadOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { UploadOutlined, PlusOutlined, InfoCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import cashRequestAPI from '../../services/cashRequestAPI';
 
@@ -18,6 +18,8 @@ const CashRequestForm = ({ editMode }) => {
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
+  const [selectedRequestType, setSelectedRequestType] = useState(null);
+  const [requestAmount, setRequestAmount] = useState(0);
   
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
@@ -113,11 +115,28 @@ const CashRequestForm = ({ editMode }) => {
       
       // Display budget information if available
       if (project && project.budgetCodeId) {
-        const remaining = project.budgetCodeId.remaining || 0;
+        // Check for different field names that might contain the remaining budget
+        const remaining = project.budgetCodeId.remaining || 
+                         project.budgetCodeId.available || 
+                         (project.budgetCodeId.budget && project.budgetCodeId.used ? 
+                           project.budgetCodeId.budget - project.budgetCodeId.used : 0);
+        
+        console.log('Budget Code Details:', {
+          code: project.budgetCodeId.code,
+          name: project.budgetCodeId.name,
+          budget: project.budgetCodeId.budget || project.budgetCodeId.totalBudget,
+          used: project.budgetCodeId.used,
+          remaining: project.budgetCodeId.remaining,
+          available: project.budgetCodeId.available,
+          calculated_remaining: remaining
+        });
+        
         console.log(`Project budget available: XAF ${remaining.toLocaleString()}`);
         
         if (remaining <= 0) {
-          message.warning('Selected project has no remaining budget. Finance will need to assign a budget code.');
+          message.warning('Selected project has no remaining budget. Finance will need to assign additional funds or select a different budget code.');
+        } else {
+          message.success(`Project budget available: XAF ${remaining.toLocaleString()}`);
         }
       } else {
         console.log('Project has no assigned budget code');
@@ -129,6 +148,44 @@ const CashRequestForm = ({ editMode }) => {
     }
   };
 
+  // Determine if supporting documents are required
+  const areDocumentsRequired = () => {
+    // Documents are compulsory for:
+    // 1. Amounts above 100,000 XAF
+    // 2. Travel expenses (need receipts/proofs)
+    // 3. Project materials (need quotes/invoices)
+    // 4. Training requests (need brochures/invoices)
+    // 5. Client entertainment (need receipts)
+    
+    const highValueThreshold = 100000;
+    const documentRequiredTypes = ['travel', 'project-materials', 'training', 'client-entertainment'];
+    
+    if (requestAmount >= highValueThreshold) {
+      return true;
+    }
+    
+    if (selectedRequestType && documentRequiredTypes.includes(selectedRequestType)) {
+      return true;
+    }
+    
+    return false;
+  };
+
+  const getDocumentRequirementMessage = () => {
+    if (requestAmount >= 100000) {
+      return `Supporting documents are REQUIRED for requests above XAF 100,000`;
+    }
+    
+    const typeMessages = {
+      'travel': 'Supporting documents are REQUIRED for travel expenses (quotes, receipts, itinerary, etc.)',
+      'project-materials': 'Supporting documents are REQUIRED for project materials (quotes, invoices, specifications)',
+      'training': 'Supporting documents are REQUIRED for training requests (brochures, invoices, course details)',
+      'client-entertainment': 'Supporting documents are REQUIRED for client entertainment (receipts, guest list, etc.)'
+    };
+    
+    return typeMessages[selectedRequestType] || 'Supporting documents may be required based on request details';
+  };
+
   const handleSubmit = async (values) => {
     try {
       const amount = parseFloat(values.amountRequested);
@@ -137,13 +194,47 @@ const CashRequestForm = ({ editMode }) => {
         return;
       }
 
+      // Check if supporting documents are required
+      if (areDocumentsRequired() && fileList.length === 0) {
+        message.error({
+          content: (
+            <div>
+              <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Supporting Documents Required</div>
+              <div>{getDocumentRequirementMessage()}</div>
+            </div>
+          ),
+          duration: 8
+        });
+        return;
+      }
+
       // Check budget availability if project is selected
       if (selectedProject && selectedProject.budgetCodeId) {
-        const availableBudget = selectedProject.budgetCodeId.remaining || 0;
-        if (amount > availableBudget) {
+        // Use the same logic as handleProjectChange to get available budget
+        const availableBudget = selectedProject.budgetCodeId.remaining || 
+                               selectedProject.budgetCodeId.available || 
+                               (selectedProject.budgetCodeId.budget && selectedProject.budgetCodeId.used ? 
+                                 selectedProject.budgetCodeId.budget - selectedProject.budgetCodeId.used : 0);
+        
+        console.log('Budget validation:', {
+          requestedAmount: amount,
+          availableBudget,
+          budgetDetails: selectedProject.budgetCodeId
+        });
+        
+        if (availableBudget > 0 && amount > availableBudget) {
           const proceed = window.confirm(
             `Warning: Requested amount (XAF ${amount.toLocaleString()}) exceeds available budget (XAF ${availableBudget.toLocaleString()}). ` +
             `Finance may need to allocate additional funds or select a different budget code. Continue?`
+          );
+          
+          if (!proceed) {
+            return;
+          }
+        } else if (availableBudget <= 0) {
+          const proceed = window.confirm(
+            `Warning: Selected project has no available budget (XAF ${availableBudget.toLocaleString()}). ` +
+            `Finance will need to allocate funds to this project. Continue?`
           );
           
           if (!proceed) {
@@ -313,7 +404,17 @@ const CashRequestForm = ({ editMode }) => {
           label="Request Type"
           rules={[{ required: true, message: 'Please select a request type' }]}
         >
-          <Select placeholder="Select request type">
+          <Select 
+            placeholder="Select request type"
+            onChange={(value) => {
+              setSelectedRequestType(value);
+              // Show information about document requirements
+              const documentRequiredTypes = ['travel', 'project-materials', 'training', 'client-entertainment'];
+              if (documentRequiredTypes.includes(value)) {
+                message.info(`Note: Supporting documents will be required for ${requestTypes.find(t => t.value === value)?.label}`, 4);
+              }
+            }}
+          >
             {requestTypes.map(type => (
               <Option key={type.value} value={type.value}>
                 {type.label}
@@ -341,7 +442,14 @@ const CashRequestForm = ({ editMode }) => {
             placeholder="Enter amount (e.g., 50000)"
             formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
             parser={(value) => value.replace(/,/g, '')}
-            controls={false} 
+            controls={false}
+            onChange={(value) => {
+              setRequestAmount(value || 0);
+              // Show document requirement warning for high amounts
+              if (value >= 100000) {
+                message.warning('Note: Supporting documents are REQUIRED for amounts above XAF 100,000', 5);
+              }
+            }}
           />
         </Form.Item>
 
@@ -456,14 +564,30 @@ const CashRequestForm = ({ editMode }) => {
                 <p><strong>Project:</strong> {selectedProject.name}</p>
                 <p><strong>Department:</strong> {selectedProject.department}</p>
                 {selectedProject.budgetCodeId ? (
-                  <>
-                    <p><strong>Budget Code:</strong> {selectedProject.budgetCodeId.code} - {selectedProject.budgetCodeId.name}</p>
-                    <p><strong>Total Budget:</strong> XAF {selectedProject.budgetCodeId.budget?.toLocaleString()}</p>
-                    <p><strong>Used:</strong> XAF {selectedProject.budgetCodeId.used?.toLocaleString()}</p>
-                    <p><strong>Available:</strong> <Text strong style={{ color: selectedProject.budgetCodeId.remaining > 0 ? '#52c41a' : '#f5222d' }}>
-                      XAF {selectedProject.budgetCodeId.remaining?.toLocaleString()}
-                    </Text></p>
-                  </>
+                  (() => {
+                    // Calculate available budget using the same logic
+                    const totalBudget = selectedProject.budgetCodeId.budget || selectedProject.budgetCodeId.totalBudget || 0;
+                    const used = selectedProject.budgetCodeId.used || 0;
+                    const remaining = selectedProject.budgetCodeId.remaining || 
+                                    selectedProject.budgetCodeId.available || 
+                                    (totalBudget - used);
+                    
+                    return (
+                      <>
+                        <p><strong>Budget Code:</strong> {selectedProject.budgetCodeId.code} - {selectedProject.budgetCodeId.name}</p>
+                        <p><strong>Total Budget:</strong> XAF {totalBudget.toLocaleString()}</p>
+                        <p><strong>Used:</strong> XAF {used.toLocaleString()}</p>
+                        <p><strong>Available:</strong> <Text strong style={{ color: remaining > 0 ? '#52c41a' : '#f5222d' }}>
+                          XAF {remaining.toLocaleString()}
+                        </Text></p>
+                        {remaining <= 0 && (
+                          <p style={{ color: '#f5222d', marginTop: '8px' }}>
+                            <ExclamationCircleOutlined /> No budget available. Finance will need to allocate additional funds.
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()
                 ) : (
                   <p style={{ color: '#faad14' }}>
                     <InfoCircleOutlined /> This project does not have a budget code assigned yet. Finance will assign one during approval.
@@ -471,7 +595,14 @@ const CashRequestForm = ({ editMode }) => {
                 )}
               </div>
             }
-            type={selectedProject.budgetCodeId && selectedProject.budgetCodeId.remaining > 0 ? "success" : "warning"}
+            type={selectedProject.budgetCodeId ? 
+              ((() => {
+                const remaining = selectedProject.budgetCodeId.remaining || 
+                                selectedProject.budgetCodeId.available || 
+                                ((selectedProject.budgetCodeId.budget || selectedProject.budgetCodeId.totalBudget || 0) - 
+                                 (selectedProject.budgetCodeId.used || 0));
+                return remaining > 0 ? "success" : "warning";
+              })()) : "warning"}
             showIcon
             style={{ marginBottom: '24px' }}
           />
@@ -488,14 +619,45 @@ const CashRequestForm = ({ editMode }) => {
         )}
 
         <Form.Item
-          label="Supporting Documents"
-          extra="Upload receipts, quotes, or other supporting documents (Images or PDF, max 5 files, 10MB each)"
+          label={
+            <span>
+              Supporting Documents
+              {areDocumentsRequired() && (
+                <span style={{ color: '#f5222d', marginLeft: '4px' }}>*</span>
+              )}
+            </span>
+          }
+          extra={
+            <div>
+              <div>Upload receipts, quotes, or other supporting documents (Images or PDF, max 5 files, 10MB each)</div>
+              {areDocumentsRequired() && (
+                <div style={{ color: '#f5222d', fontWeight: 'bold', marginTop: '4px' }}>
+                  {getDocumentRequirementMessage()}
+                </div>
+              )}
+            </div>
+          }
+          rules={areDocumentsRequired() ? [
+            {
+              validator: () => {
+                if (fileList.length === 0) {
+                  return Promise.reject(new Error('Supporting documents are required for this request type/amount'));
+                }
+                return Promise.resolve();
+              }
+            }
+          ] : []}
         >
           <Upload {...uploadProps}>
             {fileList.length >= 5 ? null : (
-              <div>
+              <div style={{
+                borderColor: areDocumentsRequired() && fileList.length === 0 ? '#f5222d' : undefined,
+                borderWidth: areDocumentsRequired() && fileList.length === 0 ? '2px' : undefined
+              }}>
                 <PlusOutlined />
-                <div style={{ marginTop: 8 }}>Upload</div>
+                <div style={{ marginTop: 8 }}>
+                  {areDocumentsRequired() ? 'Upload Required Documents' : 'Upload Documents'}
+                </div>
               </div>
             )}
           </Upload>

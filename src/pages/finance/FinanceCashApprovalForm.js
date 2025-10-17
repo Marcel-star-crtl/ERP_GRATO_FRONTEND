@@ -112,12 +112,22 @@ const FinanceCashApprovalForm = () => {
         try {
           setSubmitting(true);
 
+          // If approving, default disbursementAmount to amountApproved when not explicitly provided
+          const finalAmountApproved = decision === 'approve' ? values.amountApproved : undefined;
+
+          // IMPORTANT: For this workflow we want approvals to also disburse immediately.
+          // If the finance officer approves and did not enter an explicit disbursement amount,
+          // we set disbursementAmount = amountApproved so backend will mark the request as 'disbursed'.
+          const finalDisbursementAmount = decision === 'approve'
+            ? (values.disbursementAmount || values.amountApproved)
+            : undefined;
+
           const payload = {
             decision: decision === 'approve' ? 'approved' : 'rejected',
             comments: values.comments || '',
-            amountApproved: decision === 'approve' ? values.amountApproved : undefined,
+            amountApproved: finalAmountApproved,
             budgetCodeId: decision === 'approve' ? values.budgetCodeId : undefined,
-            disbursementAmount: values.disbursementAmount || undefined
+            disbursementAmount: finalDisbursementAmount
           };
 
           console.log('Sending payload:', payload);
