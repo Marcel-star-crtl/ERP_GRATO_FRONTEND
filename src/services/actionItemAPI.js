@@ -4,7 +4,7 @@ export const actionItemAPI = {
   // Get action items with filters
   getActionItems: async (filters = {}) => {
     try {
-      const response = await api.get('/api/action-items', { params: filters });
+      const response = await api.get('/action-items', { params: filters });
       return {
         success: true,
         data: response.data.data || [],
@@ -23,7 +23,7 @@ export const actionItemAPI = {
   // Get action item statistics
   getActionItemStats: async () => {
     try {
-      const response = await api.get('/api/action-items/stats');
+      const response = await api.get('/action-items/stats');
       return {
         success: true,
         data: response.data.data || {}
@@ -41,7 +41,7 @@ export const actionItemAPI = {
   // Get single action item
   getActionItem: async (id) => {
     try {
-      const response = await api.get(`/api/action-items/${id}`);
+      const response = await api.get(`/action-items/${id}`);
       return {
         success: true,
         data: response.data.data
@@ -58,7 +58,7 @@ export const actionItemAPI = {
   // Create action item
   createActionItem: async (data) => {
     try {
-      const response = await api.post('/api/action-items', data);
+      const response = await api.post('/action-items', data);
       return {
         success: true,
         data: response.data.data,
@@ -76,7 +76,7 @@ export const actionItemAPI = {
   // Update action item
   updateActionItem: async (id, data) => {
     try {
-      const response = await api.put(`/api/action-items/${id}`, data);
+      const response = await api.put(`/action-items/${id}`, data);
       return {
         success: true,
         data: response.data.data,
@@ -94,7 +94,7 @@ export const actionItemAPI = {
   // Update progress
   updateProgress: async (id, progress) => {
     try {
-      const response = await api.patch(`/api/action-items/${id}/progress`, { progress });
+      const response = await api.patch(`/action-items/${id}/progress`, { progress });
       return {
         success: true,
         data: response.data.data,
@@ -112,7 +112,7 @@ export const actionItemAPI = {
   // Update status
   updateStatus: async (id, status, notes = '') => {
     try {
-      const response = await api.patch(`/api/action-items/${id}/status`, { status, notes });
+      const response = await api.patch(`/action-items/${id}/status`, { status, notes });
       return {
         success: true,
         data: response.data.data,
@@ -127,13 +127,121 @@ export const actionItemAPI = {
     }
   },
 
-  // Submit for completion (with documents)
-  submitForCompletion: async (id, formData) => {
+  // Submit completion for current user (assignee)
+  submitForCompletion: async (taskId, formData) => {
     try {
-      const response = await api.post(`/api/action-items/${id}/submit-completion`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
+      const response = await api.post(
+        `/action-items/${taskId}/assignee/submit-completion`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
         }
+      );
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('Error submitting completion:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to submit completion'
+      };
+    }
+  },
+
+  // Approve completion for specific assignee
+  approveCompletionForAssignee: async (taskId, assigneeId, grade, qualityNotes, comments) => {
+    try {
+      const response = await api.post(
+        `/action-items/${taskId}/assignee/${assigneeId}/approve-completion`,
+        {
+          grade,
+          qualityNotes,
+          comments
+        }
+      );
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('Error approving completion:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to approve completion'
+      };
+    }
+  },
+
+  // Reject completion for specific assignee
+  rejectCompletionForAssignee: async (taskId, assigneeId, comments) => {
+    try {
+      const response = await api.post(
+        `/action-items/${taskId}/assignee/${assigneeId}/reject-completion`,
+        {
+          comments
+        }
+      );
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('Error rejecting completion:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to reject completion'
+      };
+    }
+  },
+
+  // Create personal task
+  createPersonalTask: async (taskData) => {
+    try {
+      const response = await api.post('/action-items/personal', taskData);
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message
+      };
+    } catch (error) {
+      console.error('Error creating personal task:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to create personal task'
+      };
+    }
+  },
+
+  // Get milestone tasks
+  getMilestoneTasks: async (milestoneId) => {
+    try {
+      const response = await api.get(`/action-items/milestone/${milestoneId}`);
+      return {
+        success: true,
+        data: response.data.data || []
+      };
+    } catch (error) {
+      console.error('Error fetching milestone tasks:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Failed to fetch milestone tasks',
+        data: []
+      };
+    }
+  },
+
+  // Reassign task
+  reassignTask: async (taskId, newAssignees) => {
+    try {
+      const response = await api.post(`/action-items/${taskId}/reassign`, {
+        newAssignees
       });
       return {
         success: true,
@@ -141,10 +249,10 @@ export const actionItemAPI = {
         message: response.data.message
       };
     } catch (error) {
-      console.error('Error submitting for completion:', error);
+      console.error('Error reassigning task:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Failed to submit for completion'
+        message: error.response?.data?.message || 'Failed to reassign task'
       };
     }
   },
@@ -152,7 +260,7 @@ export const actionItemAPI = {
   // Approve/Reject creation
   processCreationApproval: async (id, decision, comments = '') => {
     try {
-      const response = await api.post(`/api/action-items/${id}/approve-creation`, {
+      const response = await api.post(`/action-items/${id}/approve-creation`, {
         decision,
         comments
       });
@@ -173,7 +281,7 @@ export const actionItemAPI = {
   // Approve/Reject completion
   processCompletionApproval: async (id, decision, comments = '') => {
     try {
-      const response = await api.post(`/api/action-items/${id}/approve-completion`, {
+      const response = await api.post(`/action-items/${id}/approve-completion`, {
         decision,
         comments
       });
@@ -194,7 +302,7 @@ export const actionItemAPI = {
   // Delete action item
   deleteActionItem: async (id) => {
     try {
-      const response = await api.delete(`/api/action-items/${id}`);
+      const response = await api.delete(`/action-items/${id}`);
       return {
         success: true,
         message: response.data.message
@@ -211,7 +319,7 @@ export const actionItemAPI = {
   // Get project action items
   getProjectActionItems: async (projectId) => {
     try {
-      const response = await api.get(`/api/action-items/project/${projectId}`);
+      const response = await api.get(`/action-items/project/${projectId}`);
       return {
         success: true,
         data: response.data.data || [],

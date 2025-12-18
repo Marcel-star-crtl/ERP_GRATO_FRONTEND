@@ -527,18 +527,45 @@ const SupplyChainSupplierOnboarding = () => {
       ),
       width: 200
     },
+    // {
+    //   title: 'Contact Info',
+    //   key: 'contact',
+    //   render: (_, record) => (
+    //     <div>
+    //       <div><MailOutlined /> {record.email}</div>
+    //       <div><PhoneOutlined /> {record.phone}</div>
+    //       <div style={{ fontSize: '12px', color: '#666' }}>
+    //         {record.address?.length > 50 ? `${record.address.substring(0, 50)}...` : record.address}
+    //       </div>
+    //     </div>
+    //   ),
+    //   width: 180
+    // },
     {
       title: 'Contact Info',
       key: 'contact',
-      render: (_, record) => (
-        <div>
-          <div><MailOutlined /> {record.email}</div>
-          <div><PhoneOutlined /> {record.phone}</div>
-          <div style={{ fontSize: '12px', color: '#666' }}>
-            {record.address?.length > 50 ? `${record.address.substring(0, 50)}...` : record.address}
+      render: (_, record) => {
+        // Handle address - it can be a string or object
+        const addressDisplay = typeof record.address === 'string' 
+          ? record.address 
+          : record.address && typeof record.address === 'object'
+            ? `${record.address.street || ''}, ${record.address.city || ''}, ${record.address.state || ''}`.trim()
+            : 'N/A';
+        
+        const truncatedAddress = addressDisplay.length > 50 
+          ? `${addressDisplay.substring(0, 50)}...` 
+          : addressDisplay;
+
+        return (
+          <div>
+            <div><MailOutlined /> {record.email}</div>
+            <div><PhoneOutlined /> {record.phone}</div>
+            <div style={{ fontSize: '12px', color: '#666' }}>
+              {truncatedAddress}
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
       width: 180
     },
     {

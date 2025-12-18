@@ -120,13 +120,34 @@ const FinancePurchaseRequisitions = () => {
         fetchProjects();
     }, []);
 
+    // const fetchRequisitions = async () => {
+    //     try {
+    //         setLoading(true);
+    //         const response = await makeAuthenticatedRequest(`${API_BASE_URL}/purchase-requisitions/dashboard-stats`);
+            
+    //         if (response.success && response.data && response.data.recent) {
+    //             setRequisitions(response.data.recent);
+    //         } else {
+    //             setRequisitions([]);
+    //         }
+    //     } catch (error) {
+    //         console.error('Error fetching finance requisitions:', error);
+    //         message.error('Failed to fetch requisitions');
+    //         setRequisitions([]);
+    //     } finally {
+    //         setLoading(false);
+    //     }
+    // };
+
     const fetchRequisitions = async () => {
         try {
             setLoading(true);
-            const response = await makeAuthenticatedRequest(`${API_BASE_URL}/purchase-requisitions/dashboard-stats`);
+            // ✅ FIXED: Use the finance-specific endpoint
+            const response = await makeAuthenticatedRequest(`${API_BASE_URL}/purchase-requisitions/finance`);
             
-            if (response.success && response.data && response.data.recent) {
-                setRequisitions(response.data.recent);
+            if (response.success && response.data) {
+                console.log('Finance requisitions fetched:', response.data);
+                setRequisitions(response.data);
             } else {
                 setRequisitions([]);
             }
@@ -140,23 +161,26 @@ const FinancePurchaseRequisitions = () => {
     };
 
     const fetchStats = async () => {
-        try {
-            const response = await makeAuthenticatedRequest(`${API_BASE_URL}/purchase-requisitions/dashboard-stats`);
-            if (response.success && response.data) {
-                const financeStats = {
-                    pending: response.data.summary?.pending || 0,
-                    verified: response.data.summary?.approved || 0,
-                    rejected: response.data.summary?.rejected || 0,
-                    total: response.data.summary?.total || 0,
-                    totalBudgetAllocated: response.data.finance?.totalBudgetAllocated || 0,
-                    budgetUtilization: response.data.finance?.budgetUtilization || 0
-                };
-                setStats(financeStats);
-            }
-        } catch (error) {
-            console.error('Error fetching stats:', error);
+    try {
+        // ✅ FIXED: Use finance dashboard endpoint for accurate stats
+        const response = await makeAuthenticatedRequest(`${API_BASE_URL}/purchase-requisitions/finance/dashboard-data`);
+        
+        if (response.success && response.data) {
+            const financeData = response.data;
+            
+            setStats({
+                pending: financeData.statistics?.pendingVerification || 0,
+                verified: financeData.statistics?.approvedThisMonth || 0,
+                rejected: financeData.statistics?.rejectedThisMonth || 0,
+                total: financeData.totalRequisitions || 0,
+                totalBudgetAllocated: financeData.statistics?.totalValue || 0,
+                budgetUtilization: response.data.finance?.overallUtilization || 0
+            });
         }
-    };
+    } catch (error) {
+        console.error('Error fetching stats:', error);
+    }
+};
 
     const fetchBudgetCodes = async () => {
         try {
@@ -415,63 +439,63 @@ const FinancePurchaseRequisitions = () => {
     };
 
     const getFilteredRequisitions = () => {
-        if (!Array.isArray(requisitions) || requisitions.length === 0) {
-            return [];
-        }
-        
-        let filtered = [];
-        
-        switch (activeTab) {
-            case 'pending':
-                filtered = requisitions.filter(r => {
-                    const needsFinanceVerification = 
-                        r.status === 'pending_finance_verification' ||
-                        (r.financeVerification?.decision === 'pending') ||
-                        (r.approvalChain && 
-                         r.approvalChain.some(step => 
-                             step.status === 'approved' && 
-                             step.approver.role.includes('Head')
-                         ) &&
-                         r.status !== 'pending_supply_chain_review' &&
-                         r.status !== 'in_procurement' &&
-                         r.status !== 'approved' &&
-                         r.status !== 'rejected'
-                        );
-                    
-                    return needsFinanceVerification;
-                });
-                break;
+    if (!Array.isArray(requisitions) || requisitions.length === 0) {
+        return [];
+    }
+    
+    let filtered = [];
+    
+    switch (activeTab) {
+        case 'pending':
+            // ✅ FIXED: Show requisitions that need finance verification
+            filtered = requisitions.filter(r => {
+                // Check if it's pending finance verification
+                if (r.status === 'pending_finance_verification') {
+                    return true;
+                }
                 
-            case 'approved':
-                filtered = requisitions.filter(r => 
-                    r.status === 'pending_supply_chain_review' || 
-                    r.status === 'approved' || 
-                    r.status === 'in_procurement' ||
-                    r.status === 'completed' ||
-                    r.status === 'delivered' ||
-                    r.status === 'procurement_complete' ||
-                    (r.financeVerification && r.financeVerification.decision === 'approved')
-                );
-                break;
+                // Check if finance officer is the current pending approver
+                if (r.approvalChain && r.approvalChain.length > 0) {
+                    const financeStep = r.approvalChain.find(step => 
+                        step.approver.role.includes('Finance') && 
+                        step.status === 'pending'
+                    );
+                    return financeStep !== undefined;
+                }
                 
-            case 'rejected':
-                filtered = requisitions.filter(r => 
-                    r.status === 'rejected' ||
-                    r.status === 'supply_chain_rejected' ||
-                    (r.financeVerification && r.financeVerification.decision === 'rejected') ||
-                    (r.approvalChain && 
-                     r.approvalChain.some(step => step.status === 'rejected'))
-                );
-                break;
-                
-            case 'all':
-            default:
-                filtered = requisitions;
-                break;
-        }
-        
-        return filtered;
-    };
+                return false;
+            });
+            break;
+            
+        case 'approved':
+            // Show requisitions where finance has approved
+            filtered = requisitions.filter(r => 
+                r.financeVerification?.decision === 'approved' ||
+                r.status === 'pending_head_approval' ||
+                r.status === 'approved' || 
+                r.status === 'in_procurement' ||
+                r.status === 'completed' ||
+                r.status === 'delivered' ||
+                r.status === 'procurement_complete'
+            );
+            break;
+            
+        case 'rejected':
+            // Show requisitions rejected by finance
+            filtered = requisitions.filter(r => 
+                r.financeVerification?.decision === 'rejected' ||
+                r.status === 'rejected'
+            );
+            break;
+            
+        case 'all':
+        default:
+            filtered = requisitions;
+            break;
+    }
+    
+    return filtered;
+};
 
     const requisitionColumns = [
         {
@@ -1042,14 +1066,14 @@ const FinancePurchaseRequisitions = () => {
                                 </Col>
                             </Row>
 
-                            <Form.Item
+                            {/* <Form.Item
                                 name="requiresAdditionalApproval"
                                 label="Additional Approvals Required"
                                 valuePropName="checked"
                                 help="Check if this requisition requires additional executive approval"
                             >
                                 <Switch />
-                            </Form.Item>
+                            </Form.Item> */}
 
                             <Form.Item
                                 name="comments"
@@ -1169,12 +1193,22 @@ const FinancePurchaseRequisitions = () => {
                                     loading={loadingProjects}
                                 >
                                     <Select.OptGroup label="Departments">
-                                        <Option value="IT">IT Department</Option>
+                                        {/* <Option value="IT">IT Department</Option>
                                         <Option value="Finance">Finance Department</Option>
                                         <Option value="HR">HR Department</Option>
                                         <Option value="Operations">Operations</Option>
                                         <Option value="Marketing">Marketing</Option>
                                         <Option value="Supply Chain">Supply Chain</Option>
+                                        <Option value="Facilities">Facilities</Option> */}
+                                        <Option value="Technical Operations">Technical Operations</Option>
+                                        <Option value="Technical Roll Out">Technical Roll Out</Option>
+                                        <Option value="Technical QHSE">Technical QHSE</Option>
+                                        <Option value="IT">IT Department</Option>
+                                        <Option value="Finance">Finance</Option>
+                                        <Option value="HR">Human Resources</Option>
+                                        <Option value="Marketing">Marketing</Option>
+                                        <Option value="Supply Chain">Supply Chain</Option>
+                                        <Option value="Business">Business</Option>
                                         <Option value="Facilities">Facilities</Option>
                                     </Select.OptGroup>
                                     <Select.OptGroup label="Active Projects">
@@ -1197,12 +1231,10 @@ const FinancePurchaseRequisitions = () => {
                                 rules={[{ required: true, message: 'Please select budget type' }]}
                             >
                                 <Select placeholder="Select budget type">
-                                    <Option value="departmental">Departmental Budget</Option>
-                                    <Option value="project">Project Budget</Option>
-                                    <Option value="capital">Capital Expenditure</Option>
-                                    <Option value="operational">Operational Expense</Option>
-                                    <Option value="emergency">Emergency Fund</Option>
-                                    <Option value="maintenance">Maintenance & Repairs</Option>
+                                    <Option value="OPEX">OPEX - Operating Expenses</Option>
+                                    <Option value="CAPEX">CAPEX - Capital Expenditure</Option>
+                                    <Option value="PROJECT">PROJECT - Project Budget</Option>
+                                    <Option value="OPERATIONAL">OPERATIONAL - Operational</Option>
                                 </Select>
                             </Form.Item>
                         </Col>

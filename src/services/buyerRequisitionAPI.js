@@ -132,6 +132,142 @@ export const buyerRequisitionAPI = {
     }
   },
 
+  // Get pending POs for Supply Chain assignment
+  getSupplyChainPendingPOs: async () => {
+    try {
+      const url = `${API_BASE_URL}/buyer/purchase-orders/supply-chain/pending`;
+      return await makeAuthenticatedRequest(url);
+    } catch (error) {
+      console.error('Error fetching pending POs:', error);
+      throw error;
+    }
+  },
+
+  // Get Supply Chain PO statistics
+  getSupplyChainPOStats: async () => {
+    try {
+      const url = `${API_BASE_URL}/buyer/purchase-orders/supply-chain/stats`;
+      return await makeAuthenticatedRequest(url);
+    } catch (error) {
+      console.error('Error fetching SC PO stats:', error);
+      throw error;
+    }
+  },
+
+  // Download PO for signing
+  downloadPOForSigning: async (poId) => {
+    try {
+      const url = `${API_BASE_URL}/buyer/purchase-orders/${poId}/download-for-signing`;
+      return await makeAuthenticatedRequest(url);
+    } catch (error) {
+      console.error('Error downloading PO:', error);
+      throw error;
+    }
+  },
+
+  // Assign PO to department (with signed document)
+  assignPOToDepartment: async (poId, formData) => {
+    try {
+      const token = localStorage.getItem('token');
+      const url = `${API_BASE_URL}/buyer/purchase-orders/${poId}/assign-department`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData, // FormData sets its own Content-Type
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to assign PO to department');
+      }
+
+      const data = await response.json();
+      console.log('API Response:', data);
+      return data;
+    } catch (error) {
+      console.error('Error assigning PO:', error);
+      throw error;
+    }
+  },
+
+  // Reject PO
+  rejectPO: async (poId, data) => {
+    try {
+      const url = `${API_BASE_URL}/buyer/purchase-orders/${poId}/reject`;
+      return await makeAuthenticatedRequest(url, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('Error rejecting PO:', error);
+      throw error;
+    }
+  },
+
+  // Get supervisor pending POs
+  getSupervisorPendingPOs: async () => {
+    try {
+      const url = `${API_BASE_URL}/buyer/purchase-orders/supervisor/pending`;
+      return await makeAuthenticatedRequest(url);
+    } catch (error) {
+      console.error('Error fetching supervisor POs:', error);
+      throw error;
+    }
+  },
+
+  // Process PO approval (with signed document)
+  processPOApproval: async (poId, data) => {
+    try {
+      const url = `${API_BASE_URL}/buyer/purchase-orders/${poId}/approve`;
+      
+      if (data instanceof FormData) {
+        const token = localStorage.getItem('token');
+        
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          body: data, // FormData sets its own Content-Type
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to process PO approval');
+        }
+
+        const responseData = await response.json();
+        console.log('API Response:', responseData);
+        return responseData;
+      } else {
+        return await makeAuthenticatedRequest(url, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      }
+    } catch (error) {
+      console.error('Error processing PO approval:', error);
+      throw error;
+    }
+  },
+
+  // Send PO to Supply Chain for assignment
+  sendPOToSupplyChain: async (poId, data) => {
+    try {
+      const url = `${API_BASE_URL}/buyer/purchase-orders/${poId}/send-to-supply-chain`;
+      return await makeAuthenticatedRequest(url, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('Error sending PO to Supply Chain:', error);
+      throw error;
+    }
+  },
+
   /**
    * Email purchase order PDF
    * @param {string} poId - Purchase order ID
@@ -1213,6 +1349,232 @@ createPurchaseOrder: async (poData) => {
   }
 },
 
+// services/buyerRequisitionAPI.js - ADD THESE METHODS
+
+// =============================================
+// QUOTATION PDF METHODS
+// =============================================
+
+/**
+ * Download quotation PDF
+ */
+downloadQuotationPDF: async (quoteId) => {
+  try {
+    const token = localStorage.getItem('token');
+    const url = `${API_BASE_URL}/buyer/quotations/${quoteId}/download-pdf`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to download PDF');
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `Quotation_${quoteId}_${new Date().toISOString().split('T')[0]}.pdf`;
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Download quotation PDF error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Preview quotation PDF
+ */
+previewQuotationPDF: async (quoteId) => {
+  try {
+    const token = localStorage.getItem('token');
+    const url = `${API_BASE_URL}/buyer/quotations/${quoteId}/preview-pdf`;
+    
+    window.open(url + `?token=${token}`, '_blank');
+    return { success: true };
+  } catch (error) {
+    console.error('Preview quotation PDF error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Email quotation PDF
+ */
+emailQuotationPDF: async (quoteId, emailData) => {
+  try {
+    const url = `${API_BASE_URL}/buyer/quotations/${quoteId}/email-pdf`;
+    return await makeAuthenticatedRequest(url, {
+      method: 'POST',
+      body: JSON.stringify(emailData),
+    });
+  } catch (error) {
+    console.error('Email quotation PDF error:', error);
+    throw error;
+  }
+},
+
+// =============================================
+// DEBIT NOTE METHODS
+// =============================================
+
+/**
+ * Create debit note
+ */
+createDebitNote: async (debitNoteData) => {
+  try {
+    const url = `${API_BASE_URL}/buyer/debit-notes`;
+    return await makeAuthenticatedRequest(url, {
+      method: 'POST',
+      body: JSON.stringify(debitNoteData),
+    });
+  } catch (error) {
+    console.error('Create debit note error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Get debit notes
+ */
+getDebitNotes: async (filters = {}) => {
+  try {
+    const queryParams = new URLSearchParams(filters);
+    const url = `${API_BASE_URL}/buyer/debit-notes?${queryParams}`;
+    return await makeAuthenticatedRequest(url);
+  } catch (error) {
+    console.error('Get debit notes error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Get debit note details
+ */
+getDebitNoteDetails: async (debitNoteId) => {
+  try {
+    const url = `${API_BASE_URL}/buyer/debit-notes/${debitNoteId}`;
+    return await makeAuthenticatedRequest(url);
+  } catch (error) {
+    console.error('Get debit note details error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Download debit note PDF
+ */
+downloadDebitNotePDF: async (debitNoteId) => {
+  try {
+    const token = localStorage.getItem('token');
+    const url = `${API_BASE_URL}/buyer/debit-notes/${debitNoteId}/download-pdf`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to download PDF');
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `Debit_Note_${debitNoteId}_${new Date().toISOString().split('T')[0]}.pdf`;
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Download debit note PDF error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Preview debit note PDF
+ */
+previewDebitNotePDF: async (debitNoteId) => {
+  try {
+    const token = localStorage.getItem('token');
+    const url = `${API_BASE_URL}/buyer/debit-notes/${debitNoteId}/preview-pdf`;
+    
+    window.open(url + `?token=${token}`, '_blank');
+    return { success: true };
+  } catch (error) {
+    console.error('Preview debit note PDF error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Email debit note PDF
+ */
+emailDebitNotePDF: async (debitNoteId, emailData) => {
+  try {
+    const url = `${API_BASE_URL}/buyer/debit-notes/${debitNoteId}/email-pdf`;
+    return await makeAuthenticatedRequest(url, {
+      method: 'POST',
+      body: JSON.stringify(emailData),
+    });
+  } catch (error) {
+    console.error('Email debit note PDF error:', error);
+    throw error;
+  }
+},
+
+// =============================================
+// SUPERVISOR APPROVAL METHODS
+// =============================================
+
+/**
+ * Get pending debit notes for approval
+ */
+getPendingDebitNoteApprovals: async () => {
+  try {
+    const url = `${API_BASE_URL}/buyer/debit-note-approvals`;
+    return await makeAuthenticatedRequest(url);
+  } catch (error) {
+    console.error('Get pending debit note approvals error:', error);
+    throw error;
+  }
+},
+
+/**
+ * Process debit note approval
+ */
+processDebitNoteApproval: async (debitNoteId, approvalData) => {
+  try {
+    const url = `${API_BASE_URL}/buyer/debit-note-approvals/${debitNoteId}/process`;
+    return await makeAuthenticatedRequest(url, {
+      method: 'POST',
+      body: JSON.stringify(approvalData),
+    });
+  } catch (error) {
+    console.error('Process debit note approval error:', error);
+    throw error;
+  }
+},
+
   /**
    * Get budget codes available for purchase orders
    * @returns {Promise<Object>} Budget codes response
@@ -1221,8 +1583,8 @@ createPurchaseOrder: async (poData) => {
     try {
       const url = `${API_BASE_URL}/budget-codes/available`;
       const response = await makeAuthenticatedRequest(url);
-      const data = await response.json();
-      return { success: true, data: data.data || data };
+      // Response is already parsed JSON from makeAuthenticatedRequest
+      return { success: true, data: response.data || response };
     } catch (error) {
       console.error('Error fetching budget codes:', error);
       return { success: false, message: error.message || 'Failed to fetch budget codes' };

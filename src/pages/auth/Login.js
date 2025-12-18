@@ -23,7 +23,10 @@ const LoginForm = () => {
       'finance': '/dashboard', 
       'hr': '/dashboard',   
       'it': '/dashboard', 
+      'hse': '/dashboard', 
       'admin': '/dashboard', 
+      'technical': '/dashboard',
+      'project': 'project',
       'supplier': '/supplier/dashboard' 
     };
 
@@ -35,7 +38,7 @@ const LoginForm = () => {
 
     try {
       // Use the api instance directly instead of dispatch
-      const response = await api.post('/api/auth/login', values);
+      const response = await api.post('/auth/login', values);
 
       // Dispatch the login action with the response data
       dispatch(login(response.data));

@@ -11,7 +11,7 @@ export const userAPI = {
       
       for (const department of departments) {
         try {
-          const response = await api.get(`/api/invoices/departments/${encodeURIComponent(department)}/employees`);
+          const response = await api.get(`/invoices/departments/${encodeURIComponent(department)}/employees`);
           
           if (response.data?.success && response.data?.data) {
             const deptEmployees = response.data.data.map(emp => ({
@@ -50,7 +50,7 @@ export const userAPI = {
       
       // Fallback to admin endpoints if department method fails
       try {
-        const response = await api.get('/api/auth/users', { params: filters });
+        const response = await api.get('/auth/users', { params: filters });
         return {
           success: true,
           data: response.data.data?.users || response.data.data || response.data.users || response.data || []
@@ -60,7 +60,7 @@ export const userAPI = {
         
         try {
           console.log('Trying alternative users endpoint...');
-          const altResponse = await api.get('/api/users', { params: filters });
+          const altResponse = await api.get('/users', { params: filters });
           return {
             success: true,
             data: altResponse.data.data?.users || altResponse.data.data || altResponse.data.users || altResponse.data || []
@@ -80,7 +80,7 @@ export const userAPI = {
   // Get supervisors only
   getSupervisors: async () => {
     try {
-      const response = await api.get('/api/auth/supervisors');
+      const response = await api.get('/auth/supervisors');
       return {
         success: true,
         data: response.data.data || []
@@ -98,7 +98,7 @@ export const userAPI = {
   // Get users by role
   getUsersByRole: async (role) => {
     try {
-      const response = await api.get('/api/auth/users', { 
+      const response = await api.get('/auth/users', { 
         params: { role } 
       });
       return {
@@ -139,7 +139,7 @@ export const userAPI = {
       // Fallback: Try each role separately
       for (const role of roles) {
         try {
-          const response = await api.get('/api/auth/users', { 
+          const response = await api.get('/auth/users', { 
             params: { role, isActive: true } 
           });
           
@@ -272,7 +272,7 @@ export const userAPI = {
   // Get user profile
   getUserProfile: async (userId = 'me') => {
     try {
-      const endpoint = userId === 'me' ? '/api/auth/me' : `/api/auth/users/${userId}`;
+      const endpoint = userId === 'me' ? '/auth/me' : `/auth/users/${userId}`;
       const response = await api.get(endpoint);
       return {
         success: true,
@@ -290,7 +290,7 @@ export const userAPI = {
   // Search users
   searchUsers: async (query, filters = {}) => {
     try {
-      const response = await api.get('/api/auth/users/search', { 
+      const response = await api.get('/auth/users/search', { 
         params: { query, ...filters } 
       });
       return {
@@ -310,7 +310,7 @@ export const userAPI = {
   // Get users by department
   getUsersByDepartment: async (department) => {
     try {
-      const response = await api.get('/api/auth/users', { 
+      const response = await api.get('/auth/users', { 
         params: { department } 
       });
       return {

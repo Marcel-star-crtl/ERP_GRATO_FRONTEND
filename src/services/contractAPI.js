@@ -5,7 +5,7 @@ class ContractApiService {
 
   async getAllContracts(params = {}) {
     try {
-      const response = await api.get('/api/contracts', { params });
+      const response = await api.get('/contracts', { params });
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -14,7 +14,7 @@ class ContractApiService {
 
   async getContractById(contractId) {
     try {
-      const response = await api.get(`/api/contracts/${contractId}`);
+      const response = await api.get(`/contracts/${contractId}`);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -46,7 +46,7 @@ class ContractApiService {
         });
       }
 
-      const response = await api.post('/api/contracts', formData, {
+      const response = await api.post('/contracts', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -84,7 +84,7 @@ class ContractApiService {
         });
       }
 
-      const response = await api.put(`/api/contracts/${contractId}`, formData, {
+      const response = await api.put(`/contracts/${contractId}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -99,7 +99,7 @@ class ContractApiService {
 
   async deleteContract(contractId) {
     try {
-      const response = await api.delete(`/api/contracts/${contractId}`);
+      const response = await api.delete(`/contracts/${contractId}`);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -108,7 +108,7 @@ class ContractApiService {
 
   async updateContractStatus(contractId, statusData) {
     try {
-      const response = await api.put(`/api/contracts/${contractId}/status`, statusData);
+      const response = await api.put(`/contracts/${contractId}/status`, statusData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -117,7 +117,7 @@ class ContractApiService {
 
   async approveContract(contractId, approvalData = {}) {
     try {
-      const response = await api.post(`/api/contracts/${contractId}/approve`, approvalData);
+      const response = await api.post(`/contracts/${contractId}/approve`, approvalData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -126,7 +126,7 @@ class ContractApiService {
 
   async terminateContract(contractId, terminationData) {
     try {
-      const response = await api.post(`/api/contracts/${contractId}/terminate`, terminationData);
+      const response = await api.post(`/contracts/${contractId}/terminate`, terminationData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -135,7 +135,7 @@ class ContractApiService {
 
   async suspendContract(contractId, suspensionData) {
     try {
-      const response = await api.post(`/api/contracts/${contractId}/suspend`, suspensionData);
+      const response = await api.post(`/contracts/${contractId}/suspend`, suspensionData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -146,7 +146,7 @@ class ContractApiService {
 
   async renewContract(contractId, renewalData) {
     try {
-      const response = await api.post(`/api/contracts/${contractId}/renew`, renewalData);
+      const response = await api.post(`/contracts/${contractId}/renew`, renewalData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -180,7 +180,7 @@ class ContractApiService {
         });
       }
 
-      const response = await api.post(`/api/contracts/${contractId}/amendments`, formData, {
+      const response = await api.post(`/contracts/${contractId}/amendments`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -195,7 +195,7 @@ class ContractApiService {
 
   async approveAmendment(contractId, amendmentId, approvalData = {}) {
     try {
-      const response = await api.put(`/api/contracts/${contractId}/amendments/${amendmentId}/approve`, approvalData);
+      const response = await api.put(`/contracts/${contractId}/amendments/${amendmentId}/approve`, approvalData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -206,7 +206,7 @@ class ContractApiService {
 
   async addMilestone(contractId, milestoneData) {
     try {
-      const response = await api.post(`/api/contracts/${contractId}/milestones`, milestoneData);
+      const response = await api.post(`/contracts/${contractId}/milestones`, milestoneData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -215,7 +215,7 @@ class ContractApiService {
 
   async updateMilestone(contractId, milestoneId, milestoneData) {
     try {
-      const response = await api.put(`/api/contracts/${contractId}/milestones/${milestoneId}`, milestoneData);
+      const response = await api.put(`/contracts/${contractId}/milestones/${milestoneId}`, milestoneData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -226,7 +226,7 @@ class ContractApiService {
 
   async addCommunication(contractId, communicationData) {
     try {
-      const response = await api.post(`/api/contracts/${contractId}/communications`, communicationData);
+      const response = await api.post(`/contracts/${contractId}/communications`, communicationData);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -249,7 +249,7 @@ class ContractApiService {
         }
       });
 
-      const response = await api.post(`/api/contracts/${contractId}/documents`, formData, {
+      const response = await api.post(`/contracts/${contractId}/documents`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -264,7 +264,7 @@ class ContractApiService {
 
   async downloadDocument(contractId, documentId) {
     try {
-      const response = await api.get(`/api/contracts/${contractId}/documents/${documentId}`, {
+      const response = await api.get(`/contracts/${contractId}/documents/${documentId}`, {
         responseType: 'blob'
       });
       return response.data;
@@ -278,7 +278,7 @@ class ContractApiService {
 
   async getContractStatistics() {
     try {
-      const response = await api.get('/api/contracts/analytics/statistics');
+      const response = await api.get('/contracts/analytics/statistics');
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -287,7 +287,7 @@ class ContractApiService {
 
   async getExpiringContracts(days = 30) {
     try {
-      const response = await api.get('/api/contracts/analytics/expiring', {
+      const response = await api.get('/contracts/analytics/expiring', {
         params: { days }
       });
       return response.data;
@@ -298,7 +298,7 @@ class ContractApiService {
 
   async getContractsBySupplier(supplierId) {
     try {
-      const response = await api.get(`/api/contracts/analytics/by-supplier/${supplierId}`);
+      const response = await api.get(`/contracts/analytics/by-supplier/${supplierId}`);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -307,7 +307,7 @@ class ContractApiService {
 
   async getContractsByDepartment(department) {
     try {
-      const response = await api.get(`/api/contracts/analytics/by-department/${department}`);
+      const response = await api.get(`/contracts/analytics/by-department/${department}`);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -317,7 +317,7 @@ class ContractApiService {
   
   async exportContracts(params = {}) {
     try {
-      const response = await api.get('/api/contracts/export', {
+      const response = await api.get('/contracts/export', {
         params,
         responseType: 'blob'
       });
@@ -331,7 +331,7 @@ class ContractApiService {
 
   async getMyContractNotifications() {
     try {
-      const response = await api.get('/api/contracts/notifications/my-contracts');
+      const response = await api.get('/contracts/notifications/my-contracts');
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -340,7 +340,7 @@ class ContractApiService {
 
   async acknowledgeNotification(contractId, notificationId) {
     try {
-      const response = await api.put(`/api/contracts/notifications/${contractId}/${notificationId}/acknowledge`);
+      const response = await api.put(`/contracts/notifications/${contractId}/${notificationId}/acknowledge`);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -350,7 +350,7 @@ class ContractApiService {
 
   async bulkUpdateStatus(contractIds, status, reason = '') {
     try {
-      const response = await api.put('/api/contracts/bulk/status', {
+      const response = await api.put('/contracts/bulk/status', {
         contractIds,
         status,
         reason
@@ -365,7 +365,7 @@ class ContractApiService {
 
   async searchContracts(searchParams) {
     try {
-      const response = await api.post('/api/contracts/search', searchParams);
+      const response = await api.post('/contracts/search', searchParams);
       return response.data;
     } catch (error) {
       throw this.handleError(error);
@@ -398,7 +398,7 @@ class ContractApiService {
         }
       });
 
-      const response = await api.post('/api/contracts/search', searchParams);
+      const response = await api.post('/contracts/search', searchParams);
       return response.data;
     } catch (error) {
       throw this.handleError(error);

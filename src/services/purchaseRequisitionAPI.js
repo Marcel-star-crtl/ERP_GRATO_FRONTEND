@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 
 // Create axios instance with default config
 const apiClient = axios.create({
@@ -38,69 +38,34 @@ apiClient.interceptors.response.use(
 
 // Purchase Requisition API Methods
 export const purchaseRequisitionAPI = {
-  createRequisition: async (requisitionData) => {
-    const formData = new FormData();
-    
-    // Append regular fields
-    Object.keys(requisitionData).forEach(key => {
-      if (key === 'items') {
-        formData.append(key, JSON.stringify(requisitionData[key]));
-      } else if (key === 'attachments') {
-        // : Handle file attachments properly
-        if (requisitionData.attachments && requisitionData.attachments.length > 0) {
-          requisitionData.attachments.forEach((file, index) => {
-            // Handle both File objects and uploaded file objects
-            if (file.originFileObj) {
-              // From Ant Design Upload component
-              formData.append('attachments', file.originFileObj);
-            } else if (file instanceof File) {
-              // Direct File object
-              formData.append('attachments', file);
-            } else if (file.file) {
-              // Nested file object
-              formData.append('attachments', file.file);
-            }
-          });
-        }
-      } else if (requisitionData[key] !== undefined && requisitionData[key] !== null) {
-        formData.append(key, requisitionData[key]);
-      }
-    });
-
-    // : Validate items before submission
-    if (requisitionData.items && requisitionData.items.length > 0) {
-      const itemIds = requisitionData.items.map(item => item.itemId).filter(Boolean);
-      
-      if (itemIds.length > 0) {
-        try {
-          const validationResponse = await apiClient.post('/items/validate', { itemIds });
-          
-          if (!validationResponse.data.valid) {
-            return {
-              success: false,
-              message: 'One or more selected items are not available in the database'
-            };
-          }
-        } catch (validationError) {
-          console.warn('Item validation failed, proceeding anyway:', validationError);
-        }
-      }
-    }
-
+  createRequisition: async (formData) => {
     try {
-      const response = await apiClient.post('/purchase-requisitions/', formData, {
+      const token = localStorage.getItem('token');
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+      console.log('Sending requisition to:', `${API_BASE_URL}/purchase-requisitions`);
+      console.log('FormData created with files');
+
+      // ✅ CRITICAL: Use fetch with FormData (DO NOT set Content-Type)
+      const response = await fetch(`${API_BASE_URL}/purchase-requisitions`, {
+        method: 'POST',
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+          // DO NOT set Content-Type - browser will set it with boundary for multipart/form-data
         },
-        timeout: 30000, // 30 second timeout for file uploads
+        body: formData // Send FormData directly
       });
-      return response.data;
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create requisition');
+      }
+
+      return data;
     } catch (error) {
       console.error('Create requisition error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Failed to create requisition'
-      };
+      throw error;
     }
   },
 
@@ -707,6 +672,89 @@ export const purchaseRequisitionAPI = {
         success: false,
         message: error.response?.data?.message || 'Failed to fetch finance dashboard data'
       };
+    }
+  },
+
+  /**
+   * Download attachment from requisition
+   */
+  downloadAttachment: async (requisitionId, attachmentId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+      // message.loading({ content: 'Downloading file...', key: 'download' });
+
+      const response = await fetch(
+        `${API_BASE_URL}/purchase-requisitions/${requisitionId}/attachments/${attachmentId}/download`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to download file');
+      }
+
+      // Get filename from Content-Disposition header
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'attachment';
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Get the blob
+      const blob = await response.blob();
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up
+      window.URL.revokeObjectURL(url);
+
+      // message.success({ content: 'File downloaded successfully!', key: 'download', duration: 2 });
+
+      return { success: true };
+    } catch (error) {
+      console.error('Download attachment error:', error);
+      // message.error({ content: error.message || 'Failed to download file', key: 'download', duration: 3 });
+      throw error;
+    }
+  },
+
+  /**
+   * Preview attachment (opens in new tab)
+   */
+  previewAttachment: async (requisitionId, attachmentId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+      // Open in new tab with token in URL
+      window.open(
+        `${API_BASE_URL}/purchase-requisitions/${requisitionId}/attachments/${attachmentId}/preview?token=${token}`,
+        '_blank'
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error('Preview attachment error:', error);
+      // message.error('Failed to preview file');
+      throw error;
     }
   }
 };

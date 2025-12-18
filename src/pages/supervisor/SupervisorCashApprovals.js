@@ -1,428 +1,4 @@
-// import React, { useState, useEffect } from 'react';
-// import { useNavigate } from 'react-router-dom';
-// import {
-//   Card,
-//   Table,
-//   Button,
-//   Space,
-//   Tag,
-//   Tabs,
-//   Empty,
-//   Spin,
-//   message,
-//   Badge,
-//   Tooltip,
-//   Row,
-//   Col
-// } from 'antd';
-// import {
-//   CheckCircleOutlined,
-//   CloseCircleOutlined,
-//   EyeOutlined,
-//   FilePdfOutlined,
-//   FileTextOutlined,
-//   ClockCircleOutlined,
-//   DollarOutlined
-// } from '@ant-design/icons';
-// import api from '../../services/api';
-// import { useSelector } from 'react-redux';
-
-// const SupervisorCashApprovals = () => {
-//   const navigate = useNavigate();
-//   const { user } = useSelector((state) => state.auth);
-//   const [activeTab, setActiveTab] = useState('approvals');
-//   const [cashRequests, setCashRequests] = useState([]);
-//   const [justifications, setJustifications] = useState([]);
-//   const [loading, setLoading] = useState(false);
-
-//   useEffect(() => {
-//     if (activeTab === 'approvals') {
-//       fetchCashRequests();
-//     } else if (activeTab === 'justifications') {
-//       fetchJustifications();
-//     }
-//   }, [activeTab]);
-
-//   const fetchCashRequests = async () => {
-//     try {
-//       setLoading(true);
-//       const response = await api.get('/api/cash-requests/supervisor');
-      
-//       if (response.data.success) {
-//         setCashRequests(response.data.data);
-//       }
-//     } catch (error) {
-//       console.error('Error fetching cash requests:', error);
-//       message.error('Failed to load cash requests');
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const fetchJustifications = async () => {
-//     try {
-//       setLoading(true);
-//       const response = await api.get('/api/cash-requests/supervisor/justifications');
-      
-//       if (response.data.success) {
-//         setJustifications(response.data.data);
-//       }
-//     } catch (error) {
-//       console.error('Error fetching justifications:', error);
-//       message.error('Failed to load justifications');
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const handleViewCashRequest = (requestId) => {
-//     navigate(`/supervisor/cash-request/${requestId}`);
-//   };
-
-//   const handleReviewJustification = (requestId) => {
-//     navigate(`/supervisor/cash-approvals/justification/${requestId}/review`);
-//   };
-
-//   const getStatusTag = (status) => {
-//     const statusConfig = {
-//       'pending_supervisor': { color: 'warning', label: 'Pending Supervisor' },
-//       'pending_departmental_head': { color: 'processing', label: 'Pending Dept Head' },
-//       'pending_head_of_business': { color: 'processing', label: 'Pending HOB' },
-//       'pending_finance': { color: 'processing', label: 'Pending Finance' },
-//       'approved': { color: 'success', label: 'Approved' },
-//       'disbursed': { color: 'success', label: 'Disbursed' },
-//       'denied': { color: 'error', label: 'Denied' }
-//     };
-
-//     const config = statusConfig[status] || { color: 'default', label: status };
-//     return <Tag color={config.color}>{config.label}</Tag>;
-//   };
-
-//   const getJustificationStatusTag = (status) => {
-//     const statusConfig = {
-//       'justification_pending_supervisor': { color: 'warning', label: 'Pending Your Review' },
-//       'justification_pending_finance': { color: 'processing', label: 'With Finance' },
-//       'justification_rejected_supervisor': { color: 'error', label: 'Rejected - Awaiting Resubmission' },
-//       'justification_rejected_finance': { color: 'error', label: 'Finance Rejection' },
-//       'completed': { color: 'success', label: 'Completed' }
-//     };
-
-//     const config = statusConfig[status] || { color: 'default', label: status };
-//     return <Tag color={config.color}>{config.label}</Tag>;
-//   };
-
-//   const cashRequestsColumns = [
-//     {
-//       title: 'Request ID',
-//       dataIndex: '_id',
-//       key: '_id',
-//       width: 120,
-//       render: (id) => <Tag color="blue">REQ-{id.toString().slice(-6).toUpperCase()}</Tag>
-//     },
-//     {
-//       title: 'Employee',
-//       dataIndex: ['employee', 'fullName'],
-//       key: 'employee',
-//       width: 200
-//     },
-//     {
-//       title: 'Amount',
-//       dataIndex: 'amountRequested',
-//       key: 'amount',
-//       width: 150,
-//       render: (amount) => (
-//         <Space>
-//           <DollarOutlined />
-//           <span style={{ fontWeight: 'bold' }}>XAF {parseFloat(amount).toLocaleString()}</span>
-//         </Space>
-//       )
-//     },
-//     {
-//       title: 'Purpose',
-//       dataIndex: 'purpose',
-//       key: 'purpose',
-//       width: 250,
-//       ellipsis: {
-//         showTitle: false,
-//       },
-//       render: (text) => (
-//         <Tooltip title={text}>
-//           {text}
-//         </Tooltip>
-//       )
-//     },
-//     {
-//       title: 'Status',
-//       dataIndex: 'status',
-//       key: 'status',
-//       width: 180,
-//       render: (status) => getStatusTag(status)
-//     },
-//     {
-//       title: 'Created',
-//       dataIndex: 'createdAt',
-//       key: 'createdAt',
-//       width: 120,
-//       render: (date) => new Date(date).toLocaleDateString('en-GB')
-//     },
-//     {
-//       title: 'Action',
-//       key: 'action',
-//       width: 120,
-//       render: (_, record) => (
-//         <Space size="small">
-//           <Button
-//             type="link"
-//             size="small"
-//             icon={<EyeOutlined />}
-//             onClick={() => handleViewCashRequest(record._id)}
-//           >
-//             View
-//           </Button>
-//         </Space>
-//       )
-//     }
-//   ];
-
-//   const justificationsColumns = [
-//     {
-//       title: 'Request ID',
-//       dataIndex: '_id',
-//       key: '_id',
-//       width: 120,
-//       render: (id) => <Tag color="blue">REQ-{id.toString().slice(-6).toUpperCase()}</Tag>
-//     },
-//     {
-//       title: 'Employee',
-//       dataIndex: ['employee', 'fullName'],
-//       key: 'employee',
-//       width: 200
-//     },
-//     {
-//       title: 'Disbursed Amount',
-//       dataIndex: ['disbursementDetails', 'amount'],
-//       key: 'disbursedAmount',
-//       width: 150,
-//       render: (amount) => (
-//         <Space>
-//           <DollarOutlined />
-//           <span style={{ fontWeight: 'bold' }}>XAF {parseFloat(amount || 0).toLocaleString()}</span>
-//         </Space>
-//       )
-//     },
-//     {
-//       title: 'Amount Spent',
-//       dataIndex: ['justification', 'amountSpent'],
-//       key: 'amountSpent',
-//       width: 150,
-//       render: (amount) => (
-//         <span>XAF {parseFloat(amount || 0).toLocaleString()}</span>
-//       )
-//     },
-//     {
-//       title: 'Documents',
-//       dataIndex: ['justification', 'documents'],
-//       key: 'documents',
-//       width: 100,
-//       render: (documents) => (
-//         <Badge 
-//           count={documents?.length || 0} 
-//           showZero 
-//           style={{ backgroundColor: '#1890ff' }}
-//         />
-//       )
-//     },
-//     {
-//       title: 'Status',
-//       dataIndex: 'status',
-//       key: 'status',
-//       width: 180,
-//       render: (status) => getJustificationStatusTag(status)
-//     },
-//     {
-//       title: 'Submitted',
-//       dataIndex: ['justification', 'justificationDate'],
-//       key: 'submittedDate',
-//       width: 120,
-//       render: (date) => date ? new Date(date).toLocaleDateString('en-GB') : 'N/A'
-//     },
-//     {
-//       title: 'Action',
-//       key: 'action',
-//       width: 120,
-//       fixed: 'right',
-//       render: (_, record) => (
-//         <Space size="small">
-//           <Tooltip title="Review Justification">
-//             <Button
-//               type="primary"
-//               size="small"
-//               icon={<FileTextOutlined />}
-//               onClick={() => handleReviewJustification(record._id)}
-//             >
-//               Review
-//             </Button>
-//           </Tooltip>
-//         </Space>
-//       )
-//     }
-//   ];
-
-//   const pendingJustifications = justifications.filter(
-//     j => j.status === 'justification_pending_supervisor'
-//   );
-
-//   const completedJustifications = justifications.filter(
-//     j => j.status !== 'justification_pending_supervisor'
-//   );
-
-//   return (
-//     <div style={{ padding: '24px' }}>
-//       <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-//         <Col xs={24} sm={12} md={6}>
-//           <Card>
-//             <div style={{ textAlign: 'center' }}>
-//               <ClockCircleOutlined style={{ fontSize: '24px', color: '#faad14', marginBottom: '8px' }} />
-//               <div style={{ fontSize: '12px', color: '#666' }}>Cash Pending</div>
-//               <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-//                 {cashRequests.filter(r => r.status.includes('pending')).length}
-//               </div>
-//             </div>
-//           </Card>
-//         </Col>
-//         <Col xs={24} sm={12} md={6}>
-//           <Card>
-//             <div style={{ textAlign: 'center' }}>
-//               <FileTextOutlined style={{ fontSize: '24px', color: '#1890ff', marginBottom: '8px' }} />
-//               <div style={{ fontSize: '12px', color: '#666' }}>Justifications Pending</div>
-//               <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-//                 {pendingJustifications.length}
-//               </div>
-//             </div>
-//           </Card>
-//         </Col>
-//         <Col xs={24} sm={12} md={6}>
-//           <Card>
-//             <div style={{ textAlign: 'center' }}>
-//               <CheckCircleOutlined style={{ fontSize: '24px', color: '#52c41a', marginBottom: '8px' }} />
-//               <div style={{ fontSize: '12px', color: '#666' }}>Cash Approved</div>
-//               <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-//                 {cashRequests.filter(r => r.status === 'approved').length}
-//               </div>
-//             </div>
-//           </Card>
-//         </Col>
-//         <Col xs={24} sm={12} md={6}>
-//           <Card>
-//             <div style={{ textAlign: 'center' }}>
-//               <CloseCircleOutlined style={{ fontSize: '24px', color: '#ff4d4f', marginBottom: '8px' }} />
-//               <div style={{ fontSize: '12px', color: '#666' }}>Denied</div>
-//               <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-//                 {cashRequests.filter(r => r.status === 'denied').length}
-//               </div>
-//             </div>
-//           </Card>
-//         </Col>
-//       </Row>
-
-//       <Tabs
-//         activeKey={activeTab}
-//         onChange={setActiveTab}
-//         items={[
-//           {
-//             key: 'approvals',
-//             label: (
-//               <span>
-//                 <DollarOutlined />
-//                 Cash Request Approvals
-//               </span>
-//             ),
-//             children: (
-//               <Card>
-//                 <Spin spinning={loading}>
-//                   {cashRequests.length === 0 ? (
-//                     <Empty description="No cash requests to approve" />
-//                   ) : (
-//                     <Table
-//                       columns={cashRequestsColumns}
-//                       dataSource={cashRequests}
-//                       rowKey="_id"
-//                       pagination={{ pageSize: 10 }}
-//                       scroll={{ x: 1200 }}
-//                     />
-//                   )}
-//                 </Spin>
-//               </Card>
-//             )
-//           },
-//           {
-//             key: 'justifications',
-//             label: (
-//               <span>
-//                 <FileTextOutlined />
-//                 Justification Approvals
-//                 {pendingJustifications.length > 0 && (
-//                   <Badge 
-//                     count={pendingJustifications.length} 
-//                     style={{ marginLeft: '8px', backgroundColor: '#ff4d4f' }}
-//                   />
-//                 )}
-//               </span>
-//             ),
-//             children: (
-//               <Spin spinning={loading}>
-//                 {justifications.length === 0 ? (
-//                   <Empty description="No justifications to review" />
-//                 ) : (
-//                   <>
-//                     {pendingJustifications.length > 0 && (
-//                       <Card 
-//                         title={`Pending Your Review (${pendingJustifications.length})`}
-//                         style={{ marginBottom: '24px' }}
-//                         bodyStyle={{ padding: 0 }}
-//                       >
-//                         <Table
-//                           columns={justificationsColumns}
-//                           dataSource={pendingJustifications}
-//                           rowKey="_id"
-//                           pagination={false}
-//                           scroll={{ x: 1400 }}
-//                         />
-//                       </Card>
-//                     )}
-
-//                     {completedJustifications.length > 0 && (
-//                       <Card 
-//                         title={`Processing History (${completedJustifications.length})`}
-//                         bodyStyle={{ padding: 0 }}
-//                       >
-//                         <Table
-//                           columns={justificationsColumns}
-//                           dataSource={completedJustifications}
-//                           rowKey="_id"
-//                           pagination={{ pageSize: 10 }}
-//                           scroll={{ x: 1400 }}
-//                         />
-//                       </Card>
-//                     )}
-//                   </>
-//                 )}
-//               </Spin>
-//             )
-//           }
-//         ]}
-//       />
-//     </div>
-//   );
-// };
-
-// export default SupervisorCashApprovals;
-
-
-
-
-
-
+// pages/supervisor/SupervisorCashApprovals.jsx - ENHANCED FOR REIMBURSEMENTS
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -437,7 +13,6 @@ import {
   Typography,
   Tag,
   Space,
-  Tabs,
   Alert,
   Descriptions,
   Timeline,
@@ -448,9 +23,11 @@ import {
   Col,
   Statistic,
   Spin,
-  notification,
   Tooltip,
-  Badge
+  Badge,
+  Divider,
+  Image,
+  notification
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -465,107 +42,13 @@ import {
   ReloadOutlined,
   ExclamationCircleOutlined,
   FileOutlined,
-  HistoryOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  DownloadOutlined,
+  ZoomInOutlined
 } from '@ant-design/icons';
 import { cashRequestAPI } from '../../services/cashRequestAPI';
 
-// PDFViewer component to handle authenticated PDF viewing
-const PDFViewer = ({ url, name, authHeaders }) => {
-  const [pdfUrl, setPdfUrl] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const loadPDF = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(url, {
-          headers: authHeaders
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to load PDF');
-        }
-
-        const blob = await response.blob();
-        const pdfBlob = new Blob([blob], { type: 'application/pdf' });
-        const blobUrl = window.URL.createObjectURL(pdfBlob);
-        
-        setPdfUrl(blobUrl);
-      } catch (err) {
-        console.error('PDF loading error:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (url && authHeaders) {
-      loadPDF();
-    }
-
-    return () => {
-      if (pdfUrl) {
-        window.URL.revokeObjectURL(pdfUrl);
-      }
-    };
-  }, [url, authHeaders]);
-
-  if (loading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '70vh',
-        border: '1px solid #d9d9d9',
-        borderRadius: '6px'
-      }}>
-        <Spin size="large" />
-        <span style={{ marginLeft: '16px' }}>Loading PDF...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        flexDirection: 'column',
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '70vh',
-        border: '1px solid #d9d9d9',
-        borderRadius: '6px',
-        backgroundColor: '#f5f5f5'
-      }}>
-        <Alert
-          message="PDF Loading Failed"
-          description={`Unable to load PDF: ${error}`}
-          type="error"
-          showIcon
-        />
-      </div>
-    );
-  }
-
-  return (
-    <iframe
-      src={pdfUrl}
-      style={{
-        width: '100%',
-        height: '70vh',
-        border: '1px solid #d9d9d9',
-        borderRadius: '6px'
-      }}
-      title={name}
-    />
-  );
-};
-
-const { Title, Text } = Typography;
-const { TabPane } = Tabs;
+const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 const SupervisorCashApprovals = () => {
@@ -577,7 +60,6 @@ const SupervisorCashApprovals = () => {
   const autoRejectId = searchParams.get('reject');
   
   const [requests, setRequests] = useState([]);
-  const [justifications, setJustifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
@@ -588,45 +70,92 @@ const SupervisorCashApprovals = () => {
     approved: 0,
     rejected: 0,
     total: 0,
-    justificationsPending: 0
+    reimbursements: 0,
+    advances: 0
   });
-  
-  const [fileViewerVisible, setFileViewerVisible] = useState(false);
-  const [viewingFile, setViewingFile] = useState(null);
-  const [fileViewerLoading, setFileViewerLoading] = useState(false);
   
   const [form] = Form.useForm();
 
-  // Check if user can approve this request
+  const fetchAllData = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('Fetching all cash requests...');
+
+      const response = await cashRequestAPI.getSupervisorRequests();
+
+      if (response && response.success) {
+        const allData = response.data || [];
+        
+        console.log('Total records fetched:', allData.length);
+        
+        setRequests(allData);
+
+        // Calculate stats - separate reimbursements from advances
+        const pending = allData.filter(req => req.teamRequestMetadata?.userHasPendingApproval).length;
+        const approved = allData.filter(req => req.teamRequestMetadata?.userHasApproved).length;
+        const rejected = allData.filter(req => req.teamRequestMetadata?.userHasRejected).length;
+        const reimbursements = allData.filter(req => req.requestMode === 'reimbursement').length;
+        const advances = allData.filter(req => req.requestMode === 'advance').length;
+
+        setStats({
+          pending,
+          approved,
+          rejected,
+          total: allData.length,
+          reimbursements,
+          advances
+        });
+      } else {
+        throw new Error('Failed to fetch data');
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      message.error(error.response?.data?.message || 'Failed to load requests');
+      setRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user?.email) {
+      fetchAllData();
+    }
+  }, [fetchAllData, user?.email]);
+
+  const handleRefresh = async () => {
+    await fetchAllData();
+    message.success('Data refreshed successfully');
+  };
+
   const canUserApprove = useCallback((request) => {
     if (!request.approvalChain || !user?.email) {
       return false;
     }
-    
-    const currentStep = request.approvalChain.find(step => 
-      step.approver?.email?.toLowerCase() === user.email.toLowerCase() &&
-      step.status === 'pending'
-    );
-    
-    if (!currentStep) {
-      return false;
+
+    if (request.teamRequestMetadata) {
+      return request.teamRequestMetadata.userHasPendingApproval === true;
     }
-    
-    const statusLevelMap = {
-      1: 'pending_supervisor',
-      2: 'pending_departmental_head', 
-      3: 'pending_head_of_business',
-      4: 'pending_finance'
-    };
-    
-    const expectedStatus = statusLevelMap[currentStep.level];
-    return request.status === expectedStatus;
+
+    const currentLevel = request.approvalChain.find(step => step.status === 'pending')?.level;
+    if (!currentLevel) return false;
+
+    const userPendingStep = request.approvalChain.find(step => 
+      step.approver?.email?.toLowerCase() === user.email.toLowerCase() &&
+      step.status === 'pending' &&
+      step.level === currentLevel
+    );
+
+    return !!userPendingStep;
   }, [user?.email]);
 
-  // Check if user has already approved this request
   const hasUserApproved = useCallback((request) => {
     if (!request.approvalChain || !user?.email) {
       return false;
+    }
+
+    if (request.teamRequestMetadata) {
+      return request.teamRequestMetadata.userHasApproved === true;
     }
     
     return request.approvalChain.some(step => 
@@ -635,10 +164,13 @@ const SupervisorCashApprovals = () => {
     );
   }, [user?.email]);
 
-  // Check if user has rejected this request
   const hasUserRejected = useCallback((request) => {
     if (!request.approvalChain || !user?.email) {
       return false;
+    }
+
+    if (request.teamRequestMetadata) {
+      return request.teamRequestMetadata.userHasRejected === true;
     }
     
     return request.approvalChain.some(step => 
@@ -647,99 +179,6 @@ const SupervisorCashApprovals = () => {
     );
   }, [user?.email]);
 
-  // Fetch cash requests for supervisor approval
-  const fetchCashRequests = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      const response = await cashRequestAPI.getSupervisorRequests();
-      
-      if (response.success) {
-        const requestsData = response.data || [];
-        setRequests(requestsData);
-
-        // Calculate stats
-        const pending = requestsData.filter(req => canUserApprove(req)).length;
-        const approved = requestsData.filter(req => hasUserApproved(req)).length;
-        const rejected = requestsData.filter(req => hasUserRejected(req)).length;
-
-        setStats(prev => ({
-          ...prev,
-          pending,
-          approved,
-          rejected,
-          total: requestsData.length
-        }));
-      } else {
-        throw new Error(response.message || 'Failed to fetch cash requests');
-      }
-
-    } catch (error) {
-      console.error('Error fetching cash requests:', error);
-      message.error(error.response?.data?.message || 'Failed to fetch cash requests');
-      setRequests([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.email, canUserApprove, hasUserApproved, hasUserRejected]);
-
-  // Fetch justifications for supervisor approval
-  const fetchJustifications = useCallback(async () => {
-    try {
-      const response = await cashRequestAPI.getSupervisorJustifications();
-      
-      if (response.success) {
-        const justificationsData = response.data || [];
-        setJustifications(justificationsData);
-
-        // Count pending justifications
-        const pendingJustifications = justificationsData.filter(j => 
-          j.justificationStatus === 'pending_supervisor_review'
-        ).length;
-
-        setStats(prev => ({
-          ...prev,
-          justificationsPending: pendingJustifications
-        }));
-      }
-    } catch (error) {
-      console.error('Error fetching justifications:', error);
-      message.error('Failed to fetch justifications');
-      setJustifications([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (user?.email) {
-      fetchCashRequests();
-      fetchJustifications();
-    }
-  }, [fetchCashRequests, fetchJustifications, user?.email]);
-
-  // Handle auto-approval from email links
-  useEffect(() => {
-    const handleAutoAction = async () => {
-      if (autoApprovalId || autoRejectId) {
-        const requestId = autoApprovalId || autoRejectId;
-        try {
-          const response = await cashRequestAPI.getRequestById(requestId);
-          if (response.success) {
-            setSelectedRequest(response.data);
-            setApprovalModalVisible(true);
-            form.setFieldsValue({ 
-              decision: autoApprovalId ? 'approved' : 'rejected' 
-            });
-          }
-        } catch (error) {
-          message.error('Failed to load cash request for approval');
-        }
-      }
-    };
-
-    handleAutoAction();
-  }, [autoApprovalId, autoRejectId, form]);
-
-  // Handle approval decision
   const handleApprovalDecision = async (values) => {
     if (!selectedRequest) return;
 
@@ -758,17 +197,19 @@ const SupervisorCashApprovals = () => {
       
       if (response.success) {
         const actionText = values.decision === 'approved' ? 'approved' : 'rejected';
-        message.success(`Cash request ${actionText} successfully`);
+        const requestType = selectedRequest.requestMode === 'reimbursement' ? 'Reimbursement' : 'Cash advance';
+        
+        message.success(`${requestType} request ${actionText} successfully`);
         
         setApprovalModalVisible(false);
         form.resetFields();
         setSelectedRequest(null);
         
-        await fetchCashRequests();
+        await fetchAllData();
         
         notification.success({
           message: 'Approval Decision Recorded',
-          description: `Cash request from ${selectedRequest.employee?.fullName} has been ${actionText} and stakeholders have been notified.`,
+          description: `${requestType} request from ${selectedRequest.employee?.fullName} has been ${actionText}.`,
           duration: 4
         });
       } else {
@@ -796,11 +237,25 @@ const SupervisorCashApprovals = () => {
     }
   };
 
-  const handleViewJustification = (justification) => {
-    navigate(`/supervisor/cash-approvals/justification/${justification._id}/review`);
+  const handleDownloadReceipt = async (receipt) => {
+    try {
+      const blob = await cashRequestAPI.downloadAttachment(receipt.publicId);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = receipt.name || receipt.publicId;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      message.success(`Downloaded ${receipt.name || 'file'}`);
+    } catch (error) {
+      console.error('Error downloading receipt:', error);
+      message.error('Failed to download receipt');
+    }
   };
 
-  const getStatusTag = (status) => {
+  const getStatusTag = (status, request = null) => {
     const statusMap = {
       'pending_supervisor': { color: 'orange', text: 'Pending Supervisor', icon: <ClockCircleOutlined /> },
       'pending_departmental_head': { color: 'orange', text: 'Pending Departmental Head', icon: <ClockCircleOutlined /> },
@@ -808,52 +263,32 @@ const SupervisorCashApprovals = () => {
       'pending_finance': { color: 'blue', text: 'Pending Finance', icon: <ClockCircleOutlined /> },
       'approved': { color: 'green', text: 'Approved', icon: <CheckCircleOutlined /> },
       'denied': { color: 'red', text: 'Denied', icon: <CloseCircleOutlined /> },
-      'rejected': { color: 'red', text: 'Rejected', icon: <CloseCircleOutlined /> },
-      'disbursed': { color: 'purple', text: 'Disbursed', icon: <DollarOutlined /> },
-      'completed': { color: 'cyan', text: 'Completed', icon: <CheckCircleOutlined /> },
-      'pending_supervisor_review': { color: 'orange', text: 'Pending Your Review', icon: <ClockCircleOutlined /> },
-      'pending_finance_review': { color: 'blue', text: 'Pending Finance Review', icon: <ClockCircleOutlined /> },
-      'justification_approved': { color: 'green', text: 'Justification Approved', icon: <CheckCircleOutlined /> },
-      'justification_rejected': { color: 'red', text: 'Justification Rejected', icon: <CloseCircleOutlined /> }
+      'partially_disbursed': { color: 'processing', text: 'Partially Disbursed', icon: <DollarOutlined /> },
+      'fully_disbursed': { color: 'cyan', text: 'Fully Disbursed', icon: <DollarOutlined /> },
+      'completed': { color: 'green', text: 'Completed', icon: <CheckCircleOutlined /> }
     };
 
-    const config = statusMap[status] || { color: 'default', text: status?.replace('_', ' ') || 'Unknown', icon: null };
+    const config = statusMap[status] || { color: 'default', text: status?.replace(/_/g, ' ') || 'Unknown', icon: null };
     return <Tag color={config.color} icon={config.icon}>{config.text}</Tag>;
   };
 
   const getUrgencyTag = (urgency) => {
     const urgencyMap = {
-      'high': { color: 'red', text: 'High Priority' },
-      'medium': { color: 'orange', text: 'Medium Priority' },
-      'low': { color: 'green', text: 'Low Priority' }
+      'urgent': { color: 'red', text: 'Urgent' },
+      'high': { color: 'red', text: 'High' },
+      'medium': { color: 'orange', text: 'Medium' },
+      'low': { color: 'green', text: 'Low' }
     };
 
     const urgencyInfo = urgencyMap[urgency] || { color: 'default', text: urgency };
-    
     return <Tag color={urgencyInfo.color}>{urgencyInfo.text}</Tag>;
   };
 
-  const getApprovalProgress = (request) => {
-    if (!request.approvalChain || request.approvalChain.length === 0) return 0;
-    const approved = request.approvalChain.filter(step => step.status === 'approved').length;
-    return Math.round((approved / request.approvalChain.length) * 100);
-  };
-
-  const getTabCount = (status) => {
-    const filtered = requests.filter(req => {
-      switch (status) {
-        case 'pending':
-          return canUserApprove(req);
-        case 'approved':
-          return hasUserApproved(req);
-        case 'rejected':
-          return hasUserRejected(req);
-        default:
-          return false;
-      }
-    });
-    
-    return filtered.length;
+  const getRequestModeTag = (mode) => {
+    if (mode === 'reimbursement') {
+      return <Tag color="purple">REIMBURSEMENT</Tag>;
+    }
+    return <Tag color="blue">ADVANCE</Tag>;
   };
 
   const getFilteredRequests = () => {
@@ -871,121 +306,35 @@ const SupervisorCashApprovals = () => {
     });
   };
 
-  // Secure file download handler
-  const handleDownloadAttachment = async (requestId, attachment) => {
-    try {
-      if (!attachment || (!attachment.fileName && !attachment.name)) {
-        message.error('No filename available for this attachment');
-        return;
-      }
-
-      const fileName = attachment.fileName || attachment.name;
-      const blob = await cashRequestAPI.downloadAttachment(requestId, fileName);
-      
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      message.success(`Downloaded ${fileName}`);
-    } catch (error) {
-      console.error('Error downloading attachment:', error);
-      message.error(`Failed to download attachment: ${error.message}`);
-    }
-  };
-
-  const handleViewAttachment = async (attachment) => {
-    try {
-      if (!attachment) {
-        message.error('No attachment data available');
-        return;
-      }
-
-      setFileViewerLoading(true);
-      setFileViewerVisible(true);
-
-      const token = localStorage.getItem('token');
-      if (!token) {
-        message.error('Authentication required. Please login again.');
-        setFileViewerVisible(false);
-        setFileViewerLoading(false);
-        return;
-      }
-
-      const publicId = attachment.publicId || attachment.fileName || attachment.name;
-      
-      if (!publicId) {
-        message.error('Unable to locate file. Invalid attachment data.');
-        setFileViewerVisible(false);
-        setFileViewerLoading(false);
-        return;
-      }
-
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
-      const downloadUrl = `${apiUrl}/files/download/${encodeURIComponent(publicId)}`;
-      
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch file: ${response.status}`);
-      }
-
-      const isImage = attachment.mimetype?.startsWith('image/') || 
-                     /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(attachment.name);
-      const isPDF = attachment.mimetype === 'application/pdf' || 
-                   /\.pdf$/i.test(attachment.name);
-
-      if (isPDF) {
-        const viewUrl = `${apiUrl}/files/view/${encodeURIComponent(publicId)}`;
-        
-        setViewingFile({
-          name: attachment.name,
-          url: viewUrl,
-          type: 'pdf',
-          mimetype: attachment.mimetype,
-          isDirectUrl: true,
-          authHeaders: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-      } else {
-        const blob = await response.blob();
-        const fileUrl = window.URL.createObjectURL(blob);
-        
-        setViewingFile({
-          name: attachment.name,
-          url: fileUrl,
-          type: isImage ? 'image' : 'other',
-          mimetype: attachment.mimetype
-        });
-      }
-      
-      setFileViewerLoading(false);
-    } catch (error) {
-      console.error('Error viewing attachment:', error);
-      message.error(`Failed to view attachment: ${error.message}`);
-      setFileViewerVisible(false);
-      setFileViewerLoading(false);
-    }
-  };
-
-  const handleRefresh = async () => {
-    await Promise.all([fetchCashRequests(), fetchJustifications()]);
-    message.success('Data refreshed successfully');
+  const getApprovalProgress = (request) => {
+    if (!request.approvalChain || request.approvalChain.length === 0) return 0;
+    const approved = request.approvalChain.filter(step => step.status === 'approved').length;
+    return Math.round((approved / request.approvalChain.length) * 100);
   };
 
   const columns = [
+    {
+      title: 'Type',
+      key: 'mode',
+      render: (_, record) => getRequestModeTag(record.requestMode),
+      width: 120,
+      filters: [
+        { text: 'Reimbursement', value: 'reimbursement' },
+        { text: 'Advance', value: 'advance' }
+      ],
+      onFilter: (value, record) => record.requestMode === value
+    },
+    {
+      title: 'Request ID',
+      dataIndex: '_id',
+      key: '_id',
+      render: (id) => (
+        <Tag color="blue">
+          REQ-{id.toString().slice(-6).toUpperCase()}
+        </Tag>
+      ),
+      width: 120
+    },
     {
       title: 'Employee',
       key: 'employee',
@@ -997,35 +346,37 @@ const SupervisorCashApprovals = () => {
             {record.employee?.position || 'N/A'}
           </Text>
           <br />
-          <Tag color="blue" size="small">
-            {record.employee?.department || 'N/A'}
-          </Tag>
+          <Tag color="blue" size="small">{record.employee?.department || 'N/A'}</Tag>
         </div>
       ),
-      width: 200
+      width: 180
     },
     {
       title: 'Request Details',
       key: 'requestDetails',
       render: (_, record) => (
         <div>
-          <Text strong>XAF {(record.amountRequested || 0).toLocaleString()}</Text>
+          <Text strong style={{ color: '#1890ff' }}>
+            XAF {Number(record.amountRequested || 0).toLocaleString()}
+          </Text>
           <br />
           <Text type="secondary" style={{ fontSize: '12px' }}>
             Type: {record.requestType?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'N/A'}
           </Text>
           <br />
-          <Tooltip title={record.purpose}>
-            <Text ellipsis style={{ maxWidth: 200, fontSize: '11px', color: '#666' }}>
-              {record.purpose && record.purpose.length > 40 ? 
-                `${record.purpose.substring(0, 40)}...` : 
-                record.purpose || 'No purpose specified'
-              }
-            </Text>
-          </Tooltip>
+          {record.requestMode === 'reimbursement' && (
+            <Tag color="purple" size="small" icon={<FileTextOutlined />}>
+              {record.reimbursementDetails?.receiptDocuments?.length || 0} receipts
+            </Tag>
+          )}
+          {record.itemizedBreakdown && record.itemizedBreakdown.length > 0 && (
+            <Tag color="cyan" size="small">
+              {record.itemizedBreakdown.length} items
+            </Tag>
+          )}
         </div>
       ),
-      width: 220
+      width: 200
     },
     {
       title: 'Priority & Dates',
@@ -1035,7 +386,7 @@ const SupervisorCashApprovals = () => {
           {getUrgencyTag(record.urgency)}
           <br />
           <Text type="secondary" style={{ fontSize: '11px' }}>
-            <CalendarOutlined /> Required: {record.requiredDate ? new Date(record.requiredDate).toLocaleDateString('en-GB') : 'N/A'}
+            <CalendarOutlined /> Expected: {record.requiredDate ? new Date(record.requiredDate).toLocaleDateString('en-GB') : 'N/A'}
           </Text>
           <br />
           <Text type="secondary" style={{ fontSize: '11px' }}>
@@ -1052,7 +403,7 @@ const SupervisorCashApprovals = () => {
       key: 'status',
       render: (status, record) => (
         <div>
-          {getStatusTag(status)}
+          {getStatusTag(status, record)}
           {canUserApprove(record) && (
             <div style={{ marginTop: 4 }}>
               <Tag color="gold" size="small">Your Turn</Tag>
@@ -1060,16 +411,6 @@ const SupervisorCashApprovals = () => {
           )}
         </div>
       ),
-      filters: [
-        { text: 'Pending Supervisor', value: 'pending_supervisor' },
-        { text: 'Pending Departmental Head', value: 'pending_departmental_head' },
-        { text: 'Pending Head of Business', value: 'pending_head_of_business' },
-        { text: 'Pending Finance', value: 'pending_finance' },
-        { text: 'Approved', value: 'approved' },
-        { text: 'Disbursed', value: 'disbursed' },
-        { text: 'Denied', value: 'denied' }
-      ],
-      onFilter: (value, record) => record.status === value,
       width: 160
     },
     {
@@ -1079,7 +420,7 @@ const SupervisorCashApprovals = () => {
         const progress = getApprovalProgress(record);
         let status = 'active';
         if (record.status === 'denied') status = 'exception';
-        if (['approved', 'disbursed', 'completed'].includes(record.status)) status = 'success';
+        if (['approved', 'fully_disbursed', 'completed'].includes(record.status)) status = 'success';
         
         return (
           <div style={{ width: 80 }}>
@@ -1114,6 +455,7 @@ const SupervisorCashApprovals = () => {
               type="primary"
               onClick={() => {
                 setSelectedRequest(record);
+                form.resetFields();
                 setApprovalModalVisible(true);
               }}
             >
@@ -1127,119 +469,7 @@ const SupervisorCashApprovals = () => {
     }
   ];
 
-  const justificationColumns = [
-    {
-      title: 'Employee',
-      key: 'employee',
-      render: (_, record) => (
-        <div>
-          <Text strong>{record.employee?.fullName || 'N/A'}</Text>
-          <br />
-          <Tag color="blue" size="small">
-            {record.employee?.department || 'N/A'}
-          </Tag>
-        </div>
-      ),
-      width: 180
-    },
-    {
-      title: 'Request Details',
-      key: 'details',
-      render: (_, record) => (
-        <div>
-          <Text strong>REQ-{record._id?.slice(-6).toUpperCase()}</Text>
-          <br />
-          <Text type="secondary" style={{ fontSize: '12px' }}>
-            Type: {record.requestType?.replace(/-/g, ' ').toUpperCase()}
-          </Text>
-        </div>
-      ),
-      width: 150
-    },
-    {
-      title: 'Financial Summary',
-      key: 'financial',
-      render: (_, record) => {
-        const disbursed = record.disbursementDetails?.amount || 0;
-        const spent = record.justification?.amountSpent || 0;
-        const returned = record.justification?.balanceReturned || 0;
-        const isBalanced = Math.abs((spent + returned) - disbursed) < 0.01;
-
-        return (
-          <div>
-            <Text type="secondary" style={{ fontSize: '11px' }}>
-              Disbursed: XAF {disbursed.toLocaleString()}
-            </Text>
-            <br />
-            <Text type="secondary" style={{ fontSize: '11px' }}>
-              Spent: XAF {spent.toLocaleString()}
-            </Text>
-            <br />
-            <Text type="secondary" style={{ fontSize: '11px' }}>
-              Returned: XAF {returned.toLocaleString()}
-            </Text>
-            <br />
-            {!isBalanced && (
-              <Tag color="warning" size="small">⚠️ Unbalanced</Tag>
-            )}
-          </div>
-        );
-      },
-      width: 180
-    },
-    {
-      title: 'Submitted Date',
-      key: 'date',
-      render: (_, record) => (
-        <Text type="secondary">
-          {record.justification?.justificationDate 
-            ? new Date(record.justification.justificationDate).toLocaleDateString('en-GB')
-            : 'N/A'
-          }
-        </Text>
-      ),
-      width: 120
-    },
-    {
-      title: 'Status',
-      key: 'justificationStatus',
-      render: (_, record) => getStatusTag(record.justificationStatus),
-      width: 160
-    },
-    {
-      title: 'Documents',
-      key: 'documents',
-      render: (_, record) => (
-        <Badge 
-          count={record.justification?.documents?.length || 0} 
-          showZero
-          style={{ backgroundColor: '#52c41a' }}
-        >
-          <FileTextOutlined style={{ fontSize: '16px' }} />
-        </Badge>
-      ),
-      width: 100
-    },
-    {
-      title: 'Actions',
-      key: 'actions',
-      render: (_, record) => (
-        <Button 
-          type="primary"
-          size="small"
-          icon={<AuditOutlined />}
-          onClick={() => handleViewJustification(record)}
-          disabled={record.justificationStatus !== 'pending_supervisor_review'}
-        >
-          {record.justificationStatus === 'pending_supervisor_review' ? 'Review' : 'View'}
-        </Button>
-      ),
-      width: 120,
-      fixed: 'right'
-    }
-  ];
-
-  if (loading && requests.length === 0 && justifications.length === 0) {
+  if (loading && requests.length === 0) {
     return (
       <div style={{ padding: '24px', textAlign: 'center' }}>
         <Spin size="large" />
@@ -1268,7 +498,7 @@ const SupervisorCashApprovals = () => {
 
         {/* Stats Cards */}
         <Row gutter={16} style={{ marginBottom: '24px' }}>
-          <Col span={5}>
+          <Col span={4}>
             <Statistic
               title="Pending Your Approval"
               value={stats.pending}
@@ -1276,7 +506,7 @@ const SupervisorCashApprovals = () => {
               valueStyle={{ color: '#faad14' }}
             />
           </Col>
-          <Col span={5}>
+          <Col span={4}>
             <Statistic
               title="Approved by You"
               value={stats.approved}
@@ -1284,7 +514,7 @@ const SupervisorCashApprovals = () => {
               valueStyle={{ color: '#52c41a' }}
             />
           </Col>
-          <Col span={5}>
+          <Col span={4}>
             <Statistic
               title="Rejected by You"
               value={stats.rejected}
@@ -1292,12 +522,20 @@ const SupervisorCashApprovals = () => {
               valueStyle={{ color: '#f5222d' }}
             />
           </Col>
-          <Col span={5}>
+          <Col span={4}>
             <Statistic
-              title="Pending Justifications"
-              value={stats.justificationsPending}
+              title="Reimbursements"
+              value={stats.reimbursements}
               prefix={<FileTextOutlined />}
               valueStyle={{ color: '#722ed1' }}
+            />
+          </Col>
+          <Col span={4}>
+            <Statistic
+              title="Advances"
+              value={stats.advances}
+              prefix={<DollarOutlined />}
+              valueStyle={{ color: '#1890ff' }}
             />
           </Col>
           <Col span={4}>
@@ -1305,144 +543,52 @@ const SupervisorCashApprovals = () => {
               title="Total Assigned"
               value={stats.total}
               prefix={<AuditOutlined />}
-              valueStyle={{ color: '#1890ff' }}
+              valueStyle={{ color: '#000' }}
             />
           </Col>
         </Row>
 
-        {(stats.pending > 0 || stats.justificationsPending > 0) && (
+        {stats.pending > 0 && (
           <Alert
-            message={`${stats.pending} cash request(s) and ${stats.justificationsPending} justification(s) require your approval`}
+            message={`${stats.pending} request(s) require your approval`}
             type="warning"
             showIcon
             style={{ marginBottom: '16px' }}
           />
         )}
 
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <TabPane 
-            tab={
-              <Badge count={getTabCount('pending')} offset={[10, 0]}>
-                <span>Pending Approval</span>
-              </Badge>
-            } 
-            key="pending"
-          >
-            <Table
-              columns={columns}
-              dataSource={getFilteredRequests()}
-              loading={loading}
-              rowKey="_id"
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requests`
-              }}
-              scroll={{ x: 1400 }}
-              size="small"
-              rowClassName={(record) => {
-                let className = 'cash-request-row';
-                if (canUserApprove(record)) {
-                  className += ' pending-approval-row';
-                }
-                if (record.urgency === 'high') {
-                  className += ' high-urgency-row';
-                }
-                return className;
-              }}
-            />
-          </TabPane>
-          
-          <TabPane 
-            tab={
-              <Badge count={getTabCount('approved')} offset={[10, 0]}>
-                <span>Approved</span>
-              </Badge>
-            } 
-            key="approved"
-          >
-            <Table
-              columns={columns}
-              dataSource={getFilteredRequests()}
-              loading={loading}
-              rowKey="_id"
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requests`
-              }}
-              scroll={{ x: 1400 }}
-              size="small"
-            />
-          </TabPane>
-          
-          <TabPane 
-            tab={
-              <Badge count={getTabCount('rejected')} offset={[10, 0]}>
-                <span>Rejected</span>
-              </Badge>
-            } 
-            key="rejected"
-          >
-            <Table
-              columns={columns}
-              dataSource={getFilteredRequests()}
-              loading={loading}
-              rowKey="_id"
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                showQuickJumper: true,
-                showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requests`
-              }}
-              scroll={{ x: 1400 }}
-              size="small"
-            />
-          </TabPane>
-
-          <TabPane 
-            tab={
-              <Badge count={stats.justificationsPending} offset={[10, 0]}>
-                <span><FileTextOutlined /> Justification Approvals</span>
-              </Badge>
-            } 
-            key="justifications"
-          >
-            {activeTab === 'justifications' && (
-              <Table
-                columns={justificationColumns}
-                dataSource={justifications}
-                loading={loading}
-                rowKey="_id"
-                pagination={{
-                  pageSize: 10,
-                  showSizeChanger: true,
-                  showQuickJumper: true,
-                  showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} justifications`
-                }}
-                scroll={{ x: 1200 }}
-                size="small"
-                rowClassName={(record) => {
-                  let className = 'cash-request-row';
-                  if (record.justificationStatus === 'pending_supervisor_review') {
-                    className += ' pending-approval-row';
-                  }
-                  return className;
-                }}
-              />
-            )}
-          </TabPane>
-        </Tabs>
+        <Table
+          columns={columns}
+          dataSource={getFilteredRequests()}
+          loading={loading}
+          rowKey="_id"
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requests`
+          }}
+          scroll={{ x: 1400 }}
+          size="small"
+          rowClassName={(record) => {
+            let className = 'cash-request-row';
+            if (canUserApprove(record)) {
+              className += ' pending-approval-row';
+            }
+            if (record.urgency === 'high' || record.urgency === 'urgent') {
+              className += ' high-urgency-row';
+            }
+            return className;
+          }}
+        />
       </Card>
 
-      {/* Approval Modal */}
+      {/* Approval Modal - ENHANCED FOR REIMBURSEMENTS */}
       <Modal
         title={
           <Space>
             <AuditOutlined />
-            Cash Request Approval Decision
+            {selectedRequest?.requestMode === 'reimbursement' ? 'Reimbursement' : 'Cash Request'} Approval Decision
           </Space>
         }
         open={approvalModalVisible}
@@ -1452,33 +598,41 @@ const SupervisorCashApprovals = () => {
           form.resetFields();
         }}
         footer={null}
-        width={800}
+        width={900}
       >
         {selectedRequest && (
           <div>
             <Alert
-              message="Review Required"
-              description="Please review and make a decision on this cash request."
+              message={selectedRequest.requestMode === 'reimbursement' ? 
+                'Reimbursement Request - Employee has already spent personal funds' : 
+                'Cash Advance Request - Employee requesting upfront funds'}
+              description="Please review and make a decision on this request."
               type="info"
               showIcon
               style={{ marginBottom: '16px' }}
             />
 
             <Descriptions bordered column={2} size="small" style={{ marginBottom: '20px' }}>
+              <Descriptions.Item label="Request Type">
+                {getRequestModeTag(selectedRequest.requestMode)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Request ID">
+                <Tag color="blue">REQ-{selectedRequest._id?.slice(-6).toUpperCase()}</Tag>
+              </Descriptions.Item>
               <Descriptions.Item label="Employee">
                 <Text strong>{selectedRequest.employee?.fullName}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="Department">
                 <Tag color="blue">{selectedRequest.employee?.department}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Request Type">
+              <Descriptions.Item label="Expense Type">
                 {selectedRequest.requestType?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </Descriptions.Item>
               <Descriptions.Item label="Urgency">
                 {getUrgencyTag(selectedRequest.urgency)}
               </Descriptions.Item>
               <Descriptions.Item label="Amount Requested">
-                <Text strong>XAF {(selectedRequest.amountRequested || 0).toLocaleString()}</Text>
+                <Text strong style={{ color: '#1890ff' }}>XAF {(selectedRequest.amountRequested || 0).toLocaleString()}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="Required Date">
                 {selectedRequest.requiredDate ? new Date(selectedRequest.requiredDate).toLocaleDateString('en-GB') : 'N/A'}
@@ -1493,27 +647,101 @@ const SupervisorCashApprovals = () => {
               )}
             </Descriptions>
 
-            {/* Attachments */}
-            {selectedRequest.attachments && selectedRequest.attachments.length > 0 && (
-              <Card size="small" title="Attachments" style={{ marginBottom: '20px' }}>
+            {/* ✅ ITEMIZED BREAKDOWN (if exists) */}
+            {selectedRequest.itemizedBreakdown && selectedRequest.itemizedBreakdown.length > 0 && (
+              <Card size="small" title="Itemized Expenses" style={{ marginBottom: '20px' }}>
+                <Table
+                  dataSource={selectedRequest.itemizedBreakdown}
+                  size="small"
+                  pagination={false}
+                  columns={[
+                    {
+                      title: 'Description',
+                      dataIndex: 'description',
+                      key: 'description'
+                    },
+                    {
+                      title: 'Category',
+                      dataIndex: 'category',
+                      key: 'category',
+                      render: (cat) => cat ? (
+                        <Tag>{cat.replace(/-/g, ' ').toUpperCase()}</Tag>
+                      ) : '-'
+                    },
+                    {
+                      title: 'Amount',
+                      dataIndex: 'amount',
+                      key: 'amount',
+                      render: (amt) => <Text strong>XAF {Number(amt || 0).toLocaleString()}</Text>
+                    }
+                  ]}
+                  summary={(data) => {
+                    const total = data.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+                    return (
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0} colSpan={2}>
+                          <Text strong>Total</Text>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={1}>
+                          <Text strong style={{ color: '#1890ff' }}>
+                            XAF {total.toLocaleString()}
+                          </Text>
+                        </Table.Summary.Cell>
+                      </Table.Summary.Row>
+                    );
+                  }}
+                />
+              </Card>
+            )}
+
+            {/* ✅ RECEIPT DOCUMENTS (for reimbursements) */}
+            {selectedRequest.requestMode === 'reimbursement' && 
+             selectedRequest.reimbursementDetails?.receiptDocuments && 
+             selectedRequest.reimbursementDetails.receiptDocuments.length > 0 && (
+              <Card 
+                size="small" 
+                title={
+                  <Space>
+                    <FileTextOutlined />
+                    Receipt Documents ({selectedRequest.reimbursementDetails.receiptDocuments.length})
+                  </Space>
+                }
+                style={{ marginBottom: '20px' }}
+              >
+                <Alert
+                  message="Please verify receipts match the expenses claimed"
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: '12px' }}
+                />
+                <Space wrap>
+                  {selectedRequest.reimbursementDetails.receiptDocuments.map((receipt, index) => (
+                    <Button
+                      key={index}
+                      icon={<DownloadOutlined />}
+                      onClick={() => handleDownloadReceipt(receipt)}
+                    >
+                      {receipt.name || `Receipt ${index + 1}`}
+                    </Button>
+                  ))}
+                </Space>
+              </Card>
+            )}
+
+            {/* Attachments (for advance requests) */}
+            {selectedRequest.requestMode === 'advance' && 
+             selectedRequest.attachments && 
+             selectedRequest.attachments.length > 0 && (
+              <Card size="small" title="Attached Files" style={{ marginBottom: '20px' }}>
                 <Space wrap>
                   {selectedRequest.attachments.map((attachment, index) => (
-                    <Space key={index}>
-                      <Button 
-                        icon={<EyeOutlined />}
-                        size="small"
-                        onClick={() => handleViewAttachment(attachment)}
-                      >
-                        View
-                      </Button>
-                      <Button 
-                        icon={<FileOutlined />}
-                        size="small"
-                        onClick={() => handleDownloadAttachment(selectedRequest._id, attachment)}
-                      >
-                        Download {attachment.name || attachment.fileName}
-                      </Button>
-                    </Space>
+                    <Button
+                      key={index}
+                      icon={<FileOutlined />}
+                      onClick={() => handleDownloadReceipt(attachment)}
+                    >
+                      {attachment.name || `Attachment ${index + 1}`}
+                    </Button>
                   ))}
                 </Space>
               </Card>
@@ -1575,342 +803,6 @@ const SupervisorCashApprovals = () => {
         )}
       </Modal>
 
-      {/* Details Modal */}
-      <Modal
-        title={
-          <Space>
-            <DollarOutlined />
-            Cash Request Details & Approval History
-          </Space>
-        }
-        open={detailsModalVisible}
-        onCancel={() => {
-          setDetailsModalVisible(false);
-          setSelectedRequest(null);
-        }}
-        footer={null}
-        width={900}
-      >
-        {selectedRequest && (
-          <div>
-            <Descriptions bordered column={2} size="small" style={{ marginBottom: '20px' }}>
-              <Descriptions.Item label="Request ID">
-                <Text code copyable>REQ-{selectedRequest._id?.slice(-6).toUpperCase()}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Status">
-                {getStatusTag(selectedRequest.status)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Employee">
-                <Text strong>{selectedRequest.employee?.fullName}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Department">
-                <Tag color="blue">{selectedRequest.employee?.department}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Amount Requested">
-                <Text strong>XAF {(selectedRequest.amountRequested || 0).toLocaleString()}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Request Type">
-                {selectedRequest.requestType?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              </Descriptions.Item>
-              <Descriptions.Item label="Urgency">
-                {getUrgencyTag(selectedRequest.urgency)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Required Date">
-                {selectedRequest.requiredDate ? new Date(selectedRequest.requiredDate).toLocaleDateString('en-GB') : 'N/A'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Purpose" span={2}>
-                {selectedRequest.purpose}
-              </Descriptions.Item>
-              {selectedRequest.businessJustification && (
-                <Descriptions.Item label="Business Justification" span={2}>
-                  {selectedRequest.businessJustification}
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-
-            {/* Attachments */}
-            {selectedRequest.attachments && selectedRequest.attachments.length > 0 && (
-              <Card size="small" title="Attached Files" style={{ marginBottom: '20px' }}>
-                <Space wrap>
-                  {selectedRequest.attachments.map((attachment, index) => (
-                    <Button 
-                      key={index}
-                      icon={<FileOutlined />}
-                      onClick={() => handleDownloadAttachment(selectedRequest._id, attachment)}
-                    >
-                      {attachment.name || attachment.fileName}
-                    </Button>
-                  ))}
-                </Space>
-              </Card>
-            )}
-
-            {/* Approval Chain */}
-            {selectedRequest.approvalChain && selectedRequest.approvalChain.length > 0 && (
-              <>
-                <Title level={4}>
-                  <HistoryOutlined /> Approval Chain Progress
-                </Title>
-                <Timeline>
-                  {selectedRequest.approvalChain.map((step, index) => {
-                    let color = 'gray';
-                    let icon = <ClockCircleOutlined />;
-                    
-                    if (step.status === 'approved') {
-                      color = 'green';
-                      icon = <CheckCircleOutlined />;
-                    } else if (step.status === 'rejected') {
-                      color = 'red';
-                      icon = <CloseCircleOutlined />;
-                    }
-
-                    const isCurrentStep = step.status === 'pending';
-
-                    return (
-                      <Timeline.Item key={index} color={color} dot={icon}>
-                        <div>
-                          <Text strong>Level {step.level}: {step.approver?.name || 'Unknown'}</Text>
-                          {isCurrentStep && <Tag color="gold" size="small" style={{marginLeft: 8}}>Current</Tag>}
-                          <br />
-                          <Text type="secondary">{step.approver?.role} - {step.approver?.email}</Text>
-                          <br />
-                          {step.status === 'pending' && (
-                            <Tag color={isCurrentStep ? "gold" : "orange"}>
-                              {isCurrentStep ? "Awaiting Action" : "Pending"}
-                            </Tag>
-                          )}
-                          {step.status === 'approved' && (
-                            <>
-                              <Tag color="green">Approved</Tag>
-                              {step.actionDate && (
-                                <Text type="secondary">
-                                  {new Date(step.actionDate).toLocaleDateString('en-GB')} 
-                                  {step.actionTime && ` at ${step.actionTime}`}
-                                </Text>
-                              )}
-                              {step.comments && (
-                                <div style={{ marginTop: 4 }}>
-                                  <Text italic>"{step.comments}"</Text>
-                                </div>
-                              )}
-                            </>
-                          )}
-                          {step.status === 'rejected' && (
-                            <>
-                              <Tag color="red">Rejected</Tag>
-                              {step.actionDate && (
-                                <Text type="secondary">
-                                  {new Date(step.actionDate).toLocaleDateString('en-GB')}
-                                  {step.actionTime && ` at ${step.actionTime}`}
-                                </Text>
-                              )}
-                              {step.comments && (
-                                <div style={{ marginTop: 4, color: '#ff4d4f' }}>
-                                  <Text>Reason: "{step.comments}"</Text>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </Timeline.Item>
-                    );
-                  })}
-                </Timeline>
-
-                {/* Current Status Information */}
-                <Card size="small" title="Current Status" style={{ marginTop: '16px' }}>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Text strong>Overall Status: </Text>
-                      {getStatusTag(selectedRequest.status)}
-                    </Col>
-                    <Col span={12}>
-                      <Text strong>Progress: </Text>
-                      <Progress 
-                        percent={getApprovalProgress(selectedRequest)} 
-                        size="small" 
-                        status={selectedRequest.status === 'denied' ? 'exception' : 'active'}
-                      />
-                    </Col>
-                  </Row>
-                  
-                  {canUserApprove(selectedRequest) && (
-                    <Alert
-                      message="Action Required"
-                      description="This request is waiting for your approval decision."
-                      type="warning"
-                      showIcon
-                      style={{ marginTop: '12px' }}
-                      action={
-                        <Button 
-                          size="small" 
-                          type="primary"
-                          onClick={() => {
-                            setDetailsModalVisible(false);
-                            setApprovalModalVisible(true);
-                          }}
-                        >
-                          Make Decision
-                        </Button>
-                      }
-                    />
-                  )}
-                </Card>
-
-                {/* Financial Information */}
-                {(selectedRequest.amountApproved || selectedRequest.disbursementDetails) && (
-                  <Card size="small" title="Financial Status" style={{ marginTop: '16px' }}>
-                    <Descriptions column={2} size="small">
-                      {selectedRequest.amountApproved && (
-                        <Descriptions.Item label="Amount Approved">
-                          XAF {selectedRequest.amountApproved.toLocaleString()}
-                        </Descriptions.Item>
-                      )}
-                      {selectedRequest.disbursementDetails && (
-                        <>
-                          <Descriptions.Item label="Disbursed Amount">
-                            XAF {selectedRequest.disbursementDetails.amount?.toLocaleString()}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="Disbursement Date">
-                            {new Date(selectedRequest.disbursementDetails.date).toLocaleDateString('en-GB')}
-                          </Descriptions.Item>
-                        </>
-                      )}
-                    </Descriptions>
-                  </Card>
-                )}
-
-                {/* Justification Information */}
-                {selectedRequest.justification && (
-                  <Card size="small" title="Justification Details" style={{ marginTop: '16px' }}>
-                    <Descriptions column={2} size="small">
-                      <Descriptions.Item label="Amount Spent">
-                        XAF {selectedRequest.justification.amountSpent?.toLocaleString()}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Balance Returned">
-                        XAF {selectedRequest.justification.balanceReturned?.toLocaleString()}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Justification Date">
-                        {new Date(selectedRequest.justification.justificationDate).toLocaleDateString('en-GB')}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Details" span={2}>
-                        {selectedRequest.justification.details}
-                      </Descriptions.Item>
-                    </Descriptions>
-                    
-                    {selectedRequest.justification.documents && selectedRequest.justification.documents.length > 0 && (
-                      <div style={{ marginTop: '12px' }}>
-                        <Text strong>Supporting Documents:</Text>
-                        <div style={{ marginTop: '8px' }}>
-                          <Space wrap>
-                            {selectedRequest.justification.documents.map((doc, index) => (
-                              <Button 
-                                key={index}
-                                icon={<FileOutlined />}
-                                size="small"
-                                onClick={() => handleDownloadAttachment(selectedRequest._id, doc)}
-                              >
-                                {doc.name || doc.fileName}
-                              </Button>
-                            ))}
-                          </Space>
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </Modal>
-
-      {/* File Viewer Modal */}
-      <Modal
-        title={viewingFile?.name || 'File Viewer'}
-        open={fileViewerVisible}
-        onCancel={() => {
-          setFileViewerVisible(false);
-          setViewingFile(null);
-          setFileViewerLoading(false);
-          if (viewingFile?.url && !viewingFile?.isDirectUrl) {
-            window.URL.revokeObjectURL(viewingFile.url);
-          }
-        }}
-        footer={[
-          <Button key="download" onClick={() => {
-            if (viewingFile?.url) {
-              const link = document.createElement('a');
-              link.href = viewingFile.url;
-              link.download = viewingFile.name || 'file';
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              message.success('File downloaded successfully');
-            }
-          }}>
-            Download
-          </Button>,
-          <Button key="close" onClick={() => {
-            setFileViewerVisible(false);
-            setViewingFile(null);
-            setFileViewerLoading(false);
-            if (viewingFile?.url && !viewingFile?.isDirectUrl) {
-              window.URL.revokeObjectURL(viewingFile.url);
-            }
-          }}>
-            Close
-          </Button>
-        ]}
-        width="80%"
-        style={{ top: 20 }}
-        bodyStyle={{ padding: '20px', textAlign: 'center', minHeight: '60vh' }}
-      >
-        {fileViewerLoading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-            <Spin size="large" />
-            <div style={{ marginLeft: '16px' }}>Loading file...</div>
-          </div>
-        ) : viewingFile ? (
-          <div>
-            {viewingFile.type === 'image' ? (
-              <img 
-                src={viewingFile.url} 
-                alt={viewingFile.name}
-                style={{ 
-                  maxWidth: '100%', 
-                  maxHeight: '70vh', 
-                  objectFit: 'contain',
-                  border: '1px solid #d9d9d9',
-                  borderRadius: '6px'
-                }}
-              />
-            ) : viewingFile.type === 'pdf' ? (
-              <div>
-                <PDFViewer 
-                  url={viewingFile.url}
-                  name={viewingFile.name}
-                  authHeaders={viewingFile.authHeaders}
-                />
-                <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
-                  If the PDF doesn't display correctly, please use the Download button below.
-                </div>
-              </div>
-            ) : (
-              <div style={{ padding: '40px' }}>
-                <Alert
-                  message="Preview not available"
-                  description={`File type "${viewingFile.mimetype}" cannot be previewed inline. Please download to view.`}
-                  type="info"
-                  showIcon
-                />
-              </div>
-            )}
-          </div>
-        ) : null}
-      </Modal>
-
-      {/* Custom CSS for row styling */}
       <style>{`
         .cash-request-row {
           background-color: #fafafa;
@@ -1943,6 +835,7 @@ export default SupervisorCashApprovals;
 
 
 
+
 // import React, { useState, useEffect, useCallback } from 'react';
 // import { useNavigate, useSearchParams } from 'react-router-dom';
 // import { useSelector } from 'react-redux';
@@ -1968,7 +861,8 @@ export default SupervisorCashApprovals;
 //   Statistic,
 //   Spin,
 //   notification,
-//   Tooltip
+//   Tooltip,
+//   Badge
 // } from 'antd';
 // import {
 //   CheckCircleOutlined,
@@ -1983,11 +877,11 @@ export default SupervisorCashApprovals;
 //   ReloadOutlined,
 //   ExclamationCircleOutlined,
 //   FileOutlined,
-//   HistoryOutlined
+//   HistoryOutlined,
+//   FileTextOutlined
 // } from '@ant-design/icons';
-// import api from '../../services/api';
+// import { cashRequestAPI } from '../../services/cashRequestAPI';
 
-// // PDFViewer component to handle authenticated PDF viewing
 // const PDFViewer = ({ url, name, authHeaders }) => {
 //   const [pdfUrl, setPdfUrl] = useState(null);
 //   const [loading, setLoading] = useState(true);
@@ -2022,7 +916,6 @@ export default SupervisorCashApprovals;
 //       loadPDF();
 //     }
 
-//     // Cleanup function
 //     return () => {
 //       if (pdfUrl) {
 //         window.URL.revokeObjectURL(pdfUrl);
@@ -2082,7 +975,7 @@ export default SupervisorCashApprovals;
 //   );
 // };
 
-// const { Title, Text } = Typography;
+// const { Title, Text, Paragraph } = Typography;
 // const { TabPane } = Tabs;
 // const { TextArea } = Input;
 
@@ -2091,121 +984,72 @@ export default SupervisorCashApprovals;
 //   const [searchParams] = useSearchParams();
 //   const { user } = useSelector((state) => state.auth);
   
-//   // Auto-approve from email link
 //   const autoApprovalId = searchParams.get('approve');
 //   const autoRejectId = searchParams.get('reject');
   
 //   const [requests, setRequests] = useState([]);
+//   const [justifications, setJustifications] = useState([]);
 //   const [loading, setLoading] = useState(false);
 //   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
 //   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+//   const [justificationDecisionModalVisible, setJustificationDecisionModalVisible] = useState(false);
 //   const [selectedRequest, setSelectedRequest] = useState(null);
+//   const [selectedJustification, setSelectedJustification] = useState(null);
 //   const [activeTab, setActiveTab] = useState('pending');
 //   const [stats, setStats] = useState({
 //     pending: 0,
 //     approved: 0,
 //     rejected: 0,
-//     total: 0
+//     total: 0,
+//     justificationsPending: 0
 //   });
   
-//   // File viewer modal state
 //   const [fileViewerVisible, setFileViewerVisible] = useState(false);
 //   const [viewingFile, setViewingFile] = useState(null);
 //   const [fileViewerLoading, setFileViewerLoading] = useState(false);
   
 //   const [form] = Form.useForm();
 
-//   // Fetch cash requests for supervisor approval
-//   const fetchCashRequests = useCallback(async () => {
-//     try {
-//       setLoading(true);
-      
-//       console.log('Fetching cash requests for supervisor:', user?.email);
-      
-//       const response = await api.get('/api/cash-requests/pending-approvals');
-//       console.log('Cash requests response:', response.data);
-      
-//       if (response.data.success) {
-//         const requestsData = response.data.data || [];
-//         setRequests(requestsData);
+//   // ============ HELPER FUNCTIONS ============
 
-//         // Calculate stats
-//         const pending = requestsData.filter(req => 
-//           canUserApprove(req)
-//         ).length;
-        
-//         const approved = requestsData.filter(req => 
-//           ['approved', 'pending_finance', 'disbursed', 'completed'].includes(req.status) &&
-//           hasUserApproved(req)
-//         ).length;
-        
-//         const rejected = requestsData.filter(req => 
-//           req.status === 'denied' && hasUserRejected(req)
-//         ).length;
-
-//         setStats({
-//           pending,
-//           approved,
-//           rejected,
-//           total: requestsData.length
-//         });
-
-//         console.log('Stats calculated:', { pending, approved, rejected, total: requestsData.length });
-//       } else {
-//         throw new Error(response.data.message || 'Failed to fetch cash requests');
-//       }
-
-//     } catch (error) {
-//       console.error('Error fetching cash requests:', error);
-//       message.error('Failed to fetch cash requests');
-//       setRequests([]);
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, [user?.email]);
-
-//   useEffect(() => {
-//     if (user?.email) {
-//       fetchCashRequests();
-//     }
-//   }, [fetchCashRequests, user?.email]);
-
-//   // Handle auto-approval from email links
-//   useEffect(() => {
-//     const handleAutoAction = async () => {
-//       if (autoApprovalId || autoRejectId) {
-//         const requestId = autoApprovalId || autoRejectId;
-//         try {
-//           const response = await api.get(`/api/cash-requests/supervisor/${requestId}`);
-//           if (response.data.success) {
-//             setSelectedRequest(response.data.data);
-//             setApprovalModalVisible(true);
-//             form.setFieldsValue({ 
-//               decision: autoApprovalId ? 'approved' : 'rejected' 
-//             });
-//           }
-//         } catch (error) {
-//           message.error('Failed to load cash request for approval');
-//         }
-//       }
-//     };
-
-//     handleAutoAction();
-//   }, [autoApprovalId, autoRejectId, form]);
-
-//   // Check if user can approve this request
-//   const canUserApprove = (request) => {
-//     if (!request.approvalChain || !user?.email) return false;
-    
-//     const currentStep = request.approvalChain.find(step => 
-//       step.approver?.email === user.email &&
-//       step.status === 'pending'
+//   // Check if status is a justification status
+//   const isJustificationStatus = (status) => {
+//     return status && (
+//       status.includes('justification_pending') || 
+//       status.includes('justification_rejected') ||
+//       status === 'completed'
 //     );
+//   };
+
+//   // Extract level number from justification status
+//   const extractJustificationLevel = (status) => {
+//     if (!status || !status.includes('justification_')) return null;
     
-//     // Check if the request status matches the user's approval level
-//     if (!currentStep) return false;
+//     const levelMap = {
+//       'justification_pending_supervisor': 1,
+//       'justification_pending_departmental_head': 2,
+//       'justification_pending_head_of_business': 3,
+//       'justification_pending_finance': 4,
+//       'justification_rejected_supervisor': 1,
+//       'justification_rejected_departmental_head': 2,
+//       'justification_rejected_head_of_business': 3,
+//       'justification_rejected_finance': 4
+//     };
     
-//     // Map current step level to expected status
+//     return levelMap[status] || null;
+//   };
+
+//   // Get current approval level from approval chain
+//   const getCurrentApprovalLevel = (request) => {
+//     if (!request.approvalChain || request.approvalChain.length === 0) return null;
+    
+//     // Find the first pending step in the chain
+//     const currentStep = request.approvalChain.find(step => step.status === 'pending');
+//     return currentStep ? currentStep.level : null;
+//   };
+
+//   // Get appropriate status based on current approval level
+//   const getExpectedStatus = (currentLevel) => {
 //     const statusLevelMap = {
 //       1: 'pending_supervisor',
 //       2: 'pending_departmental_head', 
@@ -2213,89 +1057,225 @@ export default SupervisorCashApprovals;
 //       4: 'pending_finance'
 //     };
     
-//     const expectedStatus = statusLevelMap[currentStep.level];
-//     return request.status === expectedStatus;
+//     return statusLevelMap[currentLevel] || 'pending_supervisor';
 //   };
 
-//   // Check if user has already approved this request
-//   const hasUserApproved = (request) => {
-//     if (!request.approvalChain || !user?.email) return false;
+//   // Get human-readable justification status
+//   const getJustificationStatusInfo = (status, level = null) => {
+//     const statusLevel = level || extractJustificationLevel(status);
+    
+//     const levelNames = {
+//       1: 'Supervisor',
+//       2: 'Departmental Head',
+//       3: 'Head of Business',
+//       4: 'Finance'
+//     };
+    
+//     if (status === 'completed') {
+//       return {
+//         text: 'Completed',
+//         color: 'cyan',
+//         icon: <CheckCircleOutlined />,
+//         description: 'All approvals completed'
+//       };
+//     }
+    
+//     if (status?.includes('justification_rejected')) {
+//       return {
+//         text: `Revision Required (${levelNames[statusLevel]})`,
+//         color: 'gold',
+//         icon: <ExclamationCircleOutlined />,
+//         description: `Rejected at Level ${statusLevel} - ${levelNames[statusLevel]}`
+//       };
+//     }
+    
+//     if (status?.includes('justification_pending')) {
+//       return {
+//         text: `Level ${statusLevel}/4: Pending ${levelNames[statusLevel]}`,
+//         color: 'orange',
+//         icon: <ClockCircleOutlined />,
+//         description: `Awaiting approval from ${levelNames[statusLevel]}`
+//       };
+//     }
+    
+//     return {
+//       text: status?.replace(/_/g, ' ') || 'Unknown',
+//       color: 'default',
+//       icon: null,
+//       description: ''
+//     };
+//   };
+
+//   // Check if user can approve cash request (initial approval, NOT justification)
+//   const canUserApprove = useCallback((request) => {
+//     if (!request.approvalChain || !user?.email) {
+//       return false;
+//     }
+
+//     // CRITICAL: Exclude justification statuses
+//     if (isJustificationStatus(request.status)) {
+//       return false;
+//     }
+    
+//     // Use teamRequestMetadata if available for more accurate checking
+//     if (request.teamRequestMetadata) {
+//       return request.teamRequestMetadata.userHasPendingApproval === true;
+//     }
+
+//     // Get current approval level
+//     const currentLevel = getCurrentApprovalLevel(request);
+//     if (!currentLevel) return false;
+
+//     // Find user's pending step at the CURRENT level
+//     const userPendingStep = request.approvalChain.find(step => 
+//       step.approver?.email?.toLowerCase() === user.email.toLowerCase() &&
+//       step.status === 'pending' &&
+//       step.level === currentLevel
+//     );
+
+//     return !!userPendingStep;
+//   }, [user?.email]);
+
+//   // Check if user can approve justification
+//   const canUserApproveJustification = useCallback((request) => {
+//     if (!request.justificationApprovalChain || !user?.email) {
+//       console.log('❌ canUserApproveJustification: Missing chain or user email', {
+//         hasChain: !!request.justificationApprovalChain,
+//         hasUserEmail: !!user?.email
+//       });
+//       return false;
+//     }
+
+//     // CRITICAL: Only check if status is actually a justification status
+//     if (!isJustificationStatus(request.status)) {
+//       console.log('❌ canUserApproveJustification: Not a justification status', {
+//         status: request.status,
+//         requestId: request._id
+//       });
+//       return false;
+//     }
+
+//     console.log('🔍 Checking justification approval for:', {
+//       requestId: request._id,
+//       status: request.status,
+//       userEmail: user.email,
+//       chainLength: request.justificationApprovalChain.length
+//     });
+
+//     // Get current status level from the status string
+//     const currentStatusLevel = extractJustificationLevel(request.status);
+//     console.log('📊 Current status level:', currentStatusLevel);
+    
+//     if (!currentStatusLevel) {
+//       console.log('❌ Could not extract status level from:', request.status);
+//       return false;
+//     }
+
+//     // Find ALL pending steps for this user at ANY level (to support multi-role users)
+//     const userPendingSteps = request.justificationApprovalChain.filter(step => {
+//       const emailMatch = step.approver?.email?.toLowerCase() === user.email.toLowerCase();
+//       const isPending = step.status === 'pending';
+      
+//       console.log(`  Step L${step.level}:`, {
+//         approverEmail: step.approver?.email,
+//         status: step.status,
+//         emailMatch,
+//         isPending
+//       });
+      
+//       return emailMatch && isPending;
+//     });
+
+//     console.log('📋 User pending steps found:', userPendingSteps.length);
+
+//     if (userPendingSteps.length === 0) {
+//       console.log('❌ No pending steps found for user');
+//       return false;
+//     }
+
+//     // Check if ANY of the user's pending steps match the current status level
+//     const canApprove = userPendingSteps.some(step => {
+//       const levelMatch = step.level === currentStatusLevel;
+//       console.log(`  Checking step L${step.level} against current level ${currentStatusLevel}: ${levelMatch}`);
+//       return levelMatch;
+//     });
+
+//     console.log(`✅ User ${canApprove ? 'CAN' : 'CANNOT'} approve at current level ${currentStatusLevel}`);
+
+//     return canApprove;
+//   }, [user?.email]);
+
+
+//   // Check if user has already approved cash request
+//   const hasUserApproved = useCallback((request) => {
+//     if (!request.approvalChain || !user?.email) {
+//       return false;
+//     }
+
+//     // Use teamRequestMetadata if available
+//     if (request.teamRequestMetadata) {
+//       return request.teamRequestMetadata.userHasApproved === true;
+//     }
     
 //     return request.approvalChain.some(step => 
-//       step.approver?.email === user.email &&
+//       step.approver?.email?.toLowerCase() === user.email.toLowerCase() &&
 //       step.status === 'approved'
 //     );
-//   };
+//   }, [user?.email]);
 
-//   // Check if user has rejected this request
-//   const hasUserRejected = (request) => {
-//     if (!request.approvalChain || !user?.email) return false;
+//   // Check if user has rejected cash request
+//   const hasUserRejected = useCallback((request) => {
+//     if (!request.approvalChain || !user?.email) {
+//       return false;
+//     }
+
+//     // Use teamRequestMetadata if available
+//     if (request.teamRequestMetadata) {
+//       return request.teamRequestMetadata.userHasRejected === true;
+//     }
     
 //     return request.approvalChain.some(step => 
-//       step.approver?.email === user.email &&
+//       step.approver?.email?.toLowerCase() === user.email.toLowerCase() &&
 //       step.status === 'rejected'
 //     );
-//   };
+//   }, [user?.email]);
 
-//   // Handle approval decision
-//   const handleApprovalDecision = async (values) => {
-//     if (!selectedRequest) return;
-
-//     try {
-//       setLoading(true);
-      
-//       const payload = {
-//         decision: values.decision,
-//         comments: values.comments
-//       };
-
-//       console.log('Submitting approval decision:', payload);
-
-//       const response = await api.put(`/api/cash-requests/${selectedRequest._id}/approve`, payload);
-      
-//       if (response.data.success) {
-//         const actionText = values.decision === 'approved' ? 'approved' : 'rejected';
-//         message.success(`Cash request ${actionText} successfully`);
-        
-//         setApprovalModalVisible(false);
-//         form.resetFields();
-//         setSelectedRequest(null);
-        
-//         // Refresh data
-//         await fetchCashRequests();
-        
-//         // Show success notification
-//         notification.success({
-//           message: 'Approval Decision Recorded',
-//           description: `Cash request from ${selectedRequest.employee?.fullName} has been ${actionText} and stakeholders have been notified.`,
-//           duration: 4
-//         });
-//       } else {
-//         throw new Error(response.data.message || 'Failed to process decision');
-//       }
-//     } catch (error) {
-//       console.error('Approval decision error:', error);
-//       message.error(error.response?.data?.message || 'Failed to process approval decision');
-//     } finally {
-//       setLoading(false);
+//   const getStatusTag = (status, request = null) => {
+//     // Handle justification statuses specially
+//     if (isJustificationStatus(status)) {
+//       const statusInfo = getJustificationStatusInfo(status);
+//       return (
+//         <Tooltip title={statusInfo.description}>
+//           <Tag color={statusInfo.color} icon={statusInfo.icon}>
+//             {statusInfo.text}
+//           </Tag>
+//         </Tooltip>
+//       );
 //     }
-//   };
 
-//   const handleViewDetails = async (request) => {
-//     try {
-//       const response = await api.get(`/api/cash-requests/supervisor/${request._id}`);
-      
-//       if (response.data.success) {
-//         setSelectedRequest(response.data.data);
-//         setDetailsModalVisible(true);
+//     // If we have the request object, determine status based on current approval level
+//     if (request && request.approvalChain) {
+//       const currentLevel = getCurrentApprovalLevel(request);
+//       if (currentLevel) {
+//         const expectedStatus = getExpectedStatus(currentLevel);
+        
+//         const statusMap = {
+//           'pending_supervisor': { color: 'orange', text: 'Pending Supervisor', icon: <ClockCircleOutlined /> },
+//           'pending_departmental_head': { color: 'orange', text: 'Pending Departmental Head', icon: <ClockCircleOutlined /> },
+//           'pending_head_of_business': { color: 'orange', text: 'Pending Head of Business', icon: <ClockCircleOutlined /> },
+//           'pending_finance': { color: 'blue', text: 'Pending Finance', icon: <ClockCircleOutlined /> },
+//           'approved': { color: 'green', text: 'Approved', icon: <CheckCircleOutlined /> },
+//           'denied': { color: 'red', text: 'Denied', icon: <CloseCircleOutlined /> },
+//           'rejected': { color: 'red', text: 'Rejected', icon: <CloseCircleOutlined /> },
+//           'disbursed': { color: 'purple', text: 'Disbursed', icon: <DollarOutlined /> }
+//         };
+
+//         const config = statusMap[expectedStatus] || { color: 'default', text: expectedStatus?.replace(/_/g, ' ') || 'Unknown', icon: null };
+//         return <Tag color={config.color} icon={config.icon}>{config.text}</Tag>;
 //       }
-//     } catch (error) {
-//       console.error('Error fetching request details:', error);
-//       message.error('Failed to fetch request details');
 //     }
-//   };
 
-//   const getStatusTag = (status) => {
+//     // Regular cash request statuses fallback
 //     const statusMap = {
 //       'pending_supervisor': { color: 'orange', text: 'Pending Supervisor', icon: <ClockCircleOutlined /> },
 //       'pending_departmental_head': { color: 'orange', text: 'Pending Departmental Head', icon: <ClockCircleOutlined /> },
@@ -2304,11 +1284,10 @@ export default SupervisorCashApprovals;
 //       'approved': { color: 'green', text: 'Approved', icon: <CheckCircleOutlined /> },
 //       'denied': { color: 'red', text: 'Denied', icon: <CloseCircleOutlined /> },
 //       'rejected': { color: 'red', text: 'Rejected', icon: <CloseCircleOutlined /> },
-//       'disbursed': { color: 'purple', text: 'Disbursed', icon: <DollarOutlined /> },
-//       'completed': { color: 'cyan', text: 'Completed', icon: <CheckCircleOutlined /> }
+//       'disbursed': { color: 'purple', text: 'Disbursed', icon: <DollarOutlined /> }
 //     };
 
-//     const config = statusMap[status] || { color: 'default', text: status?.replace('_', ' ') || 'Unknown', icon: null };
+//     const config = statusMap[status] || { color: 'default', text: status?.replace(/_/g, ' ') || 'Unknown', icon: null };
 //     return <Tag color={config.color} icon={config.icon}>{config.text}</Tag>;
 //   };
 
@@ -2330,35 +1309,377 @@ export default SupervisorCashApprovals;
 //     return Math.round((approved / request.approvalChain.length) * 100);
 //   };
 
-//   const getTabCount = (status) => {
-//     return requests.filter(req => {
-//       switch (status) {
-//         case 'pending':
-//           return canUserApprove(req);
-//         case 'approved':
-//           return ['approved', 'pending_finance', 'disbursed', 'completed'].includes(req.status) && hasUserApproved(req);
-//         case 'rejected':
-//           return req.status === 'denied' && hasUserRejected(req);
-//         default:
+//   const getTabCount = (status, type = 'request') => {
+//     if (type === 'request') {
+//       const filtered = requests.filter(req => {
+//         // Exclude justification statuses from cash request tabs
+//         if (isJustificationStatus(req.status)) {
 //           return false;
-//       }
-//     }).length;
+//         }
+
+//         switch (status) {
+//           case 'pending':
+//             return canUserApprove(req);
+//           case 'approved':
+//             return hasUserApproved(req);
+//           case 'rejected':
+//             return hasUserRejected(req);
+//           default:
+//             return false;
+//         }
+//       });
+//       return filtered.length;
+//     } else {
+//       // For justifications, return count where user can approve
+//       return justifications.filter(j => canUserApproveJustification(j)).length;
+//     }
 //   };
 
 //   const getFilteredRequests = () => {
 //     return requests.filter(request => {
+//       // CRITICAL: Exclude requests with justification statuses
+//       if (isJustificationStatus(request.status)) {
+//         return false;
+//       }
+
 //       switch (activeTab) {
 //         case 'pending':
 //           return canUserApprove(request);
 //         case 'approved':
-//           return ['approved', 'pending_finance', 'disbursed', 'completed'].includes(request.status) && hasUserApproved(request);
+//           return hasUserApproved(request);
 //         case 'rejected':
-//           return request.status === 'denied' && hasUserRejected(request);
+//           return hasUserRejected(request);
 //         default:
 //           return true;
 //       }
 //     });
 //   };
+
+//   // ============ DATA FETCHING ============
+
+//   const fetchCashRequests = useCallback(async () => {
+//     try {
+//       setLoading(true);
+      
+//       const response = await cashRequestAPI.getSupervisorRequests();
+      
+//       if (response.success) {
+//         const requestsData = response.data || [];
+//         setRequests(requestsData);
+
+//         // Filter out justification statuses when counting cash requests
+//         const cashRequestsOnly = requestsData.filter(req => !isJustificationStatus(req.status));
+
+//         const pending = cashRequestsOnly.filter(req => canUserApprove(req)).length;
+//         const approved = cashRequestsOnly.filter(req => hasUserApproved(req)).length;
+//         const rejected = cashRequestsOnly.filter(req => hasUserRejected(req)).length;
+
+//         setStats(prev => ({
+//           ...prev,
+//           pending,
+//           approved,
+//           rejected,
+//           total: cashRequestsOnly.length
+//         }));
+//       } else {
+//         throw new Error(response.message || 'Failed to fetch cash requests');
+//       }
+
+//     } catch (error) {
+//       console.error('Error fetching cash requests:', error);
+//       message.error(error.response?.data?.message || 'Failed to fetch cash requests');
+//       setRequests([]);
+//     } finally {
+//       setLoading(false);
+//     }
+//   }, [canUserApprove, hasUserApproved, hasUserRejected]);
+
+//   const fetchJustifications = useCallback(async () => {
+//     try {
+//       const response = await cashRequestAPI.getSupervisorJustifications();
+      
+//       if (response.success) {
+//         const justificationsData = response.data || [];
+        
+//         // CRITICAL: Filter to only include items with justification statuses
+//         const actualJustifications = justificationsData.filter(j => isJustificationStatus(j.status));
+        
+//         setJustifications(actualJustifications);
+
+//         const pendingJustifications = actualJustifications.filter(j => 
+//           canUserApproveJustification(j)
+//         ).length;
+
+//         setStats(prev => ({
+//           ...prev,
+//           justificationsPending: pendingJustifications
+//         }));
+//       }
+//     } catch (error) {
+//       console.error('Error fetching justifications:', error);
+//       message.error('Failed to fetch justifications');
+//       setJustifications([]);
+//     }
+//   }, [canUserApproveJustification]);
+
+//   useEffect(() => {
+//     if (user?.email) {
+//       fetchCashRequests();
+//       fetchJustifications();
+//     }
+//   }, [fetchCashRequests, fetchJustifications, user?.email]);
+
+//   // Handle auto-approval from email links
+//   useEffect(() => {
+//     const handleAutoAction = async () => {
+//       if (autoApprovalId || autoRejectId) {
+//         const requestId = autoApprovalId || autoRejectId;
+//         try {
+//           const response = await cashRequestAPI.getRequestById(requestId);
+//           if (response.success) {
+//             setSelectedRequest(response.data);
+//             setApprovalModalVisible(true);
+//             form.setFieldsValue({ 
+//               decision: autoApprovalId ? 'approved' : 'rejected' 
+//             });
+//           }
+//         } catch (error) {
+//           message.error('Failed to load cash request for approval');
+//         }
+//       }
+//     };
+
+//     handleAutoAction();
+//   }, [autoApprovalId, autoRejectId, form]);
+
+//   // ============ ACTION HANDLERS ============
+
+//   const handleApprovalDecision = async (values) => {
+//     if (!selectedRequest) return;
+
+//     try {
+//       setLoading(true);
+      
+//       const payload = {
+//         decision: values.decision,
+//         comments: values.comments
+//       };
+
+//       const response = await cashRequestAPI.processSupervisorDecision(
+//         selectedRequest._id, 
+//         payload
+//       );
+      
+//       if (response.success) {
+//         const actionText = values.decision === 'approved' ? 'approved' : 'rejected';
+//         message.success(`Cash request ${actionText} successfully`);
+        
+//         setApprovalModalVisible(false);
+//         form.resetFields();
+//         setSelectedRequest(null);
+        
+//         await fetchCashRequests();
+        
+//         notification.success({
+//           message: 'Approval Decision Recorded',
+//           description: `Cash request from ${selectedRequest.employee?.fullName} has been ${actionText} and stakeholders have been notified.`,
+//           duration: 4
+//         });
+//       } else {
+//         throw new Error(response.message || 'Failed to process decision');
+//       }
+//     } catch (error) {
+//       console.error('Approval decision error:', error);
+//       message.error(error.response?.data?.message || 'Failed to process approval decision');
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   const handleJustificationDecision = async (values) => {
+//     if (!selectedJustification) return;
+
+//     try {
+//       setLoading(true);
+
+//       const response = await cashRequestAPI.processJustificationDecision(
+//         selectedJustification._id,
+//         {
+//           decision: values.decision,
+//           comments: values.comments
+//         }
+//       );
+
+//       if (response.success) {
+//         const actionText = values.decision === 'approved' ? 'approved' : 'rejected';
+//         message.success(`Justification ${actionText} successfully`);
+
+//         setJustificationDecisionModalVisible(false);
+//         form.resetFields();
+//         setSelectedJustification(null);
+
+//         await Promise.all([fetchCashRequests(), fetchJustifications()]);
+
+//         notification.success({
+//           message: 'Decision Recorded',
+//           description: `Justification for ${selectedJustification.employee?.fullName} has been ${actionText}.`,
+//           duration: 4
+//         });
+//       } else {
+//         throw new Error(response.message || 'Failed to process decision');
+//       }
+//     } catch (error) {
+//       console.error('Error processing justification decision:', error);
+//       message.error(error.response?.data?.message || 'Failed to process decision');
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   const handleViewDetails = async (request) => {
+//     try {
+//       const response = await cashRequestAPI.getRequestById(request._id);
+      
+//       if (response.success) {
+//         setSelectedRequest(response.data);
+//         setDetailsModalVisible(true);
+//       }
+//     } catch (error) {
+//       console.error('Error fetching request details:', error);
+//       message.error('Failed to fetch request details');
+//     }
+//   };
+
+//   const handleDownloadAttachment = async (attachment) => {
+//     try {
+//       console.log('📥 Downloading attachment:', attachment);
+      
+//       if (!attachment || !attachment.publicId) {
+//         message.error('Invalid attachment - no publicId found');
+//         console.error('Attachment object:', attachment);
+//         return;
+//       }
+
+//       // Show loading message
+//       const loadingMessage = message.loading('Downloading file...', 0);
+
+//       try {
+//         // Download using publicId
+//         const blob = await cashRequestAPI.downloadAttachment(attachment.publicId);
+        
+//         // Create download link
+//         const url = window.URL.createObjectURL(blob);
+//         const link = document.createElement('a');
+//         link.href = url;
+        
+//         // Use the original filename from attachment
+//         link.download = attachment.name || attachment.publicId;
+        
+//         document.body.appendChild(link);
+//         link.click();
+//         document.body.removeChild(link);
+//         window.URL.revokeObjectURL(url);
+
+//         loadingMessage();
+//         message.success(`Downloaded ${attachment.name || 'file'}`);
+//       } catch (downloadError) {
+//         loadingMessage();
+//         throw downloadError;
+//       }
+
+//     } catch (error) {
+//       console.error('Error downloading attachment:', error);
+//       message.error(`Failed to download: ${error.response?.data?.message || error.message}`);
+//     }
+//   };
+
+//   const handleViewAttachment = async (attachment) => {
+//     try {
+//       if (!attachment) {
+//         message.error('No attachment data available');
+//         return;
+//       }
+
+//       setFileViewerLoading(true);
+//       setFileViewerVisible(true);
+
+//       const token = localStorage.getItem('token');
+//       if (!token) {
+//         message.error('Authentication required. Please login again.');
+//         setFileViewerVisible(false);
+//         setFileViewerLoading(false);
+//         return;
+//       }
+
+//       const publicId = attachment.publicId || attachment.fileName || attachment.name;
+      
+//       if (!publicId) {
+//         message.error('Unable to locate file. Invalid attachment data.');
+//         setFileViewerVisible(false);
+//         setFileViewerLoading(false);
+//         return;
+//       }
+
+//       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+//       const downloadUrl = `${apiUrl}/files/download/${encodeURIComponent(publicId)}`;
+      
+//       const response = await fetch(downloadUrl, {
+//         method: 'GET',
+//         headers: {
+//           'Authorization': `Bearer ${token}`,
+//           'Content-Type': 'application/json'
+//         },
+//       });
+
+//       if (!response.ok) {
+//         throw new Error(`Failed to fetch file: ${response.status}`);
+//       }
+
+//       const isImage = attachment.mimetype?.startsWith('image/') || 
+//                      /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(attachment.name);
+//       const isPDF = attachment.mimetype === 'application/pdf' || 
+//                    /\.pdf$/i.test(attachment.name);
+
+//       if (isPDF) {
+//         const viewUrl = `${apiUrl}/files/view/${encodeURIComponent(publicId)}`;
+        
+//         setViewingFile({
+//           name: attachment.name,
+//           url: viewUrl,
+//           type: 'pdf',
+//           mimetype: attachment.mimetype,
+//           isDirectUrl: true,
+//           authHeaders: {
+//             'Authorization': `Bearer ${token}`
+//           }
+//         });
+//       } else {
+//         const blob = await response.blob();
+//         const fileUrl = window.URL.createObjectURL(blob);
+        
+//         setViewingFile({
+//           name: attachment.name,
+//           url: fileUrl,
+//           type: isImage ? 'image' : 'other',
+//           mimetype: attachment.mimetype
+//         });
+//       }
+      
+//       setFileViewerLoading(false);
+//     } catch (error) {
+//       console.error('Error viewing attachment:', error);
+//       message.error(`Failed to view attachment: ${error.message}`);
+//       setFileViewerVisible(false);
+//       setFileViewerLoading(false);
+//     }
+//   };
+
+//   const handleRefresh = async () => {
+//     await Promise.all([fetchCashRequests(), fetchJustifications()]);
+//     message.success('Data refreshed successfully');
+//   };
+
+//   // ============ TABLE COLUMNS ============
 
 //   const columns = [
 //     {
@@ -2377,7 +1698,7 @@ export default SupervisorCashApprovals;
 //           </Tag>
 //         </div>
 //       ),
-//       width: 200
+//       width: 180
 //     },
 //     {
 //       title: 'Request Details',
@@ -2427,8 +1748,8 @@ export default SupervisorCashApprovals;
 //       key: 'status',
 //       render: (status, record) => (
 //         <div>
-//           {getStatusTag(status)}
-//           {status === 'pending_supervisor' && canUserApprove(record) && (
+//           {getStatusTag(status, record)}
+//           {canUserApprove(record) && (
 //             <div style={{ marginTop: 4 }}>
 //               <Tag color="gold" size="small">Your Turn</Tag>
 //             </div>
@@ -2444,37 +1765,13 @@ export default SupervisorCashApprovals;
 //         { text: 'Disbursed', value: 'disbursed' },
 //         { text: 'Denied', value: 'denied' }
 //       ],
-//       onFilter: (value, record) => record.status === value,
-//       width: 160
-//     },
-//     {
-//       title: 'Your Level',
-//       key: 'approvalLevel',
-//       render: (_, record) => {
-//         if (!record.approvalChain || !user?.email) return 'N/A';
-        
-//         const userStep = record.approvalChain.find(step => 
-//           step.approver?.email === user.email
-//         );
-        
-//         if (!userStep) return 'N/A';
-        
-//         const isCurrent = userStep.status === 'pending';
-        
-//         return (
-//           <div>
-//             <Tag color={isCurrent ? "gold" : userStep.status === 'approved' ? "green" : userStep.status === 'rejected' ? "red" : "default"}>
-//               Level {userStep.level}
-//             </Tag>
-//             {isCurrent && (
-//               <div style={{ fontSize: '10px', color: '#faad14' }}>
-//                 Active
-//               </div>
-//             )}
-//           </div>
-//         );
+//       onFilter: (value, record) => {
+//         // For filtering, use the actual status from the request
+//         const currentLevel = getCurrentApprovalLevel(record);
+//         const expectedStatus = getExpectedStatus(currentLevel);
+//         return expectedStatus === value;
 //       },
-//       width: 100
+//       width: 160
 //     },
 //     {
 //       title: 'Progress',
@@ -2484,7 +1781,6 @@ export default SupervisorCashApprovals;
 //         let status = 'active';
 //         if (record.status === 'denied') status = 'exception';
 //         if (['approved', 'disbursed', 'completed'].includes(record.status)) status = 'success';
-//         if (['pending_supervisor', 'pending_departmental_head', 'pending_head_of_business', 'pending_finance'].includes(record.status)) status = 'active';
         
 //         return (
 //           <div style={{ width: 80 }}>
@@ -2499,43 +1795,6 @@ export default SupervisorCashApprovals;
 //         );
 //       },
 //       width: 100
-//     },
-//     {
-//       title: 'Attachments',
-//       key: 'attachments',
-//       render: (_, record) => (
-//         <div>
-//           {record.attachments && record.attachments.length > 0 ? (
-//             <Space direction="vertical" size="small">
-//               {record.attachments.map((attachment, index) => (
-//                 <Space key={index} size="small">
-//                   <Button 
-//                     size="small" 
-//                     type="link"
-//                     icon={<EyeOutlined />}
-//                     onClick={() => handleViewAttachment(attachment)}
-//                     style={{ padding: 0, fontSize: '11px' }}
-//                   >
-//                     View
-//                   </Button>
-//                   <Button 
-//                     size="small" 
-//                     type="link"
-//                     icon={<FileOutlined />}
-//                     onClick={() => handleDownloadAttachment(attachment)}
-//                     style={{ padding: 0, fontSize: '11px' }}
-//                   >
-//                     {attachment.name}
-//                   </Button>
-//                 </Space>
-//               ))}
-//             </Space>
-//           ) : (
-//             <Text type="secondary" style={{ fontSize: '11px' }}>No attachments</Text>
-//           )}
-//         </div>
-//       ),
-//       width: 120
 //     },
 //     {
 //       title: 'Actions',
@@ -2556,6 +1815,7 @@ export default SupervisorCashApprovals;
 //               type="primary"
 //               onClick={() => {
 //                 setSelectedRequest(record);
+//                 form.resetFields();
 //                 setApprovalModalVisible(true);
 //               }}
 //             >
@@ -2569,200 +1829,178 @@ export default SupervisorCashApprovals;
 //     }
 //   ];
 
-//   // Secure file download handler
-//   const handleDownloadAttachment = async (attachment) => {
-//     try {
-//       console.log('Attachment object:', attachment);
-      
-//       if (!attachment) {
-//         message.error('No attachment data available');
-//         return;
-//       }
+//   const justificationColumns = [
+//     {
+//       title: 'Employee',
+//       key: 'employee',
+//       render: (_, record) => (
+//         <div>
+//           <Text strong>{record.employee?.fullName || 'N/A'}</Text>
+//           <br />
+//           <Tag color="blue" size="small">
+//             {record.employee?.department || 'N/A'}
+//           </Tag>
+//         </div>
+//       ),
+//       width: 180
+//     },
+//     {
+//       title: 'Request Details',
+//       key: 'details',
+//       render: (_, record) => (
+//         <div>
+//           <Text strong>REQ-{record._id?.slice(-6).toUpperCase()}</Text>
+//           <br />
+//           <Text type="secondary" style={{ fontSize: '12px' }}>
+//             Type: {record.requestType?.replace(/-/g, ' ').toUpperCase()}
+//           </Text>
+//         </div>
+//       ),
+//       width: 150
+//     },
+//     {
+//       title: 'Financial Summary',
+//       key: 'financial',
+//       render: (_, record) => {
+//         const disbursed = record.disbursementDetails?.amount || 0;
+//         const spent = record.justification?.amountSpent || 0;
+//         const returned = record.justification?.balanceReturned || 0;
+//         const isBalanced = Math.abs((spent + returned) - disbursed) < 0.01;
 
-//       // Get auth token - using 'token' as that's what's set in Login.js
-//       const token = localStorage.getItem('token');
-//       if (!token) {
-//         message.error('Authentication required. Please login again.');
-//         return;
-//       }
-
-//       let downloadId = '';
-      
-//       // Determine what to use as the download identifier
-//       if (attachment.publicId) {
-//         // If publicId exists, use it directly (for local files, this will be the filename)
-//         downloadId = attachment.publicId;
-//       } else if (attachment.url) {
-//         // Extract publicId from Cloudinary URL for Cloudinary files
-//         const urlParts = attachment.url.split('/');
-//         const uploadIndex = urlParts.findIndex(part => part === 'upload');
-//         if (uploadIndex !== -1 && uploadIndex + 2 < urlParts.length) {
-//           downloadId = urlParts.slice(uploadIndex + 2).join('/');
-//           // Remove file extension from publicId for Cloudinary
-//           const lastPart = downloadId.split('/').pop();
-//           if (lastPart && lastPart.includes('.')) {
-//             downloadId = downloadId.replace(/\.[^/.]+$/, '');
+//         return (
+//           <div>
+//             <Text type="secondary" style={{ fontSize: '11px' }}>
+//               Disbursed: XAF {disbursed.toLocaleString()}
+//             </Text>
+//             <br />
+//             <Text type="secondary" style={{ fontSize: '11px' }}>
+//               Spent: XAF {spent.toLocaleString()}
+//             </Text>
+//             <br />
+//             <Text type="secondary" style={{ fontSize: '11px' }}>
+//               Returned: XAF {returned.toLocaleString()}
+//             </Text>
+//             <br />
+//             {!isBalanced && (
+//               <Tag color="warning" size="small">Unbalanced</Tag>
+//             )}
+//           </div>
+//         );
+//       },
+//       width: 180
+//     },
+//     {
+//       title: 'Submitted Date',
+//       key: 'date',
+//       render: (_, record) => (
+//         <Text type="secondary">
+//           {record.justification?.justificationDate 
+//             ? new Date(record.justification.justificationDate).toLocaleDateString('en-GB')
+//             : 'N/A'
 //           }
-//         }
-//       }
-
-//       if (!downloadId) {
-//         console.error('Could not extract download ID from attachment:', attachment);
-//         message.error('Unable to locate file. Invalid attachment data.');
-//         return;
-//       }
-
-//       console.log('Using download ID:', downloadId);
-
-//       // Use authenticated download endpoint - REACT_APP_API_URL already includes /api
-//       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
-//       const downloadUrl = `${apiUrl}/files/download/${encodeURIComponent(downloadId)}`;
-      
-//       console.log('Download URL:', downloadUrl);
-
-//       const response = await fetch(downloadUrl, {
-//         method: 'GET',
-//         headers: {
-//           'Authorization': `Bearer ${token}`,
-//           'Content-Type': 'application/json'
-//         },
-//       });
-
-//       console.log('Response status:', response.status);
-
-//       if (!response.ok) {
-//         const errorText = await response.text();
-//         console.error('Download failed:', errorText);
-//         throw new Error(`Download failed: ${response.status} ${response.statusText}`);
-//       }
-
-//       const blob = await response.blob();
-//       const url = window.URL.createObjectURL(blob);
-//       const link = document.createElement('a');
-//       link.href = url;
-//       link.download = attachment.originalName || attachment.name || 'attachment';
-      
-//       document.body.appendChild(link);
-//       link.click();
-//       document.body.removeChild(link);
-//       window.URL.revokeObjectURL(url);
-
-//       message.success(`Downloaded ${attachment.originalName || attachment.name}`);
-//     } catch (error) {
-//       console.error('Error downloading attachment:', error);
-//       message.error(`Failed to download attachment: ${error.message}`);
-//     }
-//   };
-
-//   const handleViewAttachment = async (attachment) => {
-//     try {
-//       console.log('Viewing attachment:', attachment);
-      
-//       if (!attachment) {
-//         message.error('No attachment data available');
-//         return;
-//       }
-
-//       setFileViewerLoading(true);
-//       setFileViewerVisible(true);
-
-//       // Get auth token - using 'token' as that's what's set in Login.js
-//       const token = localStorage.getItem('token');
-//       if (!token) {
-//         message.error('Authentication required. Please login again.');
-//         setFileViewerVisible(false);
-//         setFileViewerLoading(false);
-//         return;
-//       }
-
-//       // For local files, use the publicId directly
-//       let publicId = attachment.publicId || attachment.name;
-      
-//       if (!publicId) {
-//         console.error('Could not get publicId from attachment:', attachment);
-//         message.error('Unable to locate file. Invalid attachment data.');
-//         setFileViewerVisible(false);
-//         setFileViewerLoading(false);
-//         return;
-//       }
-
-//       console.log('Fetching file for viewing:', publicId);
-
-//       // Fetch the file as blob for inline viewing
-//       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
-//       const downloadUrl = `${apiUrl}/files/download/${encodeURIComponent(publicId)}`;
-      
-//       const response = await fetch(downloadUrl, {
-//         method: 'GET',
-//         headers: {
-//           'Authorization': `Bearer ${token}`,
-//           'Content-Type': 'application/json'
-//         },
-//       });
-
-//       if (!response.ok) {
-//         const errorText = await response.text();
-//         console.error('File fetch failed:', errorText);
-//         throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
-//       }
-
-//       // Determine file type
-//       const isImage = attachment.mimetype?.startsWith('image/') || 
-//                      /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(attachment.name);
-//       const isPDF = attachment.mimetype === 'application/pdf' || 
-//                    /\.pdf$/i.test(attachment.name);
-
-//       // For PDFs, use the view endpoint directly
-//       if (isPDF) {
-//         const token = localStorage.getItem('token');
-//         const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
-//         const viewUrl = `${apiUrl}/files/view/${encodeURIComponent(publicId)}`;
+//         </Text>
+//       ),
+//       width: 120
+//     },
+//     {
+//       title: 'Approval Progress',
+//       key: 'progress',
+//       render: (_, record) => {
+//         if (!record.justificationApprovalChain) return <Text type="secondary">No chain</Text>;
         
-//         setViewingFile({
-//           name: attachment.name,
-//           url: viewUrl,
-//           type: 'pdf',
-//           mimetype: attachment.mimetype,
-//           isDirectUrl: true, // Flag to indicate this is a direct server URL
-//           authHeaders: {
-//             'Authorization': `Bearer ${token}`
-//           }
-//         });
-//       } else {
-//         // For images and other files, continue using blob URLs
-//         const blob = await response.blob();
-//         const fileUrl = window.URL.createObjectURL(blob);
+//         const currentLevel = extractJustificationLevel(record.status);
+//         const totalLevels = record.justificationApprovalChain.length;
+//         const approvedCount = record.justificationApprovalChain.filter(s => s.status === 'approved').length;
         
-//         setViewingFile({
-//           name: attachment.name,
-//           url: fileUrl,
-//           type: isImage ? 'image' : 'other',
-//           mimetype: attachment.mimetype
-//         });
-//       }
-      
-//       setFileViewerLoading(false);
-//     } catch (error) {
-//       console.error('Error viewing attachment:', error);
-//       message.error(`Failed to view attachment: ${error.message}`);
-//       setFileViewerVisible(false);
-//       setFileViewerLoading(false);
-      
-//       // Fallback to download
-//       handleDownloadAttachment(attachment);
+//         return (
+//           <div>
+//             <Progress 
+//               percent={Math.round((approvedCount / totalLevels) * 100)} 
+//               size="small"
+//               status={record.status === 'completed' ? 'success' : 'active'}
+//               showInfo={false}
+//             />
+//             <Text style={{ fontSize: '11px' }}>
+//               Level {currentLevel || approvedCount + 1}/{totalLevels}
+//             </Text>
+//           </div>
+//         );
+//       },
+//       width: 120
+//     },
+//     {
+//       title: 'Status',
+//       key: 'justificationStatus',
+//       render: (_, record) => (
+//         <div>
+//           {getStatusTag(record.status, record)}
+//           {canUserApproveJustification(record) && (
+//             <div style={{ marginTop: 4 }}>
+//               <Tag color="gold" size="small">Your Turn</Tag>
+//             </div>
+//           )}
+//         </div>
+//       ),
+//       width: 200
+//     },
+//     {
+//       title: 'Documents',
+//       key: 'documents',
+//       render: (_, record) => (
+//         <Badge 
+//           count={record.justification?.documents?.length || 0} 
+//           showZero
+//           style={{ backgroundColor: '#52c41a' }}
+//         >
+//           <FileTextOutlined style={{ fontSize: '16px' }} />
+//         </Badge>
+//       ),
+//       width: 100
+//     },
+//     {
+//       title: 'Actions',
+//       key: 'actions',
+//       render: (_, record) => (
+//         <Space size="small">
+//           <Button
+//             size="small"
+//             icon={<EyeOutlined />}
+//             onClick={() => {
+//               setSelectedJustification(record);
+//               setDetailsModalVisible(true);
+//             }}
+//           >
+//             View
+//           </Button>
+
+//           {canUserApproveJustification(record) && (
+//             <Button
+//               size="small"
+//               type="primary"
+//               icon={<AuditOutlined />}
+//               onClick={() => {
+//                 setSelectedJustification(record);
+//                 form.resetFields();
+//                 setJustificationDecisionModalVisible(true);
+//               }}
+//             >
+//               Review
+//             </Button>
+//           )}
+//         </Space>
+//       ),
+//       width: 140,
+//       fixed: 'right'
 //     }
-//   };
+//   ];
 
-//   const handleRefresh = async () => {
-//     await fetchCashRequests();
-//     message.success('Data refreshed successfully');
-//   };
+//   // ============ RENDER ============
 
-//   if (loading && requests.length === 0) {
+//   if (loading && requests.length === 0 && justifications.length === 0) {
 //     return (
 //       <div style={{ padding: '24px', textAlign: 'center' }}>
 //         <Spin size="large" />
-//         <div style={{ marginTop: '16px' }}>Loading cash request approvals...</div>
+//         <div style={{ marginTop: '16px' }}>Loading approvals...</div>
 //       </div>
 //     );
 //   }
@@ -2787,7 +2025,7 @@ export default SupervisorCashApprovals;
 
 //         {/* Stats Cards */}
 //         <Row gutter={16} style={{ marginBottom: '24px' }}>
-//           <Col span={6}>
+//           <Col span={5}>
 //             <Statistic
 //               title="Pending Your Approval"
 //               value={stats.pending}
@@ -2795,7 +2033,7 @@ export default SupervisorCashApprovals;
 //               valueStyle={{ color: '#faad14' }}
 //             />
 //           </Col>
-//           <Col span={6}>
+//           <Col span={5}>
 //             <Statistic
 //               title="Approved by You"
 //               value={stats.approved}
@@ -2803,7 +2041,7 @@ export default SupervisorCashApprovals;
 //               valueStyle={{ color: '#52c41a' }}
 //             />
 //           </Col>
-//           <Col span={6}>
+//           <Col span={5}>
 //             <Statistic
 //               title="Rejected by You"
 //               value={stats.rejected}
@@ -2811,7 +2049,15 @@ export default SupervisorCashApprovals;
 //               valueStyle={{ color: '#f5222d' }}
 //             />
 //           </Col>
-//           <Col span={6}>
+//           <Col span={5}>
+//             <Statistic
+//               title="Pending Justifications"
+//               value={stats.justificationsPending}
+//               prefix={<FileTextOutlined />}
+//               valueStyle={{ color: '#722ed1' }}
+//             />
+//           </Col>
+//           <Col span={4}>
 //             <Statistic
 //               title="Total Assigned"
 //               value={stats.total}
@@ -2821,67 +2067,134 @@ export default SupervisorCashApprovals;
 //           </Col>
 //         </Row>
 
-//         {/* Pending Actions Alert */}
-//         {stats.pending > 0 && (
+//         {(stats.pending > 0 || stats.justificationsPending > 0) && (
 //           <Alert
-//             message={`${stats.pending} cash request(s) require your approval`}
+//             message={`${stats.pending} cash request(s) and ${stats.justificationsPending} justification(s) require your approval`}
 //             type="warning"
 //             showIcon
 //             style={{ marginBottom: '16px' }}
-//             action={
-//               <Button 
-//                 size="small" 
-//                 type="primary"
-//                 onClick={() => setActiveTab('pending')}
-//               >
-//                 Review Now
-//               </Button>
-//             }
 //           />
 //         )}
 
 //         <Tabs activeKey={activeTab} onChange={setActiveTab}>
 //           <TabPane 
-//             tab={`Pending Approval (${getTabCount('pending')})`} 
+//             tab={
+//               <Badge count={getTabCount('pending', 'request')} offset={[10, 0]}>
+//                 <span>Pending Approval</span>
+//               </Badge>
+//             } 
 //             key="pending"
-//           />
+//           >
+//             <Table
+//               columns={columns}
+//               dataSource={getFilteredRequests()}
+//               loading={loading}
+//               rowKey="_id"
+//               pagination={{
+//                 pageSize: 10,
+//                 showSizeChanger: true,
+//                 showQuickJumper: true,
+//                 showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requests`
+//               }}
+//               scroll={{ x: 1400 }}
+//               size="small"
+//               rowClassName={(record) => {
+//                 let className = 'cash-request-row';
+//                 if (canUserApprove(record)) {
+//                   className += ' pending-approval-row';
+//                 }
+//                 if (record.urgency === 'high') {
+//                   className += ' high-urgency-row';
+//                 }
+//                 return className;
+//               }}
+//             />
+//           </TabPane>
+          
 //           <TabPane 
-//             tab={`Approved (${getTabCount('approved')})`} 
+//             tab={
+//               <Badge count={getTabCount('approved', 'request')} offset={[10, 0]}>
+//                 <span>Approved</span>
+//               </Badge>
+//             } 
 //             key="approved"
-//           />
+//           >
+//             <Table
+//               columns={columns}
+//               dataSource={getFilteredRequests()}
+//               loading={loading}
+//               rowKey="_id"
+//               pagination={{
+//                 pageSize: 10,
+//                 showSizeChanger: true,
+//                 showQuickJumper: true,
+//                 showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requests`
+//               }}
+//               scroll={{ x: 1400 }}
+//               size="small"
+//             />
+//           </TabPane>
+          
 //           <TabPane 
-//             tab={`Rejected (${getTabCount('rejected')})`} 
+//             tab={
+//               <Badge count={getTabCount('rejected', 'request')} offset={[10, 0]}>
+//                 <span>Rejected</span>
+//               </Badge>
+//             } 
 //             key="rejected"
-//           />
-//         </Tabs>
+//           >
+//             <Table
+//               columns={columns}
+//               dataSource={getFilteredRequests()}
+//               loading={loading}
+//               rowKey="_id"
+//               pagination={{
+//                 pageSize: 10,
+//                 showSizeChanger: true,
+//                 showQuickJumper: true,
+//                 showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requests`
+//               }}
+//               scroll={{ x: 1400 }}
+//               size="small"
+//             />
+//           </TabPane>
 
-//         <Table
-//           columns={columns}
-//           dataSource={getFilteredRequests()}
-//           loading={loading}
-//           rowKey="_id"
-//           pagination={{
-//             pageSize: 10,
-//             showSizeChanger: true,
-//             showQuickJumper: true,
-//             showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} requests`
-//           }}
-//           scroll={{ x: 1400 }}
-//           size="small"
-//           rowClassName={(record) => {
-//             let className = 'cash-request-row';
-//             if (canUserApprove(record)) {
-//               className += ' pending-approval-row';
-//             }
-//             if (record.urgency === 'high') {
-//               className += ' high-urgency-row';
-//             }
-//             return className;
-//           }}
-//         />
+//           <TabPane 
+//             tab={
+//               <Badge count={stats.justificationsPending} offset={[10, 0]}>
+//                 <span><FileTextOutlined /> Justification Approvals</span>
+//               </Badge>
+//             } 
+//             key="justifications"
+//           >
+//             {activeTab === 'justifications' && (
+//               <Table
+//                 columns={justificationColumns}
+//                 dataSource={justifications}
+//                 loading={loading}
+//                 rowKey="_id"
+//                 pagination={{
+//                   pageSize: 10,
+//                   showSizeChanger: true,
+//                   showQuickJumper: true,
+//                   showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} justifications`
+//                 }}
+//                 scroll={{ x: 1200 }}
+//                 size="small"
+//                 rowClassName={(record) => {
+//                   let className = 'cash-request-row';
+//                   if (canUserApproveJustification(record)) {
+//                     className += ' pending-approval-row';
+//                   }
+//                   return className;
+//                 }}
+//               />
+//             )}
+//           </TabPane>
+//         </Tabs>
 //       </Card>
 
-//       {/* Approval Modal */}
+//       {/* Cash Request Approval Modal */}
 //       <Modal
 //         title={
 //           <Space>
@@ -2955,7 +2268,7 @@ export default SupervisorCashApprovals;
 //                         size="small"
 //                         onClick={() => handleDownloadAttachment(attachment)}
 //                       >
-//                         Download {attachment.name}
+//                         Download {attachment.name || attachment.publicId}
 //                       </Button>
 //                     </Space>
 //                   ))}
@@ -3019,84 +2332,119 @@ export default SupervisorCashApprovals;
 //         )}
 //       </Modal>
 
-//       {/* Details Modal */}
+//       {/* Justification Decision Modal */}
 //       <Modal
 //         title={
 //           <Space>
-//             <DollarOutlined />
-//             Cash Request Details & Approval History
+//             <AuditOutlined />
+//             Justification Decision
 //           </Space>
 //         }
-//         open={detailsModalVisible}
+//         open={justificationDecisionModalVisible}
 //         onCancel={() => {
-//           setDetailsModalVisible(false);
-//           setSelectedRequest(null);
+//           setJustificationDecisionModalVisible(false);
+//           setSelectedJustification(null);
+//           form.resetFields();
 //         }}
 //         footer={null}
 //         width={900}
 //       >
-//         {selectedRequest && (
+//         {selectedJustification && (
 //           <div>
+//             <Alert
+//               message="Review Justification"
+//               description="Please review and make a decision on this cash justification."
+//               type="info"
+//               showIcon
+//               style={{ marginBottom: '16px' }}
+//             />
+
+//             {/* Status with Level Info */}
+//             <Card size="small" style={{ marginBottom: '16px', backgroundColor: '#f0f2f5' }}>
+//               <Row gutter={16}>
+//                 <Col span={12}>
+//                   <Text strong>Current Status:</Text>
+//                   <div style={{ marginTop: '8px' }}>
+//                     {getStatusTag(selectedJustification.status, selectedJustification)}
+//                   </div>
+//                 </Col>
+//                 <Col span={12}>
+//                   <Text strong>Approval Progress:</Text>
+//                   <div style={{ marginTop: '8px' }}>
+//                     {selectedJustification.justificationApprovalChain && (
+//                       <Progress 
+//                         percent={Math.round((selectedJustification.justificationApprovalChain.filter(s => s.status === 'approved').length / selectedJustification.justificationApprovalChain.length) * 100)} 
+//                         status={selectedJustification.status === 'completed' ? 'success' : 'active'}
+//                       />
+//                     )}
+//                   </div>
+//                 </Col>
+//               </Row>
+//             </Card>
+
 //             <Descriptions bordered column={2} size="small" style={{ marginBottom: '20px' }}>
-//               <Descriptions.Item label="Request ID">
-//                 <Text code copyable>REQ-{selectedRequest._id?.slice(-6).toUpperCase()}</Text>
-//               </Descriptions.Item>
-//               <Descriptions.Item label="Status">
-//                 {getStatusTag(selectedRequest.status)}
-//               </Descriptions.Item>
 //               <Descriptions.Item label="Employee">
-//                 <Text strong>{selectedRequest.employee?.fullName}</Text>
+//                 <Text strong>{selectedJustification.employee?.fullName}</Text>
 //               </Descriptions.Item>
-//               <Descriptions.Item label="Department">
-//                 <Tag color="blue">{selectedRequest.employee?.department}</Tag>
+//               <Descriptions.Item label="Request ID">
+//                 <Text code copyable>REQ-{selectedJustification._id?.slice(-6).toUpperCase()}</Text>
 //               </Descriptions.Item>
-//               <Descriptions.Item label="Amount Requested">
-//                 <Text strong>XAF {(selectedRequest.amountRequested || 0).toLocaleString()}</Text>
+//               <Descriptions.Item label="Amount Disbursed">
+//                 <Text strong>XAF {(selectedJustification.disbursementDetails?.amount || 0).toLocaleString()}</Text>
 //               </Descriptions.Item>
-//               <Descriptions.Item label="Request Type">
-//                 {selectedRequest.requestType?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+//               <Descriptions.Item label="Justification Date">
+//                 {selectedJustification.justification?.justificationDate 
+//                   ? new Date(selectedJustification.justification.justificationDate).toLocaleDateString('en-GB')
+//                   : 'N/A'
+//                 }
 //               </Descriptions.Item>
-//               <Descriptions.Item label="Urgency">
-//                 {getUrgencyTag(selectedRequest.urgency)}
-//               </Descriptions.Item>
-//               <Descriptions.Item label="Required Date">
-//                 {selectedRequest.requiredDate ? new Date(selectedRequest.requiredDate).toLocaleDateString('en-GB') : 'N/A'}
-//               </Descriptions.Item>
-//               <Descriptions.Item label="Purpose" span={2}>
-//                 {selectedRequest.purpose}
-//               </Descriptions.Item>
-//               {selectedRequest.businessJustification && (
-//                 <Descriptions.Item label="Business Justification" span={2}>
-//                   {selectedRequest.businessJustification}
-//                 </Descriptions.Item>
-//               )}
 //             </Descriptions>
 
-//             {/* Attachments */}
-//             {selectedRequest.attachments && selectedRequest.attachments.length > 0 && (
-//               <Card size="small" title="Attached Files" style={{ marginBottom: '20px' }}>
-//                 <Space wrap>
-//                   {selectedRequest.attachments.map((attachment, index) => (
-//                     <Button 
-//                       key={index}
-//                       icon={<FileOutlined />}
-//                       onClick={() => handleDownloadAttachment(attachment)}
-//                     >
-//                       {attachment.name}
-//                     </Button>
-//                   ))}
-//                 </Space>
-//               </Card>
-//             )}
+//             {/* Justification Financial Details */}
+//             <Card size="small" title="Financial Summary" style={{ marginBottom: '20px' }}>
+//               <Row gutter={16}>
+//                 <Col span={8}>
+//                   <Statistic
+//                     title="Amount Spent"
+//                     value={selectedJustification.justification?.amountSpent || 0}
+//                     prefix="XAF "
+//                     precision={0}
+//                     valueStyle={{ color: '#f5222d' }}
+//                   />
+//                 </Col>
+//                 <Col span={8}>
+//                   <Statistic
+//                     title="Balance Returned"
+//                     value={selectedJustification.justification?.balanceReturned || 0}
+//                     prefix="XAF "
+//                     precision={0}
+//                     valueStyle={{ color: '#52c41a' }}
+//                   />
+//                 </Col>
+//                 <Col span={8}>
+//                   <Statistic
+//                     title="Total"
+//                     value={(selectedJustification.justification?.amountSpent || 0) + (selectedJustification.justification?.balanceReturned || 0)}
+//                     prefix="XAF "
+//                     precision={0}
+//                   />
+//                 </Col>
+//               </Row>
+//             </Card>
 
-//             {/* Approval Chain */}
-//             {selectedRequest.approvalChain && selectedRequest.approvalChain.length > 0 && (
-//               <>
-//                 <Title level={4}>
-//                   <HistoryOutlined /> Approval Chain Progress
-//                 </Title>
+//             {/* Spending Details */}
+//             <Card size="small" title="Spending Details" style={{ marginBottom: '20px' }}>
+//               <Text type="secondary">Details:</Text>
+//               <Paragraph style={{ marginTop: '8px', fontStyle: 'italic', backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '4px' }}>
+//                 {selectedJustification.justification?.details || 'No details provided'}
+//               </Paragraph>
+//             </Card>
+
+//             {/* Justification Approval Chain Timeline */}
+//             {selectedJustification.justificationApprovalChain && selectedJustification.justificationApprovalChain.length > 0 && (
+//               <Card size="small" title="Approval Chain Progress" style={{ marginBottom: '20px' }}>
 //                 <Timeline>
-//                   {selectedRequest.approvalChain.map((step, index) => {
+//                   {selectedJustification.justificationApprovalChain.map((step, index) => {
 //                     let color = 'gray';
 //                     let icon = <ClockCircleOutlined />;
                     
@@ -3108,19 +2456,21 @@ export default SupervisorCashApprovals;
 //                       icon = <CloseCircleOutlined />;
 //                     }
 
-//                     const isCurrentStep = step.status === 'pending';
+//                     const isCurrentLevel = extractJustificationLevel(selectedJustification.status) === step.level;
+//                     const isUserStep = step.approver?.email?.toLowerCase() === user?.email?.toLowerCase();
 
 //                     return (
 //                       <Timeline.Item key={index} color={color} dot={icon}>
 //                         <div>
 //                           <Text strong>Level {step.level}: {step.approver?.name || 'Unknown'}</Text>
-//                           {isCurrentStep && <Tag color="gold" size="small" style={{marginLeft: 8}}>Current</Tag>}
+//                           {isCurrentLevel && <Tag color="gold" size="small" style={{marginLeft: 8}}>Current Level</Tag>}
+//                           {isUserStep && step.status === 'pending' && <Tag color="red" size="small" style={{marginLeft: 8}}>Your Turn</Tag>}
 //                           <br />
 //                           <Text type="secondary">{step.approver?.role} - {step.approver?.email}</Text>
 //                           <br />
 //                           {step.status === 'pending' && (
-//                             <Tag color={isCurrentStep ? "gold" : "orange"}>
-//                               {isCurrentStep ? "Awaiting Action" : "Pending"}
+//                             <Tag color={isCurrentLevel ? "gold" : "orange"}>
+//                               {isCurrentLevel ? "Awaiting Action" : "Pending"}
 //                             </Tag>
 //                           )}
 //                           {step.status === 'approved' && (
@@ -3160,107 +2510,415 @@ export default SupervisorCashApprovals;
 //                     );
 //                   })}
 //                 </Timeline>
+//               </Card>
+//             )}
 
-//                 {/* Current Status Information */}
-//                 <Card size="small" title="Current Status" style={{ marginTop: '16px' }}>
-//                   <Row gutter={16}>
-//                     <Col span={12}>
-//                       <Text strong>Overall Status: </Text>
-//                       {getStatusTag(selectedRequest.status)}
-//                     </Col>
-//                     <Col span={12}>
-//                       <Text strong>Progress: </Text>
-//                       <Progress 
-//                         percent={getApprovalProgress(selectedRequest)} 
-//                         size="small" 
-//                         status={selectedRequest.status === 'denied' ? 'exception' : 'active'}
-//                       />
-//                     </Col>
-//                   </Row>
-                  
-//                   {canUserApprove(selectedRequest) && (
-//                     <Alert
-//                       message="Action Required"
-//                       description="This request is waiting for your approval decision."
-//                       type="warning"
-//                       showIcon
-//                       style={{ marginTop: '12px' }}
-//                       action={
-//                         <Button 
-//                           size="small" 
-//                           type="primary"
-//                           onClick={() => {
-//                             setDetailsModalVisible(false);
-//                             setApprovalModalVisible(true);
-//                           }}
-//                         >
-//                           Make Decision
-//                         </Button>
-//                       }
-//                     />
+//             {/* Supporting Documents */}
+//             {selectedJustification.justification?.documents && selectedJustification.justification.documents.length > 0 && (
+//               <Card size="small" title={`Supporting Documents (${selectedJustification.justification.documents.length})`} style={{ marginBottom: '20px' }}>
+//                 <Space wrap>
+//                   {selectedJustification.justification.documents.map((attachment, index) => (
+//                     <Button 
+//                       icon={<FileOutlined />}
+//                       size="small"
+//                       onClick={() => handleDownloadAttachment(attachment)}
+//                     >
+//                       Download {attachment.name || attachment.publicId}
+//                     </Button>
+//                   ))}
+//                 </Space>
+//               </Card>
+//             )}
+
+//             {/* Decision Form */}
+//             <Form
+//               form={form}
+//               layout="vertical"
+//               onFinish={handleJustificationDecision}
+//             >
+//               <Form.Item
+//                 name="decision"
+//                 label="Your Decision"
+//                 rules={[{ required: true, message: 'Please make a decision' }]}
+//               >
+//                 <Radio.Group>
+//                   <Radio.Button value="approved" style={{ color: '#52c41a' }}>
+//                     <CheckCircleOutlined /> Approve Justification
+//                   </Radio.Button>
+//                   <Radio.Button value="rejected" style={{ color: '#f5222d' }}>
+//                     <CloseCircleOutlined /> Reject Justification
+//                   </Radio.Button>
+//                 </Radio.Group>
+//               </Form.Item>
+
+//               <Form.Item
+//                 name="comments"
+//                 label="Comments"
+//                 rules={[{ required: true, message: 'Please provide comments for your decision' }]}
+//               >
+//                 <TextArea
+//                   rows={4}
+//                   placeholder="Explain your decision (required for audit trail)..."
+//                   showCount
+//                   maxLength={500}
+//                 />
+//               </Form.Item>
+
+//               <Form.Item>
+//                 <Space>
+//                   <Button onClick={() => {
+//                     setJustificationDecisionModalVisible(false);
+//                     setSelectedJustification(null);
+//                     form.resetFields();
+//                   }}>
+//                     Cancel
+//                   </Button>
+//                   <Button
+//                     type="primary"
+//                     htmlType="submit"
+//                     loading={loading}
+//                   >
+//                     Submit Decision
+//                   </Button>
+//                 </Space>
+//               </Form.Item>
+//             </Form>
+//           </div>
+//         )}
+//       </Modal>
+
+//       {/* Details Modal */}
+//       <Modal
+//         title={
+//           <Space>
+//             <DollarOutlined />
+//             {selectedRequest && !isJustificationStatus(selectedRequest.status) ? 'Cash Request Details & Approval History' : 'Justification Details'}
+//           </Space>
+//         }
+//         open={detailsModalVisible}
+//         onCancel={() => {
+//           setDetailsModalVisible(false);
+//           setSelectedRequest(null);
+//           setSelectedJustification(null);
+//         }}
+//         footer={null}
+//         width={900}
+//       >
+//         {(selectedRequest || selectedJustification) && (
+//           <div>
+//             {selectedRequest && !isJustificationStatus(selectedRequest.status) ? (
+//               // Cash Request Details
+//               <>
+//                 <Descriptions bordered column={2} size="small" style={{ marginBottom: '20px' }}>
+//                   <Descriptions.Item label="Request ID">
+//                     <Text code copyable>REQ-{selectedRequest._id?.slice(-6).toUpperCase()}</Text>
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Status">
+//                     {getStatusTag(selectedRequest.status, selectedRequest)}
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Employee">
+//                     <Text strong>{selectedRequest.employee?.fullName}</Text>
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Department">
+//                     <Tag color="blue">{selectedRequest.employee?.department}</Tag>
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Amount Requested">
+//                     <Text strong>XAF {(selectedRequest.amountRequested || 0).toLocaleString()}</Text>
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Request Type">
+//                     {selectedRequest.requestType?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Urgency">
+//                     {getUrgencyTag(selectedRequest.urgency)}
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Required Date">
+//                     {selectedRequest.requiredDate ? new Date(selectedRequest.requiredDate).toLocaleDateString('en-GB') : 'N/A'}
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Purpose" span={2}>
+//                     {selectedRequest.purpose}
+//                   </Descriptions.Item>
+//                   {selectedRequest.businessJustification && (
+//                     <Descriptions.Item label="Business Justification" span={2}>
+//                       {selectedRequest.businessJustification}
+//                     </Descriptions.Item>
 //                   )}
-//                 </Card>
+//                 </Descriptions>
 
-//                 {/* Financial Information */}
-//                 {(selectedRequest.amountApproved || selectedRequest.disbursementDetails) && (
-//                   <Card size="small" title="Financial Status" style={{ marginTop: '16px' }}>
-//                     <Descriptions column={2} size="small">
-//                       {selectedRequest.amountApproved && (
-//                         <Descriptions.Item label="Amount Approved">
-//                           XAF {selectedRequest.amountApproved.toLocaleString()}
-//                         </Descriptions.Item>
-//                       )}
-//                       {selectedRequest.disbursementDetails && (
-//                         <>
-//                           <Descriptions.Item label="Disbursed Amount">
-//                             XAF {selectedRequest.disbursementDetails.amount?.toLocaleString()}
-//                           </Descriptions.Item>
-//                           <Descriptions.Item label="Disbursement Date">
-//                             {new Date(selectedRequest.disbursementDetails.date).toLocaleDateString('en-GB')}
-//                           </Descriptions.Item>
-//                         </>
-//                       )}
-//                     </Descriptions>
+//                 {/* Attachments */}
+//                 {selectedRequest.attachments && selectedRequest.attachments.length > 0 && (
+//                   <Card size="small" title="Attached Files" style={{ marginBottom: '20px' }}>
+//                     <Space wrap>
+//                       {selectedRequest.attachments.map((attachment, index) => (
+//                         <Button 
+//                           key={index}
+//                           icon={<FileOutlined />}
+//                           onClick={() => handleDownloadAttachment(selectedRequest._id, attachment)}
+//                         >
+//                           {attachment.name || attachment.fileName}
+//                         </Button>
+//                       ))}
+//                     </Space>
 //                   </Card>
 //                 )}
 
-//                 {/* Justification Information */}
-//                 {selectedRequest.justification && (
-//                   <Card size="small" title="Justification Details" style={{ marginTop: '16px' }}>
-//                     <Descriptions column={2} size="small">
-//                       <Descriptions.Item label="Amount Spent">
-//                         XAF {selectedRequest.justification.amountSpent?.toLocaleString()}
-//                       </Descriptions.Item>
-//                       <Descriptions.Item label="Balance Returned">
-//                         XAF {selectedRequest.justification.balanceReturned?.toLocaleString()}
-//                       </Descriptions.Item>
-//                       <Descriptions.Item label="Justification Date">
-//                         {new Date(selectedRequest.justification.justificationDate).toLocaleDateString('en-GB')}
-//                       </Descriptions.Item>
-//                       <Descriptions.Item label="Details" span={2}>
-//                         {selectedRequest.justification.details}
-//                       </Descriptions.Item>
-//                     </Descriptions>
-                    
-//                     {selectedRequest.justification.documents && selectedRequest.justification.documents.length > 0 && (
-//                       <div style={{ marginTop: '12px' }}>
-//                         <Text strong>Supporting Documents:</Text>
-//                         <div style={{ marginTop: '8px' }}>
-//                           <Space wrap>
-//                             {selectedRequest.justification.documents.map((doc, index) => (
-//                               <Button 
-//                                 key={index}
-//                                 icon={<FileOutlined />}
-//                                 size="small"
-//                                 onClick={() => handleDownloadAttachment(doc)}
-//                               >
-//                                 {doc.name}
-//                               </Button>
-//                             ))}
-//                           </Space>
-//                         </div>
-//                       </div>
+//                 {/* Approval Chain */}
+//                 {selectedRequest.approvalChain && selectedRequest.approvalChain.length > 0 && (
+//                   <>
+//                     <Title level={4}>
+//                       <HistoryOutlined /> Approval Chain Progress
+//                     </Title>
+//                     <Timeline>
+//                       {selectedRequest.approvalChain.map((step, index) => {
+//                         let color = 'gray';
+//                         let icon = <ClockCircleOutlined />;
+                        
+//                         if (step.status === 'approved') {
+//                           color = 'green';
+//                           icon = <CheckCircleOutlined />;
+//                         } else if (step.status === 'rejected') {
+//                           color = 'red';
+//                           icon = <CloseCircleOutlined />;
+//                         }
+
+//                         const isCurrentStep = step.status === 'pending';
+
+//                         return (
+//                           <Timeline.Item key={index} color={color} dot={icon}>
+//                             <div>
+//                               <Text strong>Level {step.level}: {step.approver?.name || 'Unknown'}</Text>
+//                               {isCurrentStep && <Tag color="gold" size="small" style={{marginLeft: 8}}>Current</Tag>}
+//                               <br />
+//                               <Text type="secondary">{step.approver?.role} - {step.approver?.email}</Text>
+//                               <br />
+//                               {step.status === 'pending' && (
+//                                 <Tag color={isCurrentStep ? "gold" : "orange"}>
+//                                   {isCurrentStep ? "Awaiting Action" : "Pending"}
+//                                 </Tag>
+//                               )}
+//                               {step.status === 'approved' && (
+//                                 <>
+//                                   <Tag color="green">Approved</Tag>
+//                                   {step.actionDate && (
+//                                     <Text type="secondary">
+//                                       {new Date(step.actionDate).toLocaleDateString('en-GB')} 
+//                                       {step.actionTime && ` at ${step.actionTime}`}
+//                                     </Text>
+//                                   )}
+//                                   {step.comments && (
+//                                     <div style={{ marginTop: 4 }}>
+//                                       <Text italic>"{step.comments}"</Text>
+//                                     </div>
+//                                   )}
+//                                 </>
+//                               )}
+//                               {step.status === 'rejected' && (
+//                                 <>
+//                                   <Tag color="red">Rejected</Tag>
+//                                   {step.actionDate && (
+//                                     <Text type="secondary">
+//                                       {new Date(step.actionDate).toLocaleDateString('en-GB')}
+//                                       {step.actionTime && ` at ${step.actionTime}`}
+//                                     </Text>
+//                                   )}
+//                                   {step.comments && (
+//                                     <div style={{ marginTop: 4, color: '#ff4d4f' }}>
+//                                       <Text>Reason: "{step.comments}"</Text>
+//                                     </div>
+//                                   )}
+//                                 </>
+//                               )}
+//                             </div>
+//                           </Timeline.Item>
+//                         );
+//                       })}
+//                     </Timeline>
+
+//                     {/* Current Status Information */}
+//                     <Card size="small" title="Current Status" style={{ marginTop: '16px' }}>
+//                       <Row gutter={16}>
+//                         <Col span={12}>
+//                           <Text strong>Overall Status: </Text>
+//                           {getStatusTag(selectedRequest.status, selectedRequest)}
+//                         </Col>
+//                         <Col span={12}>
+//                           <Text strong>Progress: </Text>
+//                           <Progress 
+//                             percent={getApprovalProgress(selectedRequest)} 
+//                             size="small" 
+//                             status={selectedRequest.status === 'denied' ? 'exception' : 'active'}
+//                           />
+//                         </Col>
+//                       </Row>
+                      
+//                       {canUserApprove(selectedRequest) && (
+//                         <Alert
+//                           message="Action Required"
+//                           description="This request is waiting for your approval decision."
+//                           type="warning"
+//                           showIcon
+//                           style={{ marginTop: '12px' }}
+//                           action={
+//                             <Button 
+//                               size="small" 
+//                               type="primary"
+//                               onClick={() => {
+//                                 setDetailsModalVisible(false);
+//                                 setApprovalModalVisible(true);
+//                               }}
+//                             >
+//                               Make Decision
+//                             </Button>
+//                           }
+//                         />
+//                       )}
+//                     </Card>
+
+//                     {/* Financial Information */}
+//                     {(selectedRequest.amountApproved || selectedRequest.disbursementDetails) && (
+//                       <Card size="small" title="Financial Status" style={{ marginTop: '16px' }}>
+//                         <Descriptions column={2} size="small">
+//                           {selectedRequest.amountApproved && (
+//                             <Descriptions.Item label="Amount Approved">
+//                               XAF {selectedRequest.amountApproved.toLocaleString()}
+//                             </Descriptions.Item>
+//                           )}
+//                           {selectedRequest.disbursementDetails && (
+//                             <>
+//                               <Descriptions.Item label="Disbursed Amount">
+//                                 XAF {selectedRequest.disbursementDetails.amount?.toLocaleString()}
+//                               </Descriptions.Item>
+//                               <Descriptions.Item label="Disbursement Date">
+//                                 {new Date(selectedRequest.disbursementDetails.date).toLocaleDateString('en-GB')}
+//                               </Descriptions.Item>
+//                             </>
+//                           )}
+//                         </Descriptions>
+//                       </Card>
 //                     )}
+
+//                     {/* Justification Information */}
+//                     {selectedRequest.justification && (
+//                       <Card size="small" title="Justification Details" style={{ marginTop: '16px' }}>
+//                         <Descriptions column={2} size="small">
+//                           <Descriptions.Item label="Amount Spent">
+//                             XAF {selectedRequest.justification.amountSpent?.toLocaleString()}
+//                           </Descriptions.Item>
+//                           <Descriptions.Item label="Balance Returned">
+//                             XAF {selectedRequest.justification.balanceReturned?.toLocaleString()}
+//                           </Descriptions.Item>
+//                           <Descriptions.Item label="Justification Date">
+//                             {new Date(selectedRequest.justification.justificationDate).toLocaleDateString('en-GB')}
+//                           </Descriptions.Item>
+//                           <Descriptions.Item label="Details" span={2}>
+//                             {selectedRequest.justification.details}
+//                           </Descriptions.Item>
+//                         </Descriptions>
+                        
+//                         {selectedRequest.justification.documents && selectedRequest.justification.documents.length > 0 && (
+//                           <div style={{ marginTop: '12px' }}>
+//                             <Text strong>Supporting Documents:</Text>
+//                             <div style={{ marginTop: '8px' }}>
+//                               <Space wrap>
+//                                 {selectedRequest.justification.documents.map((doc, index) => (
+//                                   <Button 
+//                                     key={index}
+//                                     icon={<FileOutlined />}
+//                                     size="small"
+//                                     onClick={() => handleDownloadAttachment(selectedRequest._id, doc)}
+//                                   >
+//                                     {doc.name || doc.fileName}
+//                                   </Button>
+//                                 ))}
+//                               </Space>
+//                             </div>
+//                           </div>
+//                         )}
+//                       </Card>
+//                     )}
+//                   </>
+//                 )}
+//               </>
+//             ) : (
+//               // Justification Details (when viewing from justification tab)
+//               <>
+//                 <Alert
+//                   message="Justification Review"
+//                   description="This is a justification submission for review."
+//                   type="info"
+//                   showIcon
+//                   style={{ marginBottom: '16px' }}
+//                 />
+
+//                 <Descriptions bordered column={2} size="small" style={{ marginBottom: '20px' }}>
+//                   <Descriptions.Item label="Employee">
+//                     <Text strong>{(selectedJustification || selectedRequest)?.employee?.fullName}</Text>
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Request ID">
+//                     <Text code copyable>REQ-{(selectedJustification || selectedRequest)?._id?.slice(-6).toUpperCase()}</Text>
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Amount Disbursed">
+//                     <Text strong>XAF {((selectedJustification || selectedRequest)?.disbursementDetails?.amount || 0).toLocaleString()}</Text>
+//                   </Descriptions.Item>
+//                   <Descriptions.Item label="Justification Date">
+//                     {(selectedJustification || selectedRequest)?.justification?.justificationDate 
+//                       ? new Date((selectedJustification || selectedRequest).justification.justificationDate).toLocaleDateString('en-GB')
+//                       : 'N/A'
+//                     }
+//                   </Descriptions.Item>
+//                 </Descriptions>
+
+//                 <Card size="small" title="Financial Summary" style={{ marginBottom: '20px' }}>
+//                   <Row gutter={16}>
+//                     <Col span={8}>
+//                       <Statistic
+//                         title="Amount Spent"
+//                         value={(selectedJustification || selectedRequest)?.justification?.amountSpent || 0}
+//                         prefix="XAF "
+//                         precision={0}
+//                         valueStyle={{ color: '#f5222d' }}
+//                       />
+//                     </Col>
+//                     <Col span={8}>
+//                       <Statistic
+//                         title="Balance Returned"
+//                         value={(selectedJustification || selectedRequest)?.justification?.balanceReturned || 0}
+//                         prefix="XAF "
+//                         precision={0}
+//                         valueStyle={{ color: '#52c41a' }}
+//                       />
+//                     </Col>
+//                     <Col span={8}>
+//                       <Statistic
+//                         title="Total"
+//                         value={((selectedJustification || selectedRequest)?.justification?.amountSpent || 0) + ((selectedJustification || selectedRequest)?.justification?.balanceReturned || 0)}
+//                         prefix="XAF "
+//                         precision={0}
+//                       />
+//                     </Col>
+//                   </Row>
+//                 </Card>
+
+//                 <Card size="small" title="Spending Details" style={{ marginBottom: '20px' }}>
+//                   <Text type="secondary">Details:</Text>
+//                   <Paragraph style={{ marginTop: '8px', fontStyle: 'italic', backgroundColor: '#f5f5f5', padding: '12px', borderRadius: '4px' }}>
+//                     {(selectedJustification || selectedRequest)?.justification?.details || 'No details provided'}
+//                   </Paragraph>
+//                 </Card>
+
+//                 {(selectedJustification || selectedRequest)?.justification?.documents && (selectedJustification || selectedRequest).justification.documents.length > 0 && (
+//                   <Card size="small" title={`Supporting Documents (${(selectedJustification || selectedRequest).justification.documents.length})`} style={{ marginBottom: '20px' }}>
+//                     <Space wrap>
+//                       {(selectedJustification || selectedRequest).justification.documents.map((doc, index) => (
+//                         <Button
+//                           key={index}
+//                           icon={<FileOutlined />}
+//                           size="small"
+//                           onClick={() => handleDownloadAttachment((selectedJustification || selectedRequest)._id, doc)}
+//                         >
+//                           {doc.name}
+//                         </Button>
+//                       ))}
+//                     </Space>
 //                   </Card>
 //                 )}
 //               </>
@@ -3277,8 +2935,7 @@ export default SupervisorCashApprovals;
 //           setFileViewerVisible(false);
 //           setViewingFile(null);
 //           setFileViewerLoading(false);
-//           // Clean up the blob URL
-//           if (viewingFile?.url) {
+//           if (viewingFile?.url && !viewingFile?.isDirectUrl) {
 //             window.URL.revokeObjectURL(viewingFile.url);
 //           }
 //         }}
@@ -3300,7 +2957,7 @@ export default SupervisorCashApprovals;
 //             setFileViewerVisible(false);
 //             setViewingFile(null);
 //             setFileViewerLoading(false);
-//             if (viewingFile?.url) {
+//             if (viewingFile?.url && !viewingFile?.isDirectUrl) {
 //               window.URL.revokeObjectURL(viewingFile.url);
 //             }
 //           }}>
@@ -3356,7 +3013,7 @@ export default SupervisorCashApprovals;
 //       </Modal>
 
 //       {/* Custom CSS for row styling */}
-//       <style jsx>{`
+//       <style>{`
 //         .cash-request-row {
 //           background-color: #fafafa;
 //         }
@@ -3382,3 +3039,10 @@ export default SupervisorCashApprovals;
 // };
 
 // export default SupervisorCashApprovals;
+
+
+
+
+
+
+

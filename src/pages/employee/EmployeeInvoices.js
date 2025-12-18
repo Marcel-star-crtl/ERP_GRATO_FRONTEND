@@ -75,7 +75,7 @@ const EmployeeInvoicesDashboard = () => {
   // Fetch employee's own invoices
   const fetchMyInvoices = useCallback(async () => {
     try {
-      const response = await api.get('/api/invoices/employee');
+      const response = await api.get('/invoices/employee');
       if (response.data.success) {
         setInvoices(response.data.data || []);
       } else {
@@ -93,7 +93,7 @@ const EmployeeInvoicesDashboard = () => {
     if (!canApprove) return;
 
     try {
-      const response = await api.get('/api/invoices/supervisor/pending');
+      const response = await api.get('/invoices/supervisor/pending');
       if (response.data.success) {
         setPendingApprovals(response.data.data || []);
       } else {
@@ -153,7 +153,7 @@ const EmployeeInvoicesDashboard = () => {
         return;
       }
 
-      const response = await fetch(`/api/files/download/${encodeURIComponent(publicId)}`, {
+      const response = await fetch(`/files/download/${encodeURIComponent(publicId)}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -208,7 +208,7 @@ const EmployeeInvoicesDashboard = () => {
         formData.append('invoiceFile', values.invoiceFile[0].originFileObj);
       }
 
-      const response = await api.post('/api/invoices/upload', formData, {
+      const response = await api.post('/invoices/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 60000
       });
@@ -235,7 +235,7 @@ const EmployeeInvoicesDashboard = () => {
   //   try {
   //     setApprovalLoading(true);
 
-  //     const response = await api.put(`/api/invoices/approvals/${invoiceId}/decision`, {
+  //     const response = await api.put(`/invoices/approvals/${invoiceId}/decision`, {
   //       decision,
   //       comments
   //     });
@@ -263,7 +263,7 @@ const EmployeeInvoicesDashboard = () => {
     try {
       setApprovalLoading(true);
 
-      const response = await api.put(`/api/invoices/approvals/${invoiceId}/decision`, {
+      const response = await api.put(`/invoices/approvals/${invoiceId}/decision`, {
         decision,
         comments
       });
@@ -289,7 +289,7 @@ const EmployeeInvoicesDashboard = () => {
   // View invoice details
   const handleViewDetails = async (invoiceId) => {
     try {
-      const response = await api.get(`/api/invoices/${invoiceId}`);
+      const response = await api.get(`/invoices/${invoiceId}`);
       if (response.data.success) {
         setSelectedInvoice(response.data.data);
         setApprovalDrawerVisible(true);

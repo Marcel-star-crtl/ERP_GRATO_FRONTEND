@@ -47,7 +47,7 @@ class SupplierApiService {
 
       console.log('API Service: Sending registration data:', registrationData);
 
-      const response = await api.post('/api/suppliers/register', registrationData);
+      const response = await api.post('/suppliers/register', registrationData);
       
       console.log('API Service: Registration response:', response.data);
       
@@ -109,7 +109,7 @@ class SupplierApiService {
         throw new Error('Email and password are required');
       }
 
-      const response = await api.post('/api/suppliers/login', {
+      const response = await api.post('/suppliers/login', {
         email: credentials.email.toLowerCase().trim(),
         password: credentials.password
       });
@@ -195,7 +195,7 @@ class SupplierApiService {
 
       console.log('API Service: Sending update data:', updateData);
 
-      const response = await api.put('/api/suppliers/profile', updateData);
+      const response = await api.put('/suppliers/profile', updateData);
       
       if (response.data && response.data.success) {
         return {
@@ -218,7 +218,7 @@ class SupplierApiService {
   // Get supplier profile
   async getProfile() {
     try {
-      const response = await api.get('/api/suppliers/profile');
+      const response = await api.get('/suppliers/profile');
       
       if (response.data && response.data.success) {
         return {
@@ -255,7 +255,7 @@ class SupplierApiService {
         }
       }
   
-      const response = await api.post('/api/suppliers/invoices', formData, {
+      const response = await api.post('/suppliers/invoices', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -287,7 +287,7 @@ class SupplierApiService {
     try {
       console.log('API Service: Getting invoices with params:', params);
       
-      const response = await api.get('/api/suppliers/invoices', { params });
+      const response = await api.get('/suppliers/invoices', { params });
       
       console.log('Get invoices response:', response.data);
       
@@ -310,29 +310,101 @@ class SupplierApiService {
   }
 
   // Get all suppliers (admin function)
+  // async getAllSuppliers(params = {}) {
+  //   try {
+  //     console.log('API Service: Getting all suppliers with params:', params);
+      
+  //     const response = await api.get('/suppliers/admin/all', { params });
+      
+  //     console.log('API Response:', response.data);
+      
+  //     if (response.data && response.data.success) {
+  //       return {
+  //         success: true,
+  //         data: response.data.data,
+  //         pagination: response.data.pagination
+  //       };
+  //     }
+      
+  //     return {
+  //       success: false,
+  //       message: response.data.message || 'Failed to fetch suppliers'
+  //     };
+  //   } catch (error) {
+  //     console.error('Get all suppliers API error:', error);
+  //     throw this.handleError(error);
+  //   }
+  // }
+
+
   async getAllSuppliers(params = {}) {
     try {
-      console.log('API Service: Getting all suppliers with params:', params);
+      console.log('🔍 Fetching suppliers with params:', params);
       
-      const response = await api.get('/api/suppliers/admin/all', { params });
+      // Verify token exists
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication required. Please login again.');
+      }
+
+      // Make API call with proper endpoint
+      const response = await api.get('/suppliers/admin/all', { 
+        params,
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
-      console.log('API Response:', response.data);
+      console.log('📦 Supplier API Response:', response.data);
       
+      // Validate response structure
       if (response.data && response.data.success) {
+        const suppliers = response.data.data || [];
+        console.log(`✅ Successfully fetched ${suppliers.length} suppliers`);
+        
         return {
           success: true,
-          data: response.data.data,
+          data: suppliers,
           pagination: response.data.pagination
         };
       }
       
+      // Handle unsuccessful response
+      console.warn('⚠️ API returned unsuccessful response:', response.data);
       return {
         success: false,
+        data: [],
         message: response.data.message || 'Failed to fetch suppliers'
       };
+      
     } catch (error) {
-      console.error('Get all suppliers API error:', error);
-      throw this.handleError(error);
+      console.error('❌ Error fetching suppliers:', error);
+      
+      // Handle specific error cases
+      if (error.response) {
+        const { status, data } = error.response;
+        
+        if (status === 401) {
+          localStorage.removeItem('token');
+          throw new Error('Session expired. Please login again.');
+        }
+        
+        if (status === 403) {
+          throw new Error('Access denied. You do not have permission to view suppliers.');
+        }
+        
+        if (status === 404) {
+          throw new Error('Supplier endpoint not found. Please contact support.');
+        }
+        
+        throw new Error(data.message || `Failed to fetch suppliers (Status: ${status})`);
+      }
+      
+      if (error.request) {
+        throw new Error('Network error. Please check your connection.');
+      }
+      
+      throw new Error(error.message || 'An unexpected error occurred');
     }
   }
 
@@ -341,7 +413,7 @@ class SupplierApiService {
     try {
       console.log('API Service: Getting all onboarding applications with params:', params);
       
-      const response = await api.get('/api/supplier-onboarding/onboarding/applications', { params });
+      const response = await api.get('/supplier-onboarding/onboarding/applications', { params });
       
       console.log('API Response:', response.data);
       
@@ -368,7 +440,7 @@ class SupplierApiService {
     try {
       console.log('API Service: Updating supplier status:', supplierId, statusData);
 
-      const response = await api.put(`/api/suppliers/admin/${supplierId}/status`, statusData);
+      const response = await api.put(`/suppliers/admin/${supplierId}/status`, statusData);
       
       if (response.data && response.data.success) {
         return {
@@ -393,7 +465,7 @@ class SupplierApiService {
     try {
       console.log('API Service: Getting RFQ requests with params:', params);
       
-      const response = await api.get('/api/suppliers/rfq-requests', { params });
+      const response = await api.get('/suppliers/rfq-requests', { params });
       
       console.log('API Response:', response.data);
       
@@ -419,7 +491,7 @@ class SupplierApiService {
     try {
       console.log('API Service: Getting RFQ details for ID:', rfqId);
       
-      const response = await api.get(`/api/suppliers/rfq-requests/${rfqId}`);
+      const response = await api.get(`/suppliers/rfq-requests/${rfqId}`);
       
       if (response.data && response.data.success) {
         return {
@@ -512,10 +584,10 @@ class SupplierApiService {
         });
       }
 
-      console.log('Submitting quote to endpoint:', `/api/suppliers/rfq-requests/${rfqId}/submit-quote`);
+      console.log('Submitting quote to endpoint:', `/suppliers/rfq-requests/${rfqId}/submit-quote`);
 
       const response = await api.post(
-        `/api/suppliers/rfq-requests/${rfqId}/submit-quote`, 
+        `/suppliers/rfq-requests/${rfqId}/submit-quote`, 
         formData, 
         {
           headers: {
@@ -548,7 +620,7 @@ class SupplierApiService {
 
   async getQuotes(params = {}) {
     try {
-      const response = await api.get('/api/suppliers/quotes', { params });
+      const response = await api.get('/suppliers/quotes', { params });
       
       if (response.data && response.data.success) {
         return {
@@ -570,7 +642,7 @@ class SupplierApiService {
 
   async getDashboardData() {
     try {
-      const response = await api.get('/api/suppliers/dashboard');
+      const response = await api.get('/suppliers/dashboard');
       
       if (response.data && response.data.success) {
         return {
@@ -657,7 +729,7 @@ class SupplierApiService {
   async submitOnboarding(formData) {
     try {
       console.log('API Service: Submitting onboarding application');
-      const response = await api.post('/api/supplier-onboarding/onboarding/submit', formData, {
+      const response = await api.post('/supplier-onboarding/onboarding/submit', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -684,7 +756,7 @@ class SupplierApiService {
   async updateApplicationStatus(applicationId, statusData) {
     try {
       console.log('API Service: Updating application status:', applicationId, statusData);
-      const response = await api.put(`/api/supplier-onboarding/onboarding/applications/${applicationId}/status`, statusData);
+      const response = await api.put(`/supplier-onboarding/onboarding/applications/${applicationId}/status`, statusData);
 
       if (response.data && response.data.success) {
         return {

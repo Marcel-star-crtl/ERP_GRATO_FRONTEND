@@ -286,26 +286,26 @@ const BuyerPurchaseOrders = () => {
     }));
   };
 
-  // ==================== PDF FUNCTIONS ====================
+
   const handleDownloadPDF = async (po) => {
     try {
       setPdfLoading(true);
       console.log('Downloading PDF for PO:', po.poNumber);
-  
-      // FIXED: Use the correct API endpoint with /api prefix
-      const apiUrl = process.env.REACT_APP_API_UR || 'http://localhost:5001/api';
+
+      // FIXED: Corrected the typo from REACT_APP_API_UR to REACT_APP_API_URL
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
       const response = await fetch(`${apiUrl}/buyer/purchase-orders/${po.id}/download-pdf`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
       });
-  
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to download PDF');
       }
-  
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -316,7 +316,7 @@ const BuyerPurchaseOrders = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-  
+
       message.success(`PDF downloaded successfully for PO ${po.poNumber}`);
     } catch (error) {
       console.error('Error downloading PDF:', error);
@@ -466,8 +466,6 @@ const BuyerPurchaseOrders = () => {
       'sent_to_supplier': { color: 'purple', text: 'Sent to Supplier', icon: <MailOutlined /> },
       'acknowledged': { color: 'cyan', text: 'Acknowledged', icon: <CheckCircleOutlined /> },
       'in_production': { color: 'geekblue', text: 'In Production', icon: <SyncOutlined /> },
-      'ready_for_shipment': { color: 'lime', text: 'Ready for Shipment', icon: <TruckOutlined /> },
-      'in_transit': { color: 'volcano', text: 'In Transit', icon: <TruckOutlined /> },
       'delivered': { color: 'green', text: 'Delivered', icon: <CheckCircleOutlined /> },
       'completed': { color: 'success', text: 'Completed', icon: <CheckCircleOutlined /> },
       'cancelled': { color: 'red', text: 'Cancelled', icon: <StopOutlined /> },
@@ -716,15 +714,61 @@ const BuyerPurchaseOrders = () => {
     }
   };
 
+  // const handleEditPO = (po) => {
+  //   setSelectedPO(po);
+  //   form.setFieldsValue({
+  //     expectedDeliveryDate: po.expectedDeliveryDate ? moment(po.expectedDeliveryDate) : null,
+  //     deliveryAddress: po.deliveryAddress,
+  //     paymentTerms: po.paymentTerms,
+  //     specialInstructions: po.specialInstructions || '',
+  //     notes: po.notes || ''
+  //   });
+  //   setEditModalVisible(true);
+  // };
+
+  // Add this enhanced edit modal to replace the existing basic edit modal in BuyerPurchaseOrders.jsx
+
   const handleEditPO = (po) => {
     setSelectedPO(po);
+    
+    console.log('=== EDITING PURCHASE ORDER ===');
+    console.log('PO:', po.poNumber);
+    console.log('Current items:', po.items);
+    
+    // Clean items by removing MongoDB-specific _id and id fields
+    const cleanedItems = po.items.map(item => {
+      const cleanItem = {
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        unitOfMeasure: item.unitOfMeasure || 'Units',
+        category: item.category || '',
+        specifications: item.specifications || ''
+      };
+      
+      // Only include itemId if it exists (for database-linked items)
+      if (item.itemId) {
+        cleanItem.itemId = item.itemId;
+      }
+      
+      return cleanItem;
+    });
+    
+    console.log('Cleaned items for form:', cleanedItems);
+    
+    // Populate all fields including items
     form.setFieldsValue({
       expectedDeliveryDate: po.expectedDeliveryDate ? moment(po.expectedDeliveryDate) : null,
       deliveryAddress: po.deliveryAddress,
       paymentTerms: po.paymentTerms,
       specialInstructions: po.specialInstructions || '',
-      notes: po.notes || ''
+      notes: po.notes || '',
+      currency: po.currency || 'XAF',
+      taxApplicable: po.taxApplicable || false,
+      taxRate: po.taxRate || 19.25,
+      items: cleanedItems
     });
+    
     setEditModalVisible(true);
   };
 
@@ -733,28 +777,79 @@ const BuyerPurchaseOrders = () => {
       const values = await form.validateFields();
       setLoading(true);
       
+      console.log('=== UPDATING PURCHASE ORDER ===');
+      console.log('Form values:', values);
+      
+      // Calculate new total from items
+      const calculatedTotal = values.items.reduce((sum, item) => 
+        sum + (item.quantity * item.unitPrice), 0
+      );
+      
+      console.log('Calculated total:', calculatedTotal);
+      
+      // Clean items: remove MongoDB _id and id fields, keep only itemId
+      const cleanedItems = values.items.map(item => {
+        const cleanItem = {
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.quantity * item.unitPrice,
+          specifications: item.specifications || '',
+          unitOfMeasure: item.unitOfMeasure || 'Units',
+          category: item.category || ''
+        };
+        
+        // Only include itemId if it exists (for database-linked items)
+        if (item.itemId) {
+          cleanItem.itemId = item.itemId;
+        }
+        
+        return cleanItem;
+      });
+      
+      console.log('Cleaned items:', cleanedItems);
+      
       const updateData = {
         expectedDeliveryDate: values.expectedDeliveryDate ? values.expectedDeliveryDate.toISOString() : null,
         deliveryAddress: values.deliveryAddress,
         paymentTerms: values.paymentTerms,
-        specialInstructions: values.specialInstructions,
-        notes: values.notes
+        specialInstructions: values.specialInstructions || '',
+        notes: values.notes || '',
+        currency: values.currency,
+        taxApplicable: values.taxApplicable || false,
+        taxRate: values.taxRate || 19.25,
+        items: cleanedItems,
+        totalAmount: calculatedTotal
       };
+      
+      console.log('Update data being sent:', updateData);
       
       const response = await buyerRequisitionAPI.updatePurchaseOrder(selectedPO.id, updateData);
       
+      console.log('Update response:', response);
+      
       if (response.success) {
         message.success('Purchase order updated successfully!');
+        
+        // Show detailed notification
+        notification.success({
+          message: 'Purchase Order Updated',
+          description: `PO ${selectedPO.poNumber} has been updated. New total: ${updateData.currency} ${calculatedTotal.toLocaleString()}`,
+          duration: 5
+        });
+        
         setEditModalVisible(false);
         form.resetFields();
         
+        // Reload purchase orders to show updated data
         await loadPurchaseOrders();
       } else {
+        console.error('Update failed:', response);
         message.error(response.message || 'Failed to update purchase order');
       }
     } catch (error) {
       console.error('Error updating PO:', error);
-      message.error('Failed to update purchase order');
+      message.error(error.message || 'Failed to update purchase order');
     } finally {
       setLoading(false);
     }
@@ -1128,22 +1223,6 @@ const BuyerPurchaseOrders = () => {
           </Col>
           <Col span={4}>
             <Statistic
-              title="In Transit"
-              value={stats.inTransit}
-              prefix={<TruckOutlined />}
-              valueStyle={{ color: '#722ed1' }}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic
-              title="Delivered"
-              value={stats.delivered}
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic
               title="Overdue"
               value={stats.overdue}
               prefix={<ExclamationCircleOutlined />}
@@ -1177,16 +1256,6 @@ const BuyerPurchaseOrders = () => {
                 View Overdue
               </Button>
             }
-            style={{ marginBottom: '24px' }}
-          />
-        )}
-
-        {stats.inTransit > 0 && (
-          <Alert
-            message={`${stats.inTransit} Order${stats.inTransit !== 1 ? 's' : ''} Currently In Transit`}
-            description="Track deliveries and prepare for receipt confirmation."
-            type="info"
-            showIcon
             style={{ marginBottom: '24px' }}
           />
         )}
@@ -1263,20 +1332,6 @@ const BuyerPurchaseOrders = () => {
               </Badge>
             } 
             key="active"
-          />
-          <Tabs.TabPane 
-            tab={
-              <Badge count={stats.inTransit} size="small">
-                <span><TruckOutlined /> In Transit ({stats.inTransit})</span>
-              </Badge>
-            } 
-            key="in_transit"
-          />
-          <Tabs.TabPane 
-            tab={
-              <span><CheckCircleOutlined /> Delivered ({stats.delivered})</span>
-            } 
-            key="delivered"
           />
           <Tabs.TabPane 
             tab={
@@ -1704,7 +1759,7 @@ const BuyerPurchaseOrders = () => {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item
+              {/* <Form.Item
                 name="budgetCodeId"
                 label={
                   <Space>
@@ -1737,6 +1792,50 @@ const BuyerPurchaseOrders = () => {
                           </div>
                           <div style={{ fontSize: '12px', color: '#666' }}>
                             Available: {buyerRequisitionAPI.formatCurrency(availableBalance)} / {buyerRequisitionAPI.formatCurrency(budgetCode.amount)}
+                          </div>
+                          <div style={{ fontSize: '11px', color: utilizationPercent > 80 ? '#ff4d4f' : '#52c41a' }}>
+                            Utilization: {utilizationPercent.toFixed(1)}%
+                          </div>
+                        </div>
+                      </Option>
+                    );
+                  })}
+                </Select>
+              </Form.Item> */}
+              <Form.Item
+                name="budgetCodeId"
+                label={
+                  <Space>
+                    Budget Code (Optional)
+                    {budgetCodes.length > 0 && (
+                      <Tag color="blue" size="small">
+                        {budgetCodes.length} available
+                      </Tag>
+                    )}
+                  </Space>
+                }
+              >
+                <Select
+                  placeholder="Select budget code"
+                  allowClear
+                  showSearch
+                  loading={budgetCodes.length === 0}
+                  notFoundContent={budgetCodes.length === 0 ? <Spin size="small" /> : 'No budget codes found'}
+                  optionFilterProp="children"
+                >
+                  {budgetCodes.map(budgetCode => {
+                    // Use correct field names from schema: budget, used, remaining
+                    const availableBalance = budgetCode.remaining || (budgetCode.budget - budgetCode.used);
+                    const utilizationPercent = budgetCode.budget > 0 ? (budgetCode.used / budgetCode.budget) * 100 : 0;
+                    
+                    return (
+                      <Option key={budgetCode._id} value={budgetCode._id}>
+                        <div>
+                          <div style={{ fontWeight: 'bold' }}>
+                            {budgetCode.code} - {budgetCode.name}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#666' }}>
+                            Available: {buyerRequisitionAPI.formatCurrency(availableBalance)} / {buyerRequisitionAPI.formatCurrency(budgetCode.budget)}
                           </div>
                           <div style={{ fontSize: '11px', color: utilizationPercent > 80 ? '#ff4d4f' : '#52c41a' }}>
                             Utilization: {utilizationPercent.toFixed(1)}%
@@ -1996,7 +2095,7 @@ const BuyerPurchaseOrders = () => {
       </Modal>
 
       {/* ========== EDIT PO MODAL ========== */}
-      <Modal
+      {/* <Modal
         title={`Edit Purchase Order - ${selectedPO?.poNumber || selectedPO?.id}`}
         open={editModalVisible}
         onOk={handleUpdatePO}
@@ -2063,6 +2162,304 @@ const BuyerPurchaseOrders = () => {
             />
           </Form.Item>
         </Form>
+      </Modal> */}
+
+      {/* // Enhanced Edit Modal JSX (replace existing edit modal) */}
+      <Modal
+        title={`Edit Purchase Order - ${selectedPO?.poNumber || selectedPO?.id}`}
+        open={editModalVisible}
+        onOk={handleUpdatePO}
+        onCancel={() => setEditModalVisible(false)}
+        confirmLoading={loading}
+        width={1200}
+        maskClosable={false}
+      >
+        <Form form={form} layout="vertical">
+          <Alert
+            message="Edit Purchase Order"
+            description={`Status: ${selectedPO?.status}. You can edit all order details except supplier information.`}
+            type="info"
+            showIcon
+            style={{ marginBottom: '24px' }}
+          />
+
+          <Divider>Order Details</Divider>
+
+          <Row gutter={[16, 16]}>
+            <Col span={8}>
+              <Form.Item
+                name="expectedDeliveryDate"
+                label="Expected Delivery Date"
+                rules={[{ required: true, message: 'Please select expected delivery date' }]}
+              >
+                <DatePicker 
+                  style={{ width: '100%' }}
+                  disabledDate={(current) => current && current < moment().add(1, 'day')}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="paymentTerms"
+                label="Payment Terms"
+                rules={[{ required: true, message: 'Please select payment terms' }]}
+              >
+                <Select placeholder="Select payment terms">
+                  <Option value="15 days">15 days</Option>
+                  <Option value="30 days">30 days</Option>
+                  <Option value="45 days">45 days</Option>
+                  <Option value="60 days">60 days</Option>
+                  <Option value="Cash on delivery">Cash on delivery</Option>
+                  <Option value="Advance payment">Advance payment</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="currency"
+                label="Currency"
+                rules={[{ required: true, message: 'Please select currency' }]}
+              >
+                <Select>
+                  <Option value="XAF">XAF (Central African Franc)</Option>
+                  <Option value="USD">USD (US Dollar)</Option>
+                  <Option value="EUR">EUR (Euro)</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="deliveryAddress"
+            label="Delivery Address"
+            rules={[{ required: true, message: 'Please enter delivery address' }]}
+          >
+            <TextArea rows={3} placeholder="Enter complete delivery address..." />
+          </Form.Item>
+
+          <Divider>Items</Divider>
+
+          <Form.List
+            name="items"
+            rules={[
+              {
+                validator: async (_, items) => {
+                  if (!items || items.length < 1) {
+                    return Promise.reject(new Error('At least one item is required'));
+                  }
+                }
+              }
+            ]}
+          >
+            {(fields, { add, remove }, { errors }) => (
+              <>
+                {fields.map(({ key, name, ...restField }) => (
+                  <Card 
+                    key={key} 
+                    size="small" 
+                    style={{ marginBottom: '16px' }}
+                    title={`Item ${name + 1}`}
+                    extra={
+                      fields.length > 1 ? (
+                        <Button
+                          type="link"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => remove(name)}
+                        >
+                          Remove
+                        </Button>
+                      ) : null
+                    }
+                  >
+                    <Row gutter={[16, 16]}>
+                      <Col span={12}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'description']}
+                          label="Item Description"
+                          rules={[{ required: true, message: 'Item description is required' }]}
+                        >
+                          <Input placeholder="Enter item description" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={6}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'quantity']}
+                          label="Quantity"
+                          rules={[{ required: true, message: 'Quantity is required' }]}
+                        >
+                          <InputNumber
+                            min={1}
+                            placeholder="Qty"
+                            style={{ width: '100%' }}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={6}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'unitPrice']}
+                          label="Unit Price"
+                          rules={[{ required: true, message: 'Unit price is required' }]}
+                        >
+                          <InputNumber
+                            min={0}
+                            placeholder="Price per unit"
+                            style={{ width: '100%' }}
+                            formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                            parser={value => value.replace(/\$\s?|(,*)/g, '')}
+                          />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    
+                    <Row gutter={[16, 16]}>
+                      <Col span={12}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'unitOfMeasure']}
+                          label="Unit of Measure"
+                        >
+                          <Select placeholder="Select unit">
+                            <Option value="Pieces">Pieces</Option>
+                            <Option value="Sets">Sets</Option>
+                            <Option value="Boxes">Boxes</Option>
+                            <Option value="Packs">Packs</Option>
+                            <Option value="Units">Units</Option>
+                            <Option value="Each">Each</Option>
+                            <Option value="Kg">Kg</Option>
+                            <Option value="Litres">Litres</Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'category']}
+                          label="Category (Optional)"
+                        >
+                          <Select placeholder="Select category" allowClear>
+                            {itemCategories.map(category => (
+                              <Option key={category} value={category}>
+                                {category}
+                              </Option>
+                            ))}
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    
+                    <Row gutter={[16, 16]}>
+                      <Col span={24}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'specifications']}
+                          label="Specifications (Optional)"
+                        >
+                          <TextArea
+                            rows={2}
+                            placeholder="Enter item specifications or additional details..."
+                          />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+
+                    {/* Hidden field for itemId */}
+                    <Form.Item
+                      {...restField}
+                      name={[name, 'itemId']}
+                      hidden
+                    >
+                      <Input />
+                    </Form.Item>
+                  </Card>
+                ))}
+                <Form.Item>
+                  <Button
+                    type="dashed"
+                    onClick={() => add()}
+                    block
+                    icon={<PlusOutlined />}
+                  >
+                    Add Item
+                  </Button>
+                  <Form.ErrorList errors={errors} />
+                </Form.Item>
+              </>
+            )}
+          </Form.List>
+
+          <Divider>Tax Configuration</Divider>
+
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <Form.Item
+                name="taxApplicable"
+                label=""
+                valuePropName="checked"
+              >
+                <Checkbox>
+                  Apply tax to this purchase order
+                </Checkbox>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="taxRate"
+                label="Tax Rate (%)"
+                dependencies={['taxApplicable']}
+              >
+                {({ getFieldValue }) => (
+                  <InputNumber
+                    min={0}
+                    max={100}
+                    precision={2}
+                    style={{ width: '100%' }}
+                    disabled={!getFieldValue('taxApplicable')}
+                    addonAfter="%"
+                    placeholder="19.25"
+                  />
+                )}
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Divider>Additional Information</Divider>
+
+          <Form.Item
+            name="specialInstructions"
+            label="Special Instructions"
+          >
+            <TextArea
+              rows={3}
+              placeholder="Add any special instructions for the supplier..."
+              showCount
+              maxLength={500}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="notes"
+            label="Internal Notes"
+          >
+            <TextArea
+              rows={2}
+              placeholder="Add any internal notes (not visible to supplier)..."
+              showCount
+              maxLength={300}
+            />
+          </Form.Item>
+        </Form>
+
+        <Alert
+          message="Important Note"
+          description="Changes to items will recalculate the total amount. Make sure all quantities and prices are correct before saving."
+          type="warning"
+          showIcon
+          style={{ marginTop: '16px' }}
+        />
       </Modal>
 
       {/* ==================== DRAWERS ==================== */}

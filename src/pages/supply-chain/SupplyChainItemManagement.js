@@ -81,6 +81,7 @@ const SupplyChainItemManagement = () => {
     'Safety Equipment',
     'Maintenance Supplies',
     'Personal Accessories',
+    'Spares',
     'Other'
   ];
 
@@ -95,6 +96,7 @@ const SupplyChainItemManagement = () => {
     'Safety Equipment': ['PPE', 'First Aid', 'Fire Safety', 'Other Safety'],
     'Maintenance Supplies': ['Cleaning', 'Repair Tools', 'Spare Parts', 'Other Maintenance'],
     'Personal Accessories': ['Electronics', 'Household Items', 'Personal Care', 'Entertainment', 'Other Personal'],
+    'Spares': ['Spares'],
     'Other': ['Miscellaneous']
   };
 
@@ -1091,7 +1093,7 @@ const SupplyChainItemManagement = () => {
                 label="Item Description"
                 rules={[
                   { required: true, message: 'Please enter item description' },
-                  { min: 10, message: 'Description must be at least 10 characters' }
+                  { min: 2, message: 'Description must be at least 2 characters' }
                 ]}
               >
                 <Input placeholder="Enter detailed item description" />
@@ -1340,7 +1342,7 @@ const SupplyChainItemManagement = () => {
                 <Radio.Group>
                   <Radio value="asset">Asset</Radio>
                   <Radio value="liability">Liability</Radio>
-                  <Radio value="expense">Expense</Radio>
+                  <Radio value="stock">Stock</Radio>
                 </Radio.Group>
               </Form.Item>
             </Col>
@@ -1364,6 +1366,12 @@ const SupplyChainItemManagement = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
+                name="image"
+                label="Item Image"
+                help="Optional: Upload an image of the item"
+              ></Form.Item>
+            {/* <Col span={12}>
+              <Form.Item
                 name="supplier"
                 label="Preferred Supplier"
                 help="Optional: Preferred supplier for this item"
@@ -1371,6 +1379,7 @@ const SupplyChainItemManagement = () => {
                 <Input placeholder="Enter preferred supplier name" />
               </Form.Item>
             </Col>
+            
             <Col span={12}>
               <Form.Item
                 name="image"
@@ -1410,7 +1419,7 @@ const SupplyChainItemManagement = () => {
                     </div>
                   )}
                 </Upload>
-              </Form.Item>
+              </Form.Item> */}
             </Col>
           </Row>
 

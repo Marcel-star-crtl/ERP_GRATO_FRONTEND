@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -72,6 +73,7 @@ const SupplyChainContractManagement = () => {
   const [loading, setLoading] = useState(false);
   const [contracts, setContracts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const navigate = useNavigate();
   const [selectedContract, setSelectedContract] = useState(null);
   const [contractModalVisible, setContractModalVisible] = useState(false);
   const [detailDrawerVisible, setDetailDrawerVisible] = useState(false);
@@ -86,6 +88,7 @@ const SupplyChainContractManagement = () => {
   const [activeTab, setActiveTab] = useState('active');
   const [statistics, setStatistics] = useState({});
   const [uploadedDocuments, setUploadedDocuments] = useState([]);
+  const [selectedSupplierId, setSelectedSupplierId] = useState(null); 
 
   useEffect(() => {
     fetchContracts();
@@ -844,40 +847,59 @@ const SupplyChainContractManagement = () => {
               />
             </Form.Item>
 
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="supplierId"
-                  label="Supplier"
-                  rules={[{ required: true, message: 'Please select supplier' }]}
-                >
-                  <Select placeholder="Select supplier" showSearch>
-                    {suppliers.map(supplier => (
-                      <Option key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="department"
-                  label="Department"
-                  rules={[{ required: true, message: 'Please select department' }]}
-                >
-                  <Select placeholder="Select department">
-                    <Option value="IT">IT</Option>
-                    <Option value="Admin">Admin</Option>
-                    <Option value="Operations">Operations</Option>
-                    <Option value="Finance">Finance</Option>
-                    <Option value="HR">HR</Option>
-                    <Option value="HSE">HSE</Option>
-                    <Option value="Supply Chain">Supply Chain</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
+            {/* <Form.Item
+              name="supplierId"
+              label="Supplier"
+              rules={[{ required: true, message: 'Please select supplier' }]}
+            >
+              <Select 
+                placeholder="Select supplier"
+                showSearch
+                filterOption={(input, option) =>
+                  option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                }
+              >
+                {suppliers.map(supplier => (
+                  <Option key={supplier._id} value={supplier._id}>
+                    {supplier.supplierDetails?.companyName} - {supplier.supplierDetails?.supplierType}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item> */}
+
+            <Form.Item
+              name="supplierId"
+              label="Supplier"
+              rules={[{ required: true, message: 'Please select supplier' }]}
+            >
+              <Select 
+                placeholder="Select supplier"
+                showSearch
+                onChange={(value) => setSelectedSupplierId(value)} // FIX: Add onChange handler
+                filterOption={(input, option) =>
+                  option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                }
+              >
+                {suppliers.map(supplier => (
+                  <Option key={supplier._id} value={supplier._id}>
+                    {supplier.supplierDetails?.companyName} - {supplier.supplierDetails?.supplierType}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+
+            {/* FIX: Add button to view supplier profile */}
+            <Button 
+              type="link"
+              onClick={() => {
+                if (selectedSupplierId) {
+                  navigate(`/supply-chain/suppliers/${selectedSupplierId}/profile`);
+                }
+              }}
+              disabled={!selectedSupplierId}
+            >
+              View Supplier Profile
+            </Button>
 
             <Row gutter={16}>
               <Col span={8}>

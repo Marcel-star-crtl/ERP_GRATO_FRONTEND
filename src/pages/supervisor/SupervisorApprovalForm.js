@@ -40,7 +40,7 @@ const SupervisorApprovalForm = () => {
     const fetchRequest = async () => {
       try {
         setLoading(true);
-        const response = await api.get(`/api/cash-requests/supervisor/${requestId}`);
+        const response = await api.get(`/cash-requests/supervisor/${requestId}`);
         
         if (!response.data.success) {
           throw new Error(response.data.message || 'Request not found');
@@ -65,7 +65,7 @@ const SupervisorApprovalForm = () => {
   const handleSubmit = async (values) => {
     try {
       setLoading(true);
-      const response = await api.put(`/api/cash-requests/${requestId}/supervisor`, {
+      const response = await api.put(`/cash-requests/${requestId}/supervisor`, {
         decision: values.decision,
         comments: values.comments,
         approvedAmount: values.approvedAmount,

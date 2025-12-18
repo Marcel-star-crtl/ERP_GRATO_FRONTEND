@@ -689,10 +689,10 @@ const IncidentReportForm = ({ editMode = false }) => {
                 <Option value="parking_lot">Parking Lot</Option>
                 <Option value="reception">Reception Area</Option>
                 <Option value="conference_room">Conference Room</Option>
-                <Option value="cafeteria">Cafeteria</Option>
+                {/* <Option value="cafeteria">Cafeteria</Option> */}
                 <Option value="restroom">Restroom</Option>
-                <Option value="stairwell">Stairwell</Option>
-                <Option value="elevator">Elevator</Option>
+                {/* <Option value="stairwell">Stairwell</Option> */}
+                {/* <Option value="elevator">Elevator</Option> */}
                 <Option value="outdoor_area">Outdoor Area</Option>
                 <Option value="other">Other</Option>
               </Select>
@@ -953,7 +953,7 @@ const IncidentReportForm = ({ editMode = false }) => {
                   <TextArea rows={2} placeholder="Describe the damage..." />
                 </Form.Item>
                 <Form.Item name="estimatedCost" label="Estimated Repair Cost">
-                  <Input prefix="$" placeholder="0.00" />
+                  <Input prefix="XAF" placeholder="0.00" />
                 </Form.Item>
               </>
             )}
@@ -1088,7 +1088,7 @@ const IncidentReportForm = ({ editMode = false }) => {
               <Checkbox>Follow-up investigation required</Checkbox>
             </Form.Item>
 
-            <Form.Item
+            {/* <Form.Item
               name="reporterPhone"
               label="Your Phone Number"
               rules={[{ required: true, message: 'Please provide your phone number' }]}
@@ -1097,7 +1097,7 @@ const IncidentReportForm = ({ editMode = false }) => {
               <Input 
                 placeholder="Phone number for follow-up contact"
               />
-            </Form.Item>
+            </Form.Item> */}
 
             <Form.Item
               name="attachments"

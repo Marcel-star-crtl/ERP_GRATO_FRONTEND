@@ -4,7 +4,7 @@ export const itemAPI = {
   // Get all items (with filtering)
   getItems: async (params = {}) => {
     try {
-      const response = await api.get('/api/items', { params });
+      const response = await api.get('/items', { params });
       return {
         success: true,
         data: response.data.items,
@@ -29,7 +29,7 @@ export const itemAPI = {
       
       console.log('API call params:', params);
       
-      const response = await api.get('/api/items/active', { params });
+      const response = await api.get('/items/active', { params });
       
       console.log('Raw API response:', response.data);
       
@@ -50,7 +50,7 @@ export const itemAPI = {
   // Create new item (Supply Chain only)
   createItem: async (itemData) => {
     try {
-      const response = await api.post('/api/items', itemData);
+      const response = await api.post('/items', itemData);
       return {
         success: true,
         data: response.data
@@ -67,7 +67,7 @@ export const itemAPI = {
   // Update item (Supply Chain only)
   updateItem: async (itemId, itemData) => {
     try {
-      const response = await api.put(`/api/items/${itemId}`, itemData);
+      const response = await api.put(`/items/${itemId}`, itemData);
       return {
         success: true,
         data: response.data
@@ -84,7 +84,7 @@ export const itemAPI = {
   // Toggle item status (Supply Chain only)
   toggleItemStatus: async (itemId, isActive) => {
     try {
-      const response = await api.patch(`/api/items/${itemId}/status`, { isActive });
+      const response = await api.patch(`/items/${itemId}/status`, { isActive });
       return {
         success: true,
         data: response.data
@@ -101,7 +101,7 @@ export const itemAPI = {
   // Delete item (Supply Chain only)
   deleteItem: async (itemId) => {
     try {
-      await api.delete(`/api/items/${itemId}`);
+      await api.delete(`/items/${itemId}`);
       return {
         success: true
       };
@@ -117,7 +117,7 @@ export const itemAPI = {
   // Get item by ID
   getItemById: async (itemId) => {
     try {
-      const response = await api.get(`/api/items/${itemId}`);
+      const response = await api.get(`/items/${itemId}`);
       return {
         success: true,
         data: response.data
@@ -134,7 +134,7 @@ export const itemAPI = {
   // Search items by description or code
   searchItems: async (query) => {
     try {
-      const response = await api.get(`/api/items/search`, { 
+      const response = await api.get(`/items/search`, { 
         params: { q: query, isActive: true } 
       });
       return {
@@ -153,7 +153,7 @@ export const itemAPI = {
   // Get categories and subcategories
   getCategories: async () => {
     try {
-      const response = await api.get('/api/items/categories');
+      const response = await api.get('/items/categories');
       return {
         success: true,
         data: response.data
@@ -170,7 +170,7 @@ export const itemAPI = {
   // Import items from CSV (Supply Chain only)
   importItems: async (formData) => {
     try {
-      const response = await api.post('/api/items/import', formData, {
+      const response = await api.post('/items/import', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -191,7 +191,7 @@ export const itemAPI = {
   // Export items to CSV (Supply Chain only)
   exportItems: async (filters = {}) => {
     try {
-      const response = await api.get('/api/items/export', { 
+      const response = await api.get('/items/export', { 
         params: filters,
         responseType: 'blob'
       });
@@ -211,7 +211,7 @@ export const itemAPI = {
   // Request new item (Employee request to Supply Chain)
   requestNewItem: async (requestData) => {
     try {
-      const response = await api.post('/api/items/requests', requestData);
+      const response = await api.post('/items/requests', requestData);
       return {
         success: true,
         data: response.data
@@ -229,7 +229,7 @@ export const itemAPI = {
   getItemRequests: async (status = 'all') => {
     try {
       const params = status !== 'all' ? { status } : {};
-      const response = await api.get('/api/items/requests', { params });
+      const response = await api.get('/items/requests', { params });
       return {
         success: true,
         data: response.data
@@ -246,7 +246,7 @@ export const itemAPI = {
   // Process item request (Supply Chain only)
   processItemRequest: async (requestId, action, itemData = null) => {
     try {
-      const response = await api.patch(`/api/items/requests/${requestId}`, {
+      const response = await api.patch(`/items/requests/${requestId}`, {
         action, // 'approve', 'reject', 'create_item'
         itemData
       });

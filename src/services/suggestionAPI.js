@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { store } from '../store/store';
 
-const API_BASE_URL = process.env.REACT_APP_API_UR || 'http://localhost:5001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 const api = axios.create({ 
   baseURL: API_BASE_URL,
@@ -21,6 +21,13 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
+    console.log('API Request:', {
+      method: config.method,
+      url: config.url,
+      baseURL: config.baseURL,
+      fullURL: `${config.baseURL}${config.url}`
+    });
+    
     return config;
   },
   (error) => {
@@ -30,17 +37,32 @@ api.interceptors.request.use(
 
 // Response interceptor for error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('API Response:', {
+      status: response.status,
+      url: response.config.url,
+      data: response.data
+    });
+    return response;
+  },
   (error) => {
+    console.error('API Error:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      url: error.config?.url
+    });
+    
     if (error.response?.status === 401) {
-    //   store.dispatch(logout());
+      // Optionally dispatch logout action
+      // store.dispatch(logout());
     }
     return Promise.reject(error);
   }
 );
 
 const suggestionAPI = {
-  // Get suggestions based on user role (replaces getEmployeeSuggestions, getHRSuggestions)
+  // Get suggestions based on user role
   getSuggestionsByRole: async (params = {}) => {
     try {
       const queryParams = new URLSearchParams();
@@ -58,16 +80,52 @@ const suggestionAPI = {
     }
   },
 
-  // Create a new suggestion -  SYNTAX
+  // Get suggestion details - ENHANCED with validation
+  getSuggestionDetails: async (suggestionId) => {
+    try {
+      // Validate suggestion ID format
+      if (!suggestionId) {
+        throw new Error('Suggestion ID is required');
+      }
+
+      // Validate MongoDB ObjectId format (24 hex characters)
+      if (!suggestionId.match(/^[0-9a-fA-F]{24}$/)) {
+        throw new Error('Invalid suggestion ID format');
+      }
+
+      console.log('Fetching suggestion details for ID:', suggestionId);
+      
+      const response = await api.get(`/suggestions/${suggestionId}`);
+      
+      console.log('Suggestion details response:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching suggestion details:', error);
+      
+      // Enhanced error handling
+      if (error.response) {
+        // Server responded with error status
+        throw new Error(error.response.data?.message || `Server error: ${error.response.status}`);
+      } else if (error.request) {
+        // Request made but no response received
+        throw new Error('No response from server. Please check your connection.');
+      } else {
+        // Error in request setup
+        throw error;
+      }
+    }
+  },
+
+  // Create a new suggestion
   createSuggestion: async (suggestionData, attachments = []) => {
     try {
       const formData = new FormData();
   
-      // Debug: Log what we're about to send
       console.log('Creating suggestion with data:', suggestionData);
       console.log('Attachments:', attachments);
   
-      // Append suggestion data - ensure all fields are included
+      // Append suggestion data
       Object.keys(suggestionData).forEach(key => {
         const value = suggestionData[key];
         if (value !== undefined && value !== null) {
@@ -79,13 +137,8 @@ const suggestionAPI = {
         }
       });
   
-      console.log('FormData entries:');
-      for (let [key, value] of formData.entries()) {
-        console.log(`${key}: ${value}`);
-      }
-  
       // Append attachments
-      attachments.forEach((file, index) => {
+      attachments.forEach((file) => {
         if (file.originFileObj) {
           formData.append('attachments', file.originFileObj);
         }
@@ -104,22 +157,15 @@ const suggestionAPI = {
     }
   },
 
-  // Get suggestion details
-  getSuggestionDetails: async (suggestionId) => {
-    try {
-      const response = await api.get(`/suggestions/${suggestionId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching suggestion details:', error);
-      throw error;
-    }
-  },
-
   // Vote on suggestion
   voteSuggestion: async (suggestionId, voteType) => {
     try {
+      if (!['up', 'down'].includes(voteType)) {
+        throw new Error('Vote type must be "up" or "down"');
+      }
+
       const response = await api.post(`/suggestions/${suggestionId}/vote`, {
-        voteType: voteType // 'up' or 'down'
+        voteType: voteType
       });
       return response.data;
     } catch (error) {
@@ -142,8 +188,12 @@ const suggestionAPI = {
   // Add comment
   addComment: async (suggestionId, comment) => {
     try {
+      if (!comment || comment.trim().length === 0) {
+        throw new Error('Comment cannot be empty');
+      }
+
       const response = await api.post(`/suggestions/${suggestionId}/comments`, {
-        comment: comment
+        comment: comment.trim()
       });
       return response.data;
     } catch (error) {
@@ -194,35 +244,7 @@ const suggestionAPI = {
     }
   },
 
-  // Get trending suggestions
-  getTrendingSuggestions: async () => {
-    try {
-      const response = await api.get('/suggestions/community/trending');
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching trending suggestions:', error);
-      throw error;
-    }
-  },
-
-  // Get featured suggestions
-  getFeaturedSuggestions: async () => {
-    try {
-      const response = await api.get('/suggestions/community/featured');
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching featured suggestions:', error);
-      throw error;
-    }
-  },
-
   // HR specific methods
-  getHRSuggestions: async (params = {}) => {
-    // This now uses the role-based endpoint
-    return suggestionAPI.getSuggestionsByRole(params);
-  },
-
-  // Submit HR review
   submitHRReview: async (suggestionId, reviewData) => {
     try {
       const response = await api.put(`/suggestions/hr/${suggestionId}/review`, reviewData);
@@ -233,7 +255,6 @@ const suggestionAPI = {
     }
   },
 
-  // Update suggestion status
   updateSuggestionStatus: async (suggestionId, statusData) => {
     try {
       const response = await api.put(`/suggestions/hr/${suggestionId}/status`, statusData);
@@ -260,31 +281,6 @@ const suggestionAPI = {
     }
   },
 
-  // Toggle feature suggestion
-  toggleFeatureSuggestion: async (suggestionId, featured = true) => {
-    try {
-      const response = await api.put(`/suggestions/admin/${suggestionId}/feature`, {
-        featured: featured
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Error toggling feature suggestion:', error);
-      throw error;
-    }
-  },
-
-  // Award recognition
-  awardRecognition: async (suggestionId, recognitionData) => {
-    try {
-      const response = await api.put(`/suggestions/admin/${suggestionId}/recognition`, recognitionData);
-      return response.data;
-    } catch (error) {
-      console.error('Error awarding recognition:', error);
-      throw error;
-    }
-  },
-
-  // Update implementation status
   updateImplementationStatus: async (suggestionId, implementationData) => {
     try {
       const response = await api.put(`/suggestions/management/${suggestionId}/implementation`, implementationData);
@@ -295,7 +291,7 @@ const suggestionAPI = {
     }
   },
 
-  // Supervisor specific methods
+  // Supervisor methods
   submitSupervisorEndorsement: async (suggestionId, endorsementData) => {
     try {
       const response = await api.put(`/suggestions/supervisor/${suggestionId}/endorsement`, endorsementData);
@@ -304,17 +300,8 @@ const suggestionAPI = {
       console.error('Error submitting supervisor endorsement:', error);
       throw error;
     }
-  },
-
-  // Employee specific methods (for backward compatibility)
-  getEmployeeSuggestions: async (params = {}) => {
-    // This now uses the role-based endpoint
-    return suggestionAPI.getSuggestionsByRole(params);
   }
 };
 
-// Export the suggestion API methods
 export const suggestions = suggestionAPI;
 export default suggestionAPI;
-
-

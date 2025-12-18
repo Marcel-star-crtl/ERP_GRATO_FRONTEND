@@ -70,7 +70,7 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
   const [approvalChain, setApprovalChain] = useState([]);
   const [certificateRequired, setCertificateRequired] = useState('not_required');
   const [leaveTypesLoading, setLeaveTypesLoading] = useState(false);
-  const [storedFormData, setStoredFormData] = useState({}); // Manual form data storage
+  const [storedFormData, setStoredFormData] = useState({}); 
 
   const { user } = useSelector((state) => state.auth);
   const navigate = useNavigate();
@@ -146,8 +146,6 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
         types: [
           { value: 'sick_leave', label: 'Sick Leave', description: 'General illness requiring time off work', requiresCertificate: true },
           { value: 'medical_appointment', label: 'Medical Appointment', description: 'Scheduled medical consultation', requiresCertificate: false },
-          { value: 'emergency_medical', label: 'Emergency Medical Leave', description: 'Urgent medical situation', requiresCertificate: true },
-          { value: 'mental_health', label: 'Mental Health Leave', description: 'Mental health and wellness support', requiresCertificate: true },
         ]
       },
       vacation: {
@@ -156,24 +154,10 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
           { value: 'annual_leave', label: 'Annual Leave', description: 'Regular vacation time', requiresCertificate: false }
         ]
       },
-      personal: {
-        category: 'Personal Leave',
-        types: [
-          { value: 'personal_time_off', label: 'Personal Time Off', description: 'Personal matters and appointments', requiresCertificate: false },
-          { value: 'wellness_day', label: 'Wellness Day', description: 'Personal wellness and self-care', requiresCertificate: false }
-        ]
-      },
       family: {
         category: 'Family Leave',
         types: [
           { value: 'family_care', label: 'Family Care Leave', description: 'Caring for sick family member', requiresCertificate: false },
-          { value: 'child_sick_care', label: 'Child Sick Care', description: 'Caring for sick child', requiresCertificate: false }
-        ]
-      },
-      emergency: {
-        category: 'Emergency Leave',
-        types: [
-          { value: 'emergency_leave', label: 'Emergency Leave', description: 'Unexpected urgent situations', requiresCertificate: false }
         ]
       },
       bereavement: {
@@ -233,7 +217,7 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
       submissionDate: dayjs(),
       urgency: 'medium',
       priority: 'routine',
-      leaveType: 'personal_time_off',
+      leaveType: '',
       ...initialData
     };
 
@@ -262,19 +246,6 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
       
       // Combine with manually stored form data as fallback
       const combinedValues = { ...(storedFormData || {}), ...allValues };
-      
-      // Debug: Log form values to console
-      console.log('=== FORM SUBMISSION DEBUG ===');
-      console.log('Form submission - All values:', allValues);
-      console.log('Form submission - Manual form data:', storedFormData);
-      console.log('Form submission - Combined values:', combinedValues);
-      console.log('Form submission - Values parameter:', values);
-      console.log('Form submission - Leave dates:', combinedValues.leaveDates);
-      console.log('Form submission - Leave dates type:', typeof combinedValues.leaveDates);
-      console.log('Form submission - Leave dates length:', combinedValues.leaveDates?.length);
-      console.log('Form submission - First date:', combinedValues.leaveDates?.[0]);
-      console.log('Form submission - Second date:', combinedValues.leaveDates?.[1]);
-      console.log('==========================');
       
       // Validation - Check if dates are selected
       if (!combinedValues.leaveDates || !combinedValues.leaveDates[0] || !combinedValues.leaveDates[1]) {
@@ -412,7 +383,7 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
 
       const values = form.getFieldsValue();
       const draftData = {
-        leaveType: values.leaveType || 'personal_time_off',
+        leaveType: values.leaveType,
         startDate: values.leaveDates?.[0]?.format('YYYY-MM-DD'),
         endDate: values.leaveDates?.[1]?.format('YYYY-MM-DD'),
         totalDays: estimatedDuration,
@@ -707,7 +678,7 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
             </Row>
 
             {/* Debug Info - Remove in production */}
-            {process.env.NODE_ENV === 'development' && (
+            {/* {process.env.NODE_ENV === 'development' && (
               <Alert
                 message="Debug Info"
                 description={
@@ -722,7 +693,7 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
                 style={{ marginBottom: '16px' }}
                 closable
               />
-            )}
+            )} */}
 
             {selectedCategory && renderBalanceInfo()}
 
@@ -882,7 +853,7 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
                       ] : []}
                     >
                       <Input 
-                        placeholder="Dr. John Smith"
+                        placeholder="Dr. John Neba"
                         prefix={<UserOutlined />}
                       />
                     </Form.Item>
@@ -1143,7 +1114,7 @@ export const LeaveRequestForm = ({ editMode = false, initialData = null, onCance
         );
 
       default:
-        return null;
+      return null;
     }
   };
 

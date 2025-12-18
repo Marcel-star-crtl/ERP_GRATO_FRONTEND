@@ -70,7 +70,7 @@ export const projectsAPI = {
   getActiveProjects: async () => {
     try {
       console.log('=== CALLING GET ACTIVE PROJECTS ===');
-      const response = await api.get('/api/projects/active');
+      const response = await api.get('/projects/active');
       return response.data;
     } catch (error) {
       console.error('API: Error fetching active projects:', error);
@@ -81,7 +81,7 @@ export const projectsAPI = {
   // Get all projects
   getAllProjects: async (params = {}) => {
     try {
-      const response = await api.get('/api/projects', { params });
+      const response = await api.get('/projects', { params });
       return response.data;
     } catch (error) {
       console.error('API: Error fetching all projects:', error);
@@ -92,7 +92,7 @@ export const projectsAPI = {
   // Get project by ID
   getProjectById: async (projectId) => {
     try {
-      const response = await api.get(`/api/projects/${projectId}`);
+      const response = await api.get(`/projects/${projectId}`);
       return response.data;
     } catch (error) {
       console.error('API: Error fetching project details:', error);
@@ -103,7 +103,7 @@ export const projectsAPI = {
   // Create project
   createProject: async (projectData) => {
     try {
-      const response = await api.post('/api/projects', projectData);
+      const response = await api.post('/projects', projectData);
       return response.data;
     } catch (error) {
       console.error('API: Error creating project:', error);
@@ -114,7 +114,7 @@ export const projectsAPI = {
   // Update project
   updateProject: async (projectId, projectData) => {
     try {
-      const response = await api.put(`/api/projects/${projectId}`, projectData);
+      const response = await api.put(`/projects/${projectId}`, projectData);
       return response.data;
     } catch (error) {
       console.error('API: Error updating project:', error);
@@ -129,7 +129,7 @@ export const budgetCodesAPI = {
   getAvailableBudgetCodes: async () => {
     try {
       console.log('=== CALLING GET AVAILABLE BUDGET CODES ===');
-      const response = await api.get('/api/budget-codes/available');
+      const response = await api.get('/budget-codes/available');
       return response.data;
     } catch (error) {
       console.error('API: Error fetching available budget codes:', error);
@@ -140,7 +140,7 @@ export const budgetCodesAPI = {
   // Get all budget codes
   getAllBudgetCodes: async (params = {}) => {
     try {
-      const response = await api.get('/api/budget-codes', { params });
+      const response = await api.get('/budget-codes', { params });
       return response.data;
     } catch (error) {
       console.error('API: Error fetching budget codes:', error);
@@ -151,7 +151,7 @@ export const budgetCodesAPI = {
   // Get budget code by ID
   getBudgetCodeById: async (codeId) => {
     try {
-      const response = await api.get(`/api/budget-codes/${codeId}`);
+      const response = await api.get(`/budget-codes/${codeId}`);
       return response.data;
     } catch (error) {
       console.error('API: Error fetching budget code details:', error);
@@ -162,7 +162,7 @@ export const budgetCodesAPI = {
   // Create budget code
   createBudgetCode: async (budgetCodeData) => {
     try {
-      const response = await api.post('/api/budget-codes', budgetCodeData);
+      const response = await api.post('/budget-codes', budgetCodeData);
       return response.data;
     } catch (error) {
       console.error('API: Error creating budget code:', error);
@@ -173,7 +173,7 @@ export const budgetCodesAPI = {
   // Update budget code
   updateBudgetCode: async (codeId, budgetCodeData) => {
     try {
-      const response = await api.put(`/api/budget-codes/${codeId}`, budgetCodeData);
+      const response = await api.put(`/budget-codes/${codeId}`, budgetCodeData);
       return response.data;
     } catch (error) {
       console.error('API: Error updating budget code:', error);
@@ -285,7 +285,7 @@ export const cashRequestAPI = {
 
   getSupervisorJustifications: async (params = {}) => {
     try {
-      const response = await api.get('/cash-requests/supervisor/justifications', { params });
+      const response = await api.get('/cash-requests/supervisor/pending', { params });
       return response.data;
     } catch (error) {
       console.error('API: Error fetching supervisor justifications:', error);
@@ -293,12 +293,22 @@ export const cashRequestAPI = {
     }
   },
 
-  processSupervisorJustificationDecision: async (requestId, decision) => {
+  processJustificationDecision: async (requestId, decision) => {
     try {
-      const response = await api.put(`/cash-requests/${requestId}/supervisor/justification`, decision);
+      const response = await api.put(`/cash-requests/justification/${requestId}/decision`, decision);
       return response.data;
     } catch (error) {
       console.error('API: Error processing supervisor justification decision:', error);
+      throw error;
+    }
+  },
+
+  getSupervisorJustification: async (requestId) => {
+    try {
+       const response = await api.get(`/cash-requests/${requestId}`);
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching justification:', error);
       throw error;
     }
   },
@@ -314,15 +324,6 @@ export const cashRequestAPI = {
     }
   },
 
-  // processFinanceDecision: async (requestId, decision) => {
-  //   try {
-  //     const response = await api.put(`/cash-requests/${requestId}/finance`, decision);
-  //     return response.data;
-  //   } catch (error) {
-  //     console.error('API: Error processing finance decision:', error);
-  //     throw error;
-  //   }
-  // },
 
   processFinanceDecision: async (requestId, decision) => {
     try {
@@ -439,6 +440,122 @@ export const cashRequestAPI = {
     }
   },
 
+  // // Create reimbursement request
+  // createReimbursement: async (formData) => {
+  //   return api.post('/cash-requests/reimbursement', formData, {
+  //     headers: {
+  //       'Content-Type': 'multipart/form-data'
+  //     }
+  //   });
+  // },
+
+  createReimbursementRequest: async (formData) => {
+  console.log('API: Creating reimbursement request...');
+  console.log('FormData entries:');
+  
+  // Debug FormData contents
+  for (let pair of formData.entries()) {
+    if (pair[1] instanceof File) {
+      console.log(`${pair[0]}: File - ${pair[1].name} (${pair[1].size} bytes)`);
+    } else {
+      console.log(`${pair[0]}:`, pair[1]);
+    }
+  }
+
+  const config = {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    timeout: 60000,
+  };
+  
+  try {
+    const response = await api.post('/api/cash-requests/reimbursement', formData, config);
+    console.log('API: Reimbursement request created successfully:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('API: Error creating reimbursement request:', error);
+    
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', error.response.data);
+      console.error('Response headers:', error.response.headers);
+    }
+    
+    throw error;
+  }
+},
+
+ getReimbursementLimitStatus: async () => {
+  try {
+    console.log('API: Fetching reimbursement limit status...');
+    const response = await api.get('/cash-requests/reimbursement/limit-status');
+    
+    console.log('API Response:', response);
+    
+    // Handle different response structures
+    if (response.data) {
+      return response.data.success 
+        ? response.data 
+        : { success: true, data: response.data };
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('API: Error fetching reimbursement limit status:', error);
+    
+    // Provide helpful error context
+    if (error.response?.status === 401) {
+      throw new Error('Authentication required. Please login again.');
+    }
+    
+    throw error;
+  }
+},
+
+// ✅ Fixed method - consistent with create method
+createReimbursementRequest: async (formData) => {
+  console.log('API: Creating reimbursement request...');
+  console.log('FormData entries:');
+  
+  // Debug FormData contents
+  for (let pair of formData.entries()) {
+    if (pair[1] instanceof File) {
+      console.log(`${pair[0]}: File - ${pair[1].name} (${pair[1].size} bytes)`);
+    } else {
+      console.log(`${pair[0]}:`, pair[1]);
+    }
+  }
+
+  const config = {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    timeout: 60000,
+  };
+  
+  try {
+    const response = await api.post('/cash-requests/reimbursement', formData, config);
+    console.log('API: Reimbursement request created successfully:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('API: Error creating reimbursement request:', error);
+    
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', error.response.data);
+      console.error('Response headers:', error.response.headers);
+    }
+    
+    throw error;
+  }
+},
+
+  // Get finance reports data
+  getFinanceReportsData: async (filters) => {
+    return api.get('/cash-requests/reports/analytics', { params: filters });
+  },
+
   // Analytics and reporting
   getStats: async (params = {}) => {
     try {
@@ -474,16 +591,45 @@ export const cashRequestAPI = {
     }
   },
 
-  // File download
-  downloadAttachment: async (requestId, fileName) => {
+  downloadAttachment: async (publicId) => {
     try {
+      console.log('API: Downloading file with publicId:', publicId);
+      
       const response = await api.get(
-        `/cash-requests/${requestId}/attachment/${encodeURIComponent(fileName)}`,
+        `/files/download/${encodeURIComponent(publicId)}`,
         { responseType: 'blob' }
       );
+      
       return response.data;
     } catch (error) {
       console.error('API: Error downloading attachment:', error);
+      throw error;
+    }
+  },
+
+
+  viewAttachment: async (publicId) => {
+    try {
+      console.log('API: Viewing file with publicId:', publicId);
+      
+      const response = await api.get(
+        `/files/view/${encodeURIComponent(publicId)}`,
+        { responseType: 'blob' }
+      );
+      
+      return response.data;
+    } catch (error) {
+      console.error('API: Error viewing attachment:', error);
+      throw error;
+    }
+  },
+
+  getFileInfo: async (publicId) => {
+    try {
+      const response = await api.get(`/files/info/${encodeURIComponent(publicId)}`);
+      return response.data;
+    } catch (error) {
+      console.error('API: Error getting file info:', error);
       throw error;
     }
   },
@@ -506,7 +652,52 @@ export const cashRequestAPI = {
       console.error('API: Error processing approval decision:', error);
       throw error;
     }
-  }
+  },
+
+  generateRequestPDF: async (requestId) => {
+    try {
+      const response = await api.get(`/cash-requests/${requestId}/pdf`, {
+        responseType: 'blob' 
+      });
+      return response;
+    } catch (error) {
+      console.error('Generate PDF error:', error);
+      throw error;
+    }
+  },
+
+  // Process disbursement
+  processDisbursement: async (requestId, data) => {
+    try {
+      const response = await api.post(`/cash-requests/${requestId}/disburse`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Process disbursement error:', error);
+      throw error;
+    }
+  },
+
+  // Get disbursement history
+  getDisbursementHistory: async (requestId) => {
+    try {
+      const response = await api.get(`/cash-requests/${requestId}/disbursements`);
+      return response.data;
+    } catch (error) {
+      console.error('Get disbursement history error:', error);
+      throw error;
+    }
+  },
+
+  // Get pending disbursements (Finance Dashboard)
+  getPendingDisbursements: async () => {
+    try {
+      const response = await api.get('/cash-requests/finance/pending-disbursements');
+      return response.data;
+    } catch (error) {
+      console.error('Get pending disbursements error:', error);
+      throw error;
+    }
+  },
 };
 
 // Default export

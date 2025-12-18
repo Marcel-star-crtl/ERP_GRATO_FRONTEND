@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -49,6 +50,7 @@ const { Option } = Select;
 const { TabPane } = Tabs;
 
 const SupplyChainVendorManagement = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
   const [onboardingApplications, setOnboardingApplications] = useState([]);
@@ -528,10 +530,18 @@ const SupplyChainVendorManagement = () => {
       key: 'actions',
       render: (_, record) => (
         <Space>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => handleViewDetails(record)}>
-            View
+          <Button 
+            size="small" 
+            icon={<EyeOutlined />} 
+            onClick={() => navigate(`/supply-chain/suppliers/${record._id}/profile`)}
+          >
+            View Profile
           </Button>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleEditSupplier(record)}>
+          <Button 
+            size="small" 
+            icon={<EditOutlined />}
+            onClick={() => handleEditSupplier(record)}
+          >
             Edit
           </Button>
           {record.supplierStatus?.accountStatus === 'pending' && (
