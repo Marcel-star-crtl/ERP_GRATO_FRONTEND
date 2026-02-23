@@ -99,6 +99,27 @@ export const buyerRequisitionAPI = {
   },
 
   /**
+   * Send purchase order to Supply Chain for assignment
+   * @param {string} poId - Purchase order ID
+   * @returns {Promise<Object>} Response
+   */
+  sendToSupplyChain: async (poId) => {
+    try {
+      const url = `${API_BASE_URL}/buyer/purchase-orders/${poId}`;
+      return await makeAuthenticatedRequest(url, {
+        method: 'PUT',
+        body: JSON.stringify({
+          status: 'pending_supply_chain_assignment',
+          sentDate: new Date().toISOString()
+        }),
+      });
+    } catch (error) {
+      console.error('Error sending PO to Supply Chain:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Preview purchase order as PDF (inline)
    * @param {string} poId - Purchase order ID
    * @returns {Promise<Blob>} PDF file as blob
@@ -165,28 +186,14 @@ export const buyerRequisitionAPI = {
     }
   },
 
-  // Assign PO to department (with signed document)
-  assignPOToDepartment: async (poId, formData) => {
+  // Assign PO to department (auto-signing)
+  assignPOToDepartment: async (poId, data) => {
     try {
-      const token = localStorage.getItem('token');
       const url = `${API_BASE_URL}/buyer/purchase-orders/${poId}/assign-department`;
-      
-      const response = await fetch(url, {
+      return await makeAuthenticatedRequest(url, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        body: formData, // FormData sets its own Content-Type
+        body: JSON.stringify(data)
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to assign PO to department');
-      }
-
-      const data = await response.json();
-      console.log('API Response:', data);
-      return data;
     } catch (error) {
       console.error('Error assigning PO:', error);
       throw error;
@@ -218,7 +225,6 @@ export const buyerRequisitionAPI = {
     }
   },
 
-  // Process PO approval (with signed document)
   processPOApproval: async (poId, data) => {
     try {
       const url = `${API_BASE_URL}/buyer/purchase-orders/${poId}/approve`;
@@ -226,12 +232,15 @@ export const buyerRequisitionAPI = {
       if (data instanceof FormData) {
         const token = localStorage.getItem('token');
         
+        console.log('Submitting PO approval with FormData');
+        
         const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
+            // Don't set Content-Type - let browser set it with boundary for FormData
           },
-          body: data, // FormData sets its own Content-Type
+          body: data,
         });
 
         if (!response.ok) {
@@ -240,9 +249,10 @@ export const buyerRequisitionAPI = {
         }
 
         const responseData = await response.json();
-        console.log('API Response:', responseData);
+        console.log('Approval response:', responseData);
         return responseData;
       } else {
+        // For approvals or rejections without file
         return await makeAuthenticatedRequest(url, {
           method: 'POST',
           body: JSON.stringify(data),
@@ -1291,8 +1301,19 @@ createPurchaseOrder: async (poData) => {
     
     console.log('Full PO Data being sent:', JSON.stringify(poData, null, 2));
     
+    const supplierName =
+      poData.supplierDetails?.name ||
+      poData.supplierDetails?.companyName ||
+      poData.supplierDetails?.supplierName ||
+      '';
+
+    const supplierEmail =
+      poData.supplierDetails?.email ||
+      poData.supplierDetails?.contactEmail ||
+      '';
+
     // Enhanced validation before sending
-    if (!poData.supplierDetails?.name || !poData.supplierDetails?.email) {
+    if (!supplierName || !supplierEmail) {
       throw new Error('Supplier name and email are required');
     }
     
@@ -1328,6 +1349,11 @@ createPurchaseOrder: async (poData) => {
     
     const formattedData = {
       ...poData,
+      supplierDetails: {
+        ...poData.supplierDetails,
+        name: supplierName,
+        email: supplierEmail
+      },
       items: formattedItems,
       totalAmount: formattedItems.reduce((sum, item) => sum + item.totalPrice, 0)
     };
@@ -1664,6 +1690,40 @@ processDebitNoteApproval: async (debitNoteId, approvalData) => {
       total: timeDiff,
       isUrgent: days <= 1
     };
+  },
+
+  // ✅ NEW: Update purchase justification (buyer only)
+  updatePurchaseJustification: async (requisitionId, justificationData) => {
+    try {
+      const url = `${API_BASE_URL}/buyer/requisitions/${requisitionId}/justification`;
+      
+      console.log('📝 Updating purchase justification:', { requisitionId, justificationData });
+      
+      const response = await makeAuthenticatedRequest(url, {
+        method: 'POST',
+        body: JSON.stringify(justificationData),
+      });
+
+      if (response.success) {
+        console.log('✅ Justification updated successfully');
+        return {
+          success: true,
+          message: 'Justification updated successfully',
+          data: response.data
+        };
+      }
+
+      return {
+        success: false,
+        message: response.message || 'Failed to update justification'
+      };
+    } catch (error) {
+      console.error('❌ Update justification error:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to update justification'
+      };
+    }
   }
 };
 

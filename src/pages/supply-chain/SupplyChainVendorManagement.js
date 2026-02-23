@@ -51,6 +51,7 @@ const { TabPane } = Tabs;
 
 const SupplyChainVendorManagement = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
   const [onboardingApplications, setOnboardingApplications] = useState([]);
@@ -236,6 +237,16 @@ const SupplyChainVendorManagement = () => {
     fetchOnboardingApplications();
     fetchDashboardStats();
   }, [activeTab, pagination.current, pagination.pageSize]);
+
+  // Check URL params for action=add to auto-open modal
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action === 'add') {
+      handleAddSupplier();
+      // Clean up URL after opening modal
+      navigate('/supply-chain/supplier-management', { replace: true });
+    }
+  }, [searchParams]);
 
   const fetchSuppliers = async () => {
     setLoading(true);
@@ -834,7 +845,12 @@ const SupplyChainVendorManagement = () => {
                     <Option value="HR/Admin">HR/Admin</Option>
                     <Option value="Operations">Operations</Option>
                     <Option value="HSE">HSE</Option>
+                    <Option value="Civil Works">Civil Works</Option>
+                    <Option value="Rollout">Rollout</Option>
+                    <Option value="Security">Security</Option>
+                    <Option value="IT">IT</Option>
                     <Option value="Refurbishment">Refurbishment</Option>
+                    <Option value="Generator Maintenance">Generator Maintenance</Option>
                   </Select>
                 </Form.Item>
               </Col>

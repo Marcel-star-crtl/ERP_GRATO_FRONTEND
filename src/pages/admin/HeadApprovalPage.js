@@ -1,5 +1,3 @@
-// components/admin/HeadApprovalPage.jsx
-
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -40,6 +38,7 @@ import {
 } from '@ant-design/icons';
 import moment from 'moment';
 import { headApprovalAPI } from '../../services/headApprovalAPI';
+import AttachmentDisplay from '../../components/AttachmentDisplay';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -53,6 +52,7 @@ const HeadApprovalPage = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [stats, setStats] = useState(null);
   const [activeTab, setActiveTab] = useState('pending');
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState(null);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -159,6 +159,69 @@ const HeadApprovalPage = () => {
       message.error('Failed to process approval');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Download Attachment Handler
+  const handleDownloadAttachment = async (attachment) => {
+    if (!selectedRequisition?._id || !attachment._id) {
+      message.error('Invalid attachment information');
+      return;
+    }
+
+    setDownloadingAttachmentId(attachment._id);
+
+    try {
+      const token = localStorage.getItem('token');
+      const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+
+      console.log('📥 Downloading attachment:', {
+        requisitionId: selectedRequisition._id,
+        attachmentId: attachment._id,
+        name: attachment.name
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL}/purchase-requisitions/${selectedRequisition._id}/attachments/${attachment._id}/download`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to download file');
+      }
+
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = attachment.name || 'attachment';
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      message.success(`Downloaded: ${filename}`);
+    } catch (error) {
+      console.error('Download error:', error);
+      message.error(error.message || 'Failed to download attachment');
+    } finally {
+      setDownloadingAttachmentId(null);
     }
   };
 
@@ -478,7 +541,7 @@ const HeadApprovalPage = () => {
         {selectedRequisition && (
           <div>
             {/* Requisition Summary */}
-            <Card size="small" title="Requisition Information" style={{ marginBottom: '16px' }}>
+            <Card size="small" title="📋 Requisition Information" style={{ marginBottom: '16px' }}>
               <Descriptions column={2} size="small">
                 <Descriptions.Item label="Requisition Number">
                   <Text code>{selectedRequisition.requisitionNumber}</Text>
@@ -512,25 +575,88 @@ const HeadApprovalPage = () => {
                 <Descriptions.Item label="Expected Delivery">
                   <CalendarOutlined /> {moment(selectedRequisition.expectedDeliveryDate).format('MMM DD, YYYY')}
                 </Descriptions.Item>
+                <Descriptions.Item label="Submitted Date">
+                  {moment(selectedRequisition.submittedDate).format('MMM DD, YYYY HH:mm')}
+                </Descriptions.Item>
+                {selectedRequisition.deliveryLocation && (
+                  <Descriptions.Item label="Delivery Location">
+                    {selectedRequisition.deliveryLocation}
+                  </Descriptions.Item>
+                )}
               </Descriptions>
             </Card>
 
-            {/* Buyer Assignment */}
+            {/* Finance Verification */}
+            {selectedRequisition.financeVerification && (
+              <Card size="small" title="💰 Finance Verification Details" style={{ marginBottom: '16px' }}>
+                <Descriptions column={2} size="small">
+                  <Descriptions.Item label="Budget Available">
+                    <Tag color={selectedRequisition.financeVerification.budgetAvailable ? 'green' : 'red'}>
+                      {selectedRequisition.financeVerification.budgetAvailable ? 'Yes - Approved ✓' : 'No - Insufficient Funds'}
+                    </Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Assigned Budget">
+                    <Text strong style={{ color: '#1890ff' }}>
+                      XAF {selectedRequisition.financeVerification.assignedBudget?.toLocaleString() || 'N/A'}
+                    </Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Budget Code">
+                    <Tag color="gold">{selectedRequisition.financeVerification.budgetCode || 'N/A'}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Verified By">
+                    {selectedRequisition.financeVerification.verifiedBy || 'Pending'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Verification Date" span={2}>
+                    {selectedRequisition.financeVerification.verificationDate 
+                      ? moment(selectedRequisition.financeVerification.verificationDate).format('MMM DD, YYYY HH:mm')
+                      : 'Pending'}
+                  </Descriptions.Item>
+                  {selectedRequisition.financeVerification.comments && (
+                    <Descriptions.Item label="Finance Comments" span={2}>
+                      <Text>{selectedRequisition.financeVerification.comments}</Text>
+                    </Descriptions.Item>
+                  )}
+                </Descriptions>
+              </Card>
+            )}
+
+            {/* Attachments */}
+            {selectedRequisition.attachments && selectedRequisition.attachments.length > 0 && (
+              <AttachmentDisplay
+                attachments={selectedRequisition.attachments}
+                requisitionId={selectedRequisition._id || selectedRequisition.id}
+                onDownload={handleDownloadAttachment}
+                loading={downloadingAttachmentId !== null}
+                title="📎 Submitted Attachments"
+              />
+            )}
+
+            {/* Buyer Assignment & Supply Chain Decisions */}
             {selectedRequisition.assignedBuyer && (
-              <Card size="small" title="Buyer Assignment" style={{ marginBottom: '16px' }}>
+              <Card size="small" title="👤 Buyer Assignment & Supply Chain Decisions" style={{ marginBottom: '16px' }}>
                 <Descriptions column={2} size="small">
                   <Descriptions.Item label="Assigned Buyer">
                     <TeamOutlined /> {selectedRequisition.assignedBuyer.name}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Email">
+                  <Descriptions.Item label="Buyer Email">
                     {selectedRequisition.assignedBuyer.email}
                   </Descriptions.Item>
                   <Descriptions.Item label="Assignment Date">
                     {moment(selectedRequisition.buyerAssignmentDate).format('MMM DD, YYYY HH:mm')}
                   </Descriptions.Item>
                   <Descriptions.Item label="Sourcing Type">
-                    <Tag>{selectedRequisition.sourcingType?.replace(/_/g, ' ').toUpperCase()}</Tag>
+                    <Tag color="blue">{selectedRequisition.sourcingType?.replace(/_/g, ' ').toUpperCase()}</Tag>
                   </Descriptions.Item>
+                  {selectedRequisition.purchaseType && (
+                    <Descriptions.Item label="Purchase Type">
+                      <Tag color="cyan">{selectedRequisition.purchaseType.replace(/_/g, ' ').toUpperCase()}</Tag>
+                    </Descriptions.Item>
+                  )}
+                  {selectedRequisition.supplyChainComments && (
+                    <Descriptions.Item label="Supply Chain Comments" span={2}>
+                      <Text>{selectedRequisition.supplyChainComments}</Text>
+                    </Descriptions.Item>
+                  )}
                 </Descriptions>
               </Card>
             )}
@@ -556,8 +682,13 @@ const HeadApprovalPage = () => {
               />
             )}
 
+            {/* Business Justification */}
+            <Card size="small" title="📝 Business Justification" style={{ marginBottom: '16px' }}>
+              <Paragraph>{selectedRequisition.justification}</Paragraph>
+            </Card>
+
             {/* Items List */}
-            <Card size="small" title="Items Requested" style={{ marginBottom: '16px' }}>
+            <Card size="small" title={`📦 Items Requested (${selectedRequisition.items?.length || 0})`} style={{ marginBottom: '16px' }}>
               <Table
                 columns={[
                   {
@@ -575,7 +706,7 @@ const HeadApprovalPage = () => {
                   {
                     title: 'Unit',
                     dataIndex: 'measuringUnit',
-                    key: 'measuringUnit',
+                    key: 'unit',
                     width: 80,
                     align: 'center'
                   },
@@ -594,47 +725,59 @@ const HeadApprovalPage = () => {
               />
             </Card>
 
-            {/* Justification */}
-            <Card size="small" title="Justification" style={{ marginBottom: '16px' }}>
-              <Paragraph>{selectedRequisition.justification}</Paragraph>
-            </Card>
-
-            {/* Approval History */}
-            <Card size="small" title="Approval History">
-              <Timeline>
-                {selectedRequisition.approvalChain?.map((step, index) => (
-                  <Timeline.Item
-                    key={index}
-                    color={
-                      step.status === 'approved' ? 'green' :
-                      step.status === 'rejected' ? 'red' : 'gray'
-                    }
-                  >
-                    <div>
-                      <Text strong>Level {step.level}: {step.approver.name}</Text>
-                      <br />
-                      <Text type="secondary">{step.approver.role}</Text>
-                      <br />
-                      <Tag color={
-                        step.status === 'approved' ? 'green' :
-                        step.status === 'rejected' ? 'red' : 'orange'
-                      }>
-                        {step.status.toUpperCase()}
-                      </Tag>
-                      {step.actionDate && (
-                        <Text type="secondary" style={{ marginLeft: '8px' }}>
-                          {moment(step.actionDate).format('MMM DD, YYYY')} {step.actionTime}
-                        </Text>
-                      )}
-                      {step.comments && (
-                        <div style={{ marginTop: '4px' }}>
-                          <Text style={{ fontSize: '12px' }}>{step.comments}</Text>
+            {/* Approval Progress */}
+            <Card size="small" title="✓ Approval Progress" style={{ marginBottom: '16px' }}>
+              {selectedRequisition.approvalChain && selectedRequisition.approvalChain.length > 0 ? (
+                <div>
+                  <Timeline>
+                    {selectedRequisition.approvalChain.map((step, index) => (
+                      <Timeline.Item
+                        key={index}
+                        color={
+                          step.status === 'approved' ? 'green' :
+                          step.status === 'rejected' ? 'red' : 'gray'
+                        }
+                        dot={
+                          step.status === 'approved' ? <CheckCircleOutlined /> :
+                          step.status === 'rejected' ? <CloseCircleOutlined /> :
+                          <ClockCircleOutlined />
+                        }
+                      >
+                        <div>
+                          <Text strong>Level {step.level}: {step.approver?.name || 'Unknown'}</Text>
+                          <br />
+                          <Text type="secondary">{step.approver?.role || 'N/A'}</Text>
+                          <br />
+                          <Tag color={
+                            step.status === 'approved' ? 'green' :
+                            step.status === 'rejected' ? 'red' : 'orange'
+                          }>
+                            {step.status.toUpperCase()}
+                          </Tag>
+                          {step.actionDate && (
+                            <>
+                              <br />
+                              <Text type="secondary" style={{ fontSize: '12px' }}>
+                                {moment(step.actionDate).format('MMM DD, YYYY')} at {step.actionTime || 'N/A'}
+                              </Text>
+                            </>
+                          )}
+                          {step.comments && (
+                            <>
+                              <br />
+                              <Text italic style={{ fontSize: '12px', color: '#666' }}>
+                                "{step.comments}"
+                              </Text>
+                            </>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </Timeline.Item>
-                ))}
-              </Timeline>
+                      </Timeline.Item>
+                    ))}
+                  </Timeline>
+                </div>
+              ) : (
+                <Text type="secondary">No approval chain available</Text>
+              )}
             </Card>
           </div>
         )}

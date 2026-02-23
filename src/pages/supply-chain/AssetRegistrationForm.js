@@ -59,10 +59,10 @@ const RegisterFixedAsset = () => {
         usersRes,
         tagsRes
       ] = await Promise.all([
-        api.get('/api/inventory/available-stock?limit=1000').catch(() => ({ data: { data: { items: [] } } })),
-        api.get('/api/suppliers/admin/all').catch(() => ({ data: { data: [] } })),
-        api.get('/api/auth/users').catch(() => ({ data: { data: [] } })),
-        api.get('/api/fixed-assets/available-tags').catch(() => ({ data: { data: { nextAvailable: null } } }))
+        api.get('/inventory/available-stock?limit=1000').catch(() => ({ data: { data: { items: [] } } })),
+        api.get('/suppliers/admin/all').catch(() => ({ data: { data: [] } })),
+        api.get('/auth/users').catch(() => ({ data: { data: [] } })),
+        api.get('/fixed-assets/available-tags').catch(() => ({ data: { data: { nextAvailable: null } } }))
       ]);
       
       // Process inventory items (only show items not already registered as fixed assets)
@@ -171,7 +171,7 @@ const RegisterFixedAsset = () => {
 
       console.log('Sending asset data:', assetData);
 
-      const response = await api.post('/api/fixed-assets/register', assetData);
+      const response = await api.post('/fixed-assets/register', assetData);
 
       if (response.data.success) {
         message.success('Fixed asset registered successfully! Item removed from inventory.');

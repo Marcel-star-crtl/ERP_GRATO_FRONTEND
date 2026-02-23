@@ -71,6 +71,9 @@ const BudgetManagementDashboard = () => {
   const [budgetOwners, setBudgetOwners] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingBudgetOwners, setLoadingBudgetOwners] = useState(false);
+  const [usageTrackingModalVisible, setUsageTrackingModalVisible] = useState(false);
+  const [usageTrackingData, setUsageTrackingData] = useState(null);
+  const [loadingUsageTracking, setLoadingUsageTracking] = useState(false);
 
   const [revisionForm] = Form.useForm();
   const [transferForm] = Form.useForm();
@@ -124,7 +127,7 @@ const BudgetManagementDashboard = () => {
     try {
         setLoadingBudgetOwners(true);
         const response = await api.get('/auth/active-users');
-        if (response.data.success && response.data.data) {
+        if (response.data.success && response.data.data && Array.isArray(response.data.data)) {
         setBudgetOwners(response.data.data);
         } else {
         setBudgetOwners([]);
@@ -247,6 +250,23 @@ const BudgetManagementDashboard = () => {
     }
   };
 
+  const handleViewUsageTracking = async (budgetCode) => {
+    try {
+      setLoadingUsageTracking(true);
+      setSelectedCode(budgetCode);
+      const response = await api.get(`/budget-codes/${budgetCode._id}/usage-tracking`);
+      if (response.data.success) {
+        setUsageTrackingData(response.data.data);
+        setUsageTrackingModalVisible(true);
+      }
+    } catch (error) {
+      message.error('Failed to load usage tracking data');
+      console.error('Usage tracking error:', error);
+    } finally {
+      setLoadingUsageTracking(false);
+    }
+  };
+
   const getAlertColor = (type) => {
     const colors = {
       critical: 'error',
@@ -358,9 +378,9 @@ const BudgetManagementDashboard = () => {
       title: 'Actions',
       key: 'actions',
       fixed: 'right',
-      width: 280,
+      width: 360,
       render: (_, record) => (
-        <Space size="small">
+        <Space size="small" wrap>
           <Tooltip title="View Details">
             <Button
               size="small"
@@ -368,6 +388,16 @@ const BudgetManagementDashboard = () => {
               onClick={() => navigate(`/finance/budget-codes/${record._id}`)}
             >
               View
+            </Button>
+          </Tooltip>
+          <Tooltip title="Usage Tracking - See where this budget is used">
+            <Button
+              size="small"
+              type="primary"
+              icon={<BarChartOutlined />}
+              onClick={() => handleViewUsageTracking(record)}
+            >
+              Track
             </Button>
           </Tooltip>
           <Tooltip title="Request Budget Revision">
@@ -1258,6 +1288,7 @@ const BudgetManagementDashboard = () => {
                       <Option value="HR">Human Resources</Option>
                       <Option value="Marketing">Marketing</Option>
                       <Option value="Refurbishment">Refurbishment</Option>
+                      <Option value="CEO Office">CEO Office</Option>
                       <Option value="Supply Chain">Supply Chain</Option>
                       <Option value="Business">Business</Option>
                       <Option value="Facilities">Facilities</Option>
@@ -1392,6 +1423,306 @@ const BudgetManagementDashboard = () => {
             </Space>
             </Form.Item>
         </Form>
+        </Modal>
+
+        {/* Usage Tracking Modal */}
+        <Modal
+          title={
+            <Space>
+              <BarChartOutlined />
+              <span>
+                Budget Code Usage Tracking
+                {selectedCode && ` - ${selectedCode.code}`}
+              </span>
+            </Space>
+          }
+          visible={usageTrackingModalVisible}
+          onCancel={() => {
+            setUsageTrackingModalVisible(false);
+            setUsageTrackingData(null);
+            setSelectedCode(null);
+          }}
+          width={1200}
+          footer={[
+            <Button
+              key="close"
+              onClick={() => {
+                setUsageTrackingModalVisible(false);
+                setUsageTrackingData(null);
+                setSelectedCode(null);
+              }}
+            >
+              Close
+            </Button>
+          ]}
+        >
+          {loadingUsageTracking ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <Spin size="large" />
+              <div style={{ marginTop: '16px' }}>Loading usage tracking data...</div>
+            </div>
+          ) : usageTrackingData ? (
+            <>
+              {/* Budget Summary */}
+              <Card size="small" style={{ marginBottom: '16px' }}>
+                <Row gutter={16}>
+                  <Col span={6}>
+                    <Statistic
+                      title="Total Budget"
+                      value={usageTrackingData.budgetCode.budget}
+                      prefix="XAF"
+                      valueStyle={{ color: '#1890ff' }}
+                    />
+                  </Col>
+                  <Col span={6}>
+                    <Statistic
+                      title="Total Used"
+                      value={usageTrackingData.budgetCode.used}
+                      prefix="XAF"
+                      valueStyle={{ color: '#faad14' }}
+                    />
+                  </Col>
+                  <Col span={6}>
+                    <Statistic
+                      title="Remaining"
+                      value={usageTrackingData.budgetCode.remaining}
+                      prefix="XAF"
+                      valueStyle={{ color: '#52c41a' }}
+                    />
+                  </Col>
+                  <Col span={6}>
+                    <Statistic
+                      title="Utilization"
+                      value={usageTrackingData.budgetCode.utilizationPercentage}
+                      suffix="%"
+                      valueStyle={{ 
+                        color: usageTrackingData.budgetCode.utilizationPercentage >= 90 
+                          ? '#ff4d4f' 
+                          : usageTrackingData.budgetCode.utilizationPercentage >= 75 
+                          ? '#faad14' 
+                          : '#52c41a' 
+                      }}
+                    />
+                  </Col>
+                </Row>
+                <Divider style={{ margin: '12px 0' }} />
+                <Progress
+                  percent={usageTrackingData.budgetCode.utilizationPercentage}
+                  status={getUtilizationStatus(usageTrackingData.budgetCode.utilizationPercentage)}
+                  strokeWidth={12}
+                />
+              </Card>
+
+              {/* Usage by Source */}
+              <Card 
+                title={<><BarChartOutlined /> Usage by Source</>}
+                size="small" 
+                style={{ marginBottom: '16px' }}
+              >
+                <Row gutter={16}>
+                  <Col span={8}>
+                    <Card type="inner" style={{ background: '#f0f2f5' }}>
+                      <Statistic
+                        title="Purchase Requisitions"
+                        value={usageTrackingData.summary.bySource.purchaseRequisitions.total}
+                        prefix="XAF"
+                        suffix={
+                          <Tag color="blue" style={{ marginLeft: '8px' }}>
+                            {usageTrackingData.summary.bySource.purchaseRequisitions.count} items
+                          </Tag>
+                        }
+                      />
+                    </Card>
+                  </Col>
+                  <Col span={8}>
+                    <Card type="inner" style={{ background: '#f0f2f5' }}>
+                      <Statistic
+                        title="Cash Requests"
+                        value={usageTrackingData.summary.bySource.cashRequests.total}
+                        prefix="XAF"
+                        suffix={
+                          <Tag color="green" style={{ marginLeft: '8px' }}>
+                            {usageTrackingData.summary.bySource.cashRequests.count} items
+                          </Tag>
+                        }
+                      />
+                    </Card>
+                  </Col>
+                  <Col span={8}>
+                    <Card type="inner" style={{ background: '#f0f2f5' }}>
+                      <Statistic
+                        title="Salary Payments"
+                        value={usageTrackingData.summary.bySource.salaryPayments.total}
+                        prefix="XAF"
+                        suffix={
+                          <Tag color="purple" style={{ marginLeft: '8px' }}>
+                            {usageTrackingData.summary.bySource.salaryPayments.count} items
+                          </Tag>
+                        }
+                      />
+                    </Card>
+                  </Col>
+                </Row>
+              </Card>
+
+              {/* Tabs for different views */}
+              <Tabs defaultActiveKey="recent">
+                <TabPane tab="Recent Transactions" key="recent">
+                  <List
+                    size="small"
+                    dataSource={[
+                      ...usageTrackingData.recentTransactions.purchaseRequisitions,
+                      ...usageTrackingData.recentTransactions.cashRequests,
+                      ...usageTrackingData.recentTransactions.salaryPayments
+                    ].sort((a, b) => new Date(b.date) - new Date(a.date))}
+                    renderItem={(item) => (
+                      <List.Item
+                        actions={[
+                          <Tag color={
+                            item.type === 'Purchase Requisition' ? 'blue' :
+                            item.type === 'Cash Request' ? 'green' : 'purple'
+                          }>
+                            {item.type}
+                          </Tag>,
+                          <Text strong>XAF {item.amount?.toLocaleString()}</Text>
+                        ]}
+                      >
+                        <List.Item.Meta
+                          title={
+                            <Space>
+                              {item.requisitionNumber || item.requestType || item.department}
+                              {item.title && <Text type="secondary">- {item.title}</Text>}
+                            </Space>
+                          }
+                          description={
+                            <Space split={<Divider type="vertical" />}>
+                              {item.employee && (
+                                <Text type="secondary">
+                                  {item.employee.fullName} ({item.employee.department})
+                                </Text>
+                              )}
+                              {item.submittedBy && (
+                                <Text type="secondary">
+                                  By: {item.submittedBy.fullName}
+                                </Text>
+                              )}
+                              <Text type="secondary">
+                                {new Date(item.date).toLocaleDateString()}
+                              </Text>
+                              {item.status && (
+                                <Tag>{item.status}</Tag>
+                              )}
+                            </Space>
+                          }
+                        />
+                      </List.Item>
+                    )}
+                    pagination={{ pageSize: 10 }}
+                  />
+                </TabPane>
+
+                <TabPane tab="Monthly Trends" key="trends">
+                  <Table
+                    size="small"
+                    dataSource={usageTrackingData.trends.monthlyUsage}
+                    columns={[
+                      { 
+                        title: 'Month', 
+                        dataIndex: 'month', 
+                        key: 'month',
+                        width: 150
+                      },
+                      { 
+                        title: 'Purchase Requisitions', 
+                        dataIndex: 'purchaseRequisitions', 
+                        key: 'pr',
+                        render: (val) => `XAF ${val.toLocaleString()}`
+                      },
+                      { 
+                        title: 'Cash Requests', 
+                        dataIndex: 'cashRequests', 
+                        key: 'cr',
+                        render: (val) => `XAF ${val.toLocaleString()}`
+                      },
+                      { 
+                        title: 'Salary Payments', 
+                        dataIndex: 'salaryPayments', 
+                        key: 'sp',
+                        render: (val) => `XAF ${val.toLocaleString()}`
+                      },
+                      { 
+                        title: 'Total', 
+                        dataIndex: 'total', 
+                        key: 'total',
+                        render: (val) => <Text strong>XAF {val.toLocaleString()}</Text>
+                      }
+                    ]}
+                    pagination={false}
+                  />
+                </TabPane>
+
+                <TabPane tab="Department Breakdown" key="departments">
+                  <Table
+                    size="small"
+                    dataSource={usageTrackingData.trends.departmentBreakdown}
+                    columns={[
+                      { 
+                        title: 'Department', 
+                        dataIndex: 'department', 
+                        key: 'department',
+                        width: 150,
+                        render: (dept) => <Tag color="blue">{dept}</Tag>
+                      },
+                      { 
+                        title: 'Purchase Requisitions', 
+                        dataIndex: 'purchaseRequisitions', 
+                        key: 'pr',
+                        render: (val) => `XAF ${val.toLocaleString()}`
+                      },
+                      { 
+                        title: 'Cash Requests', 
+                        dataIndex: 'cashRequests', 
+                        key: 'cr',
+                        render: (val) => `XAF ${val.toLocaleString()}`
+                      },
+                      { 
+                        title: 'Salary Payments', 
+                        dataIndex: 'salaryPayments', 
+                        key: 'sp',
+                        render: (val) => `XAF ${val.toLocaleString()}`
+                      },
+                      { 
+                        title: 'Total', 
+                        dataIndex: 'total', 
+                        key: 'total',
+                        render: (val, record) => {
+                          const percentage = usageTrackingData.budgetCode.budget > 0 
+                            ? ((val / usageTrackingData.budgetCode.budget) * 100).toFixed(1)
+                            : 0;
+                          return (
+                            <Space direction="vertical" size={0}>
+                              <Text strong>XAF {val.toLocaleString()}</Text>
+                              <Text type="secondary" style={{ fontSize: '12px' }}>
+                                {percentage}% of budget
+                              </Text>
+                            </Space>
+                          );
+                        }
+                      }
+                    ]}
+                    pagination={false}
+                  />
+                </TabPane>
+              </Tabs>
+            </>
+          ) : (
+            <Alert
+              message="No Usage Data"
+              description="No usage tracking data available for this budget code."
+              type="info"
+              showIcon
+            />
+          )}
         </Modal>
     </div>
   );

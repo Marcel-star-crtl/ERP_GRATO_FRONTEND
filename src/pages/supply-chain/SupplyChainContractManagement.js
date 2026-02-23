@@ -61,6 +61,7 @@ import {
 } from '@ant-design/icons';
 import moment from 'moment';
 import contractApiService from '../../services/contractAPI';
+import UnifiedSupplierAPI from '../../services/unifiedSupplierAPI';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -111,13 +112,33 @@ const SupplyChainContractManagement = () => {
     }
   };
 
+  // const fetchSuppliers = async () => {
+  //   try {
+  //     // This would be a separate supplier service call
+  //     // For now using mock data structure
+  //     setSuppliers([]);
+  //   } catch (error) {
+  //     console.error('Error fetching suppliers:', error);
+  //   }
+  // };
+
   const fetchSuppliers = async () => {
     try {
-      // This would be a separate supplier service call
-      // For now using mock data structure
-      setSuppliers([]);
+      setLoading(true);
+      // Fetch only approved suppliers
+      const response = await UnifiedSupplierAPI.getAllSuppliers({
+        status: 'approved'
+      });
+      
+      if (response.success) {
+        console.log('Fetched suppliers:', response.data);
+        setSuppliers(response.data);
+      }
     } catch (error) {
       console.error('Error fetching suppliers:', error);
+      message.error('Failed to fetch suppliers');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -242,22 +263,63 @@ const SupplyChainContractManagement = () => {
     setMilestoneModalVisible(true);
   };
 
+  // const handleSubmitContract = async (values) => {
+  //   try {
+  //     setLoading(true);
+      
+  //     // Validate the form data
+  //     const validation = contractApiService.validateContractData(values);
+  //     if (!validation.isValid) {
+  //       Object.keys(validation.errors).forEach(field => {
+  //         form.setFields([{
+  //           name: field,
+  //           errors: [validation.errors[field]]
+  //         }]);
+  //       });
+  //       return;
+  //     }
+
+  //     const contractData = {
+  //       ...values,
+  //       startDate: values.dateRange[0].format('YYYY-MM-DD'),
+  //       endDate: values.dateRange[1].format('YYYY-MM-DD')
+  //     };
+
+  //     delete contractData.dateRange;
+
+  //     let response;
+  //     if (selectedContract) {
+  //       response = await contractApiService.updateContract(
+  //         selectedContract._id,
+  //         contractData,
+  //         uploadedDocuments
+  //       );
+  //       message.success('Contract updated successfully!');
+  //     } else {
+  //       response = await contractApiService.createContract(contractData, uploadedDocuments);
+  //       message.success('Contract created successfully!');
+  //     }
+
+  //     setContractModalVisible(false);
+  //     form.resetFields();
+  //     setUploadedDocuments([]);
+  //     await fetchContracts();
+  //     await fetchStatistics();
+  //   } catch (error) {
+  //     message.error(error.message || 'Failed to save contract');
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+
+
   const handleSubmitContract = async (values) => {
     try {
       setLoading(true);
+      console.log('Form submitted with values:', values);
       
-      // Validate the form data
-      const validation = contractApiService.validateContractData(values);
-      if (!validation.isValid) {
-        Object.keys(validation.errors).forEach(field => {
-          form.setFields([{
-            name: field,
-            errors: [validation.errors[field]]
-          }]);
-        });
-        return;
-      }
-
+      // Transform dateRange to startDate and endDate BEFORE validation
       const contractData = {
         ...values,
         startDate: values.dateRange[0].format('YYYY-MM-DD'),
@@ -266,8 +328,30 @@ const SupplyChainContractManagement = () => {
 
       delete contractData.dateRange;
 
+      console.log('Transformed contract data:', contractData);
+      
+      // Validate the transformed data
+      const validation = contractApiService.validateContractData(contractData);
+      console.log('Validation result:', validation);
+      
+      if (!validation.isValid) {
+        console.error('Validation errors:', validation.errors);
+        Object.keys(validation.errors).forEach(field => {
+          form.setFields([{
+            name: field,
+            errors: [validation.errors[field]]
+          }]);
+        });
+        message.error('Please fix validation errors before submitting');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Sending contract data:', contractData);
+
       let response;
       if (selectedContract) {
+        console.log('Updating contract:', selectedContract._id);
         response = await contractApiService.updateContract(
           selectedContract._id,
           contractData,
@@ -275,21 +359,27 @@ const SupplyChainContractManagement = () => {
         );
         message.success('Contract updated successfully!');
       } else {
+        console.log('Creating new contract');
         response = await contractApiService.createContract(contractData, uploadedDocuments);
         message.success('Contract created successfully!');
       }
 
+      console.log('Response:', response);
+      
       setContractModalVisible(false);
       form.resetFields();
       setUploadedDocuments([]);
+      setSelectedSupplierId(null);
       await fetchContracts();
       await fetchStatistics();
     } catch (error) {
+      console.error('Error submitting contract:', error);
       message.error(error.message || 'Failed to save contract');
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleSubmitRenewal = async (values) => {
     try {
@@ -875,18 +965,83 @@ const SupplyChainContractManagement = () => {
               <Select 
                 placeholder="Select supplier"
                 showSearch
-                onChange={(value) => setSelectedSupplierId(value)} // FIX: Add onChange handler
-                filterOption={(input, option) =>
-                  option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                loading={loading}
+                onChange={(value) => setSelectedSupplierId(value)}
+                filterOption={(input, option) => {
+                  const supplier = suppliers.find(s => s._id === option.value);
+                  if (!supplier) return false;
+                  
+                  const companyName = supplier.supplierDetails?.companyName || '';
+                  const supplierType = supplier.supplierDetails?.supplierType || '';
+                  const searchTerm = input.toLowerCase();
+                  
+                  return companyName.toLowerCase().includes(searchTerm) || 
+                        supplierType.toLowerCase().includes(searchTerm);
+                }}
+                notFoundContent={
+                  loading ? 
+                    <Spin size="small" /> : 
+                    suppliers.length === 0 ? 
+                      <div style={{ padding: '10px', textAlign: 'center' }}>
+                        <Text type="secondary">No approved suppliers found</Text>
+                        <br />
+                        <Button 
+                          type="link" 
+                          size="small"
+                          onClick={() => navigate('/supply-chain/suppliers')}
+                        >
+                          Manage Suppliers
+                        </Button>
+                      </div> : 
+                      'No matching suppliers'
                 }
               >
                 {suppliers.map(supplier => (
                   <Option key={supplier._id} value={supplier._id}>
-                    {supplier.supplierDetails?.companyName} - {supplier.supplierDetails?.supplierType}
+                    <div>
+                      <Text strong>{supplier.supplierDetails?.companyName}</Text>
+                      <br />
+                      <Text type="secondary" style={{ fontSize: '12px' }}>
+                        {supplier.supplierDetails?.supplierType} | {supplier.email}
+                      </Text>
+                    </div>
                   </Option>
                 ))}
               </Select>
             </Form.Item>
+
+            {/* Show supplier info when selected */}
+            {selectedSupplierId && (
+              <Alert
+                message="Selected Supplier"
+                description={
+                  <Space direction="vertical" size="small">
+                    <Text>
+                      <strong>Company:</strong> {suppliers.find(s => s._id === selectedSupplierId)?.supplierDetails?.companyName}
+                    </Text>
+                    <Text>
+                      <strong>Contact:</strong> {suppliers.find(s => s._id === selectedSupplierId)?.supplierDetails?.contactName}
+                    </Text>
+                    <Text>
+                      <strong>Email:</strong> {suppliers.find(s => s._id === selectedSupplierId)?.email}
+                    </Text>
+                    <Button 
+                      type="link"
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={() => {
+                        window.open(`/supply-chain/suppliers/${selectedSupplierId}/profile`, '_blank');
+                      }}
+                    >
+                      View Full Profile
+                    </Button>
+                  </Space>
+                }
+                type="info"
+                showIcon
+                style={{ marginTop: '10px', marginBottom: '10px' }}
+              />
+            )}
 
             {/* FIX: Add button to view supplier profile */}
             <Button 

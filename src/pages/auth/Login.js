@@ -18,6 +18,7 @@ const LoginForm = () => {
   // Enhanced role-based redirect logic
   const getRedirectPath = (userRole) => {
     const redirectPaths = {
+      'ceo': '/ceo/dashboard',
       'employee': '/dashboard', 
       'supervisor': '/dashboard', 
       'finance': '/dashboard', 
@@ -227,22 +228,6 @@ const LoginForm = () => {
                 </Button>
               </Form.Item>
 
-              {/* <div style={{ textAlign: 'center', marginTop: 20 }}>
-                <Link 
-                  onClick={() => navigate('/forgot-password')}
-                  style={{ color: '#1890ff' }}
-                >
-                  Forgot password?
-                </Link>
-                <span style={{ margin: '0 8px', color: '#d0d0d0' }}>|</span>
-                <Link 
-                  onClick={() => navigate('/register')}
-                  style={{ color: '#1890ff' }}
-                >
-                  Register new account
-                </Link>
-              </div> */}
-
               {/* Role information */}
               <div style={{ 
                 marginTop: 24, 
@@ -252,12 +237,7 @@ const LoginForm = () => {
                 textAlign: 'center',
                 border: '1px solid #fce4e6'
               }}>
-                {/* <Typography.Text style={{ 
-                  fontSize: '12px',
-                  color: '#7f8c8d'
-                }}>
-                  All roles access the same unified dashboard with role-appropriate features
-                </Typography.Text> */}
+                
               </div>
             </Form>
           </Card>

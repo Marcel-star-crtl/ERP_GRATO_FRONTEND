@@ -82,6 +82,20 @@ export const purchaseRequisitionAPI = {
     }
   },
 
+  // ✅ FIXED: Update the method signature and implementation
+  acknowledgeDisbursement: async (requisitionId, disbursementId, data) => {
+    try {
+      const response = await apiClient.post(
+        `/purchase-requisitions/${requisitionId}/disbursements/${disbursementId}/acknowledge`,
+        data
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Acknowledge disbursement error:', error);
+      throw error;
+    }
+  },
+
   // : Get requisition with attachment handling
   getRequisition: async (requisitionId) => {
     try {
@@ -367,6 +381,42 @@ export const purchaseRequisitionAPI = {
         success: false,
         message: error.response?.data?.message || 'Failed to fetch utilization data'
       };
+    }
+  },
+
+  // ✅ NEW: Get active budget codes for selection
+  getActiveBudgetCodes: async (department = null) => {
+    try {
+      const params = department ? { department } : {};
+      const response = await axios.get(`${API_BASE_URL}/budget-codes/active`, {
+        params,
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching active budget codes:', error);
+      throw error;
+    }
+  },
+
+  // ✅ NEW: Check budget code availability
+  checkBudgetAvailability: async (budgetCodeId, amount) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/budget-codes/${budgetCodeId}/check-availability`,
+        {
+          params: { amount },
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error checking budget availability:', error);
+      throw error;
     }
   },
 
@@ -754,6 +804,84 @@ export const purchaseRequisitionAPI = {
     } catch (error) {
       console.error('Preview attachment error:', error);
       // message.error('Failed to preview file');
+      throw error;
+    }
+  },
+
+  /**
+   * Resubmit rejected requisition
+   */
+  resubmitRequisition: async (requisitionId, data) => {
+    try {
+      const response = await apiClient.post(
+        `/purchase-requisitions/${requisitionId}/resubmit`,
+        data
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Resubmit requisition error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get rejection history for a requisition
+   */
+  getRejectionHistory: async (requisitionId) => {
+    try {
+      const response = await apiClient.get(
+        `/purchase-requisitions/${requisitionId}/rejection-history`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Get rejection history error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Request clarification from a previous approver
+   */
+  requestClarification: async (requisitionId, data) => {
+    try {
+      const response = await apiClient.post(
+        `/purchase-requisitions/${requisitionId}/request-clarification`,
+        data
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Request clarification error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Provide clarification response
+   */
+  provideClarification: async (requisitionId, data) => {
+    try {
+      const response = await apiClient.post(
+        `/purchase-requisitions/${requisitionId}/provide-clarification`,
+        data
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Provide clarification error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get clarification history for a requisition
+   */
+  getClarificationHistory: async (requisitionId) => {
+    try {
+      const response = await apiClient.get(
+        `/purchase-requisitions/${requisitionId}/clarification-history`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Get clarification history error:', error);
       throw error;
     }
   }

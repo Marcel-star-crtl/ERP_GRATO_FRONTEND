@@ -613,9 +613,6 @@ const FinanceApprovalList = () => {
               <Descriptions.Item label="Purpose" span={2}>
                 {selectedRequest.purpose}
               </Descriptions.Item>
-              <Descriptions.Item label="Business Justification" span={2}>
-                {selectedRequest.businessJustification}
-              </Descriptions.Item>
             </Descriptions>
 
             <Divider />

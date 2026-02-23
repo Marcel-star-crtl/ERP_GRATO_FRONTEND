@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
   Card,
@@ -15,7 +15,6 @@ import {
   Alert,
   Descriptions,
   Timeline,
-  Progress,
   message,
   Radio,
   Row,
@@ -23,9 +22,6 @@ import {
   Statistic,
   Spin,
   notification,
-  Upload,
-  Steps,
-  Divider,
   List,
   Avatar
 } from 'antd';
@@ -34,20 +30,13 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ClockCircleOutlined,
-  UserOutlined,
   AuditOutlined,
-  FileOutlined,
+  DownloadOutlined,
   EyeOutlined,
   HistoryOutlined,
   ReloadOutlined,
   ShopOutlined,
-  DollarOutlined,
-  DownloadOutlined,
-  UploadOutlined,
-  InboxOutlined,
-  SendOutlined,
-  ShoppingCartOutlined,
-  WarningOutlined
+  ShoppingCartOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
 import { buyerRequisitionAPI } from '../../services/buyerRequisitionAPI';
@@ -55,11 +44,8 @@ import { buyerRequisitionAPI } from '../../services/buyerRequisitionAPI';
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 const { TextArea } = Input;
-const { Dragger } = Upload;
-const { Step } = Steps;
 
 const SupervisorPOApprovals = () => {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useSelector((state) => state.auth);
   
@@ -79,12 +65,6 @@ const SupervisorPOApprovals = () => {
     total: 0
   });
   const [form] = Form.useForm();
-
-  // Signing states
-  const [signedDocumentFile, setSignedDocumentFile] = useState(null);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [downloadingPO, setDownloadingPO] = useState(false);
-  const [documentDownloaded, setDocumentDownloaded] = useState(false);
 
   // Helper function to check if user can approve PO
   const canUserApprovePO = useCallback((po) => {
@@ -139,6 +119,49 @@ const SupervisorPOApprovals = () => {
     }
   }, [fetchPendingApprovals, user?.email]);
 
+  const handlePreviewPO = async () => {
+    if (!selectedPO) {
+      message.error('No purchase order selected');
+      return;
+    }
+
+    try {
+      const response = await buyerRequisitionAPI.previewPurchaseOrderPDF(selectedPO.id);
+      if (response.success) {
+        const url = URL.createObjectURL(response.data);
+        window.open(url, '_blank', 'noopener,noreferrer');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      }
+    } catch (error) {
+      console.error('Error previewing PO:', error);
+      message.error(error.message || 'Failed to preview purchase order');
+    }
+  };
+
+  const handleDownloadPO = async () => {
+    if (!selectedPO) {
+      message.error('No purchase order selected');
+      return;
+    }
+
+    try {
+      const response = await buyerRequisitionAPI.downloadPurchaseOrderPDF(selectedPO.id);
+      if (response.success) {
+        const url = URL.createObjectURL(response.data);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = response.filename || `PO_${selectedPO.poNumber}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      }
+    } catch (error) {
+      console.error('Error downloading PO:', error);
+      message.error(error.message || 'Failed to download purchase order');
+    }
+  };
+
   // Auto-approval from email links
   useEffect(() => {
     const handleAutoAction = async () => {
@@ -163,90 +186,16 @@ const SupervisorPOApprovals = () => {
     }
   }, [autoApprovalId, autoRejectId, form]);
 
-  const handleDownloadPO = async () => {
-    if (!selectedPO) {
-      message.error('No purchase order selected');
-      return;
-    }
-
-    try {
-      setDownloadingPO(true);
-      const response = await buyerRequisitionAPI.downloadPOForSigning(selectedPO.id);
-      
-      if (response.success) {
-        const { url, fileName } = response.data;
-        
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName || `PO_${selectedPO.poNumber}.pdf`;
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        message.success('Purchase order downloaded successfully. Please sign and upload.');
-        setDocumentDownloaded(true);
-        setCurrentStep(1);
-      }
-    } catch (error) {
-      console.error('Error downloading PO:', error);
-      message.error(error.response?.data?.message || 'Failed to download purchase order');
-    } finally {
-      setDownloadingPO(false);
-    }
-  };
-
-  const handleFileUpload = (info) => {
-    const { file } = info;
-    
-    const isValidType = file.type === 'application/pdf' || 
-                        file.type === 'image/jpeg' || 
-                        file.type === 'image/png' ||
-                        file.type === 'image/jpg';
-    
-    if (!isValidType) {
-      message.error('You can only upload PDF, JPG, or PNG files!');
-      return;
-    }
-
-    const isValidSize = file.size / 1024 / 1024 < 10;
-    if (!isValidSize) {
-      message.error('File must be smaller than 10MB!');
-      return;
-    }
-
-    setSignedDocumentFile(file);
-    message.success(`${file.name} selected successfully`);
-    setCurrentStep(2);
-  };
-
   const handleApprovalDecision = async (values) => {
     if (!selectedPO) return;
 
     try {
       setLoading(true);
       
-      if (values.decision === 'approved' && !signedDocumentFile) {
-        message.error('Please download, sign, and upload the document before approving.');
-        setLoading(false);
-        return;
-      }
-      
-      let response;
-      
-      if (values.decision === 'approved') {
-        const formData = new FormData();
-        formData.append('decision', values.decision);
-        formData.append('comments', values.comments || '');
-        formData.append('signedDocument', signedDocumentFile);
-        
-        response = await buyerRequisitionAPI.processPOApproval(selectedPO.id, formData);
-      } else {
-        response = await buyerRequisitionAPI.processPOApproval(selectedPO.id, {
-          decision: values.decision,
-          comments: values.comments
-        });
-      }
+      const response = await buyerRequisitionAPI.processPOApproval(selectedPO.id, {
+        decision: values.decision,
+        comments: values.comments
+      });
       
       if (response.success) {
         const actionText = values.decision === 'approved' ? 'approved' : 'rejected';
@@ -254,14 +203,13 @@ const SupervisorPOApprovals = () => {
         
         setApprovalModalVisible(false);
         form.resetFields();
-        resetSigningWorkflow();
         setSelectedPO(null);
         
         await fetchPendingApprovals();
         
         notification.success({
           message: 'Approval Decision Recorded',
-          description: `Purchase order ${selectedPO.poNumber} has been ${actionText}${values.decision === 'approved' ? ' with signed document' : ''}.`,
+          description: `Purchase order ${selectedPO.poNumber} has been ${actionText}.`,
           duration: 4
         });
       }
@@ -273,11 +221,6 @@ const SupervisorPOApprovals = () => {
     }
   };
 
-  const resetSigningWorkflow = () => {
-    setSignedDocumentFile(null);
-    setDocumentDownloaded(false);
-    setCurrentStep(0);
-  };
 
   const handleViewDetails = async (po) => {
     try {
@@ -297,6 +240,8 @@ const SupervisorPOApprovals = () => {
     const statusMap = {
       'pending_approval': { color: 'orange', text: 'Pending Approval', icon: <ClockCircleOutlined /> },
       'pending_department_approval': { color: 'orange', text: 'Pending Your Approval', icon: <ClockCircleOutlined /> },
+      'pending_head_of_business_approval': { color: 'orange', text: 'Pending Your Approval', icon: <ClockCircleOutlined /> },
+      'pending_finance_approval': { color: 'orange', text: 'Pending Your Approval', icon: <ClockCircleOutlined /> },
       'pending_head_approval': { color: 'orange', text: 'Pending Your Approval', icon: <ClockCircleOutlined /> },
       'approved': { color: 'green', text: 'Approved', icon: <CheckCircleOutlined /> },
       'rejected': { color: 'red', text: 'Rejected', icon: <CloseCircleOutlined /> },
@@ -403,7 +348,6 @@ const SupervisorPOApprovals = () => {
               onClick={() => {
                 setSelectedPO(record);
                 setApprovalModalVisible(true);
-                resetSigningWorkflow();
               }}
             >
               Review
@@ -489,7 +433,7 @@ const SupervisorPOApprovals = () => {
         {stats.pending > 0 && (
           <Alert
             message={`${stats.pending} purchase order(s) require your approval`}
-            description="Purchase orders require document signing before approval. Download, sign, and upload the signed document."
+            description="Your signature will be applied automatically when you approve a purchase order."
             type="warning"
             showIcon
             style={{ marginBottom: '16px' }}
@@ -501,15 +445,6 @@ const SupervisorPOApprovals = () => {
             tab={`Pending (${stats.pending})`} 
             key="pending"
           >
-            <Alert
-              message="Document Signing Required"
-              description="Purchase orders require you to download, sign manually, and upload the signed document before approval."
-              type="info"
-              showIcon
-              icon={<FileTextOutlined />}
-              style={{ marginBottom: '16px' }}
-              closable
-            />
             <Table
               columns={columns}
               dataSource={getFilteredPOs('pending')}
@@ -553,12 +488,12 @@ const SupervisorPOApprovals = () => {
         </Tabs>
       </Card>
 
-      {/* Approval Modal with Signing Workflow */}
+      {/* Approval Modal */}
       <Modal
         title={
           <Space>
             <AuditOutlined />
-            Sign & Approve Purchase Order
+            Approve Purchase Order
           </Space>
         }
         open={approvalModalVisible}
@@ -566,7 +501,6 @@ const SupervisorPOApprovals = () => {
           setApprovalModalVisible(false);
           setSelectedPO(null);
           form.resetFields();
-          resetSigningWorkflow();
         }}
         footer={null}
         width={800}
@@ -585,86 +519,15 @@ const SupervisorPOApprovals = () => {
               </Descriptions>
             </Card>
 
-            <Alert
-              message="Signing Workflow Required"
-              description="You must download, sign, and upload the document before approving this purchase order."
-              type="warning"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
+            <Space style={{ marginBottom: 16 }}>
+              <Button icon={<EyeOutlined />} onClick={handlePreviewPO}>
+                Preview PO
+              </Button>
+              <Button icon={<DownloadOutlined />} onClick={handleDownloadPO}>
+                Download PO
+              </Button>
+            </Space>
 
-            <Steps current={currentStep} style={{ marginBottom: 24 }}>
-              <Step title="Download" icon={<DownloadOutlined />} />
-              <Step title="Sign" icon={<FileTextOutlined />} />
-              <Step title="Upload" icon={<UploadOutlined />} />
-              <Step title="Approve" icon={<SendOutlined />} />
-            </Steps>
-
-            <Divider />
-
-            {/* Step 1: Download */}
-            <Card 
-              size="small" 
-              style={{ 
-                marginBottom: 16,
-                backgroundColor: currentStep === 0 ? '#fff7e6' : '#f5f5f5',
-                borderColor: currentStep === 0 ? '#faad14' : '#d9d9d9'
-              }}
-            >
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>Step 1: Download Purchase Order</Text>
-                <Button
-                  type={currentStep === 0 ? 'primary' : 'default'}
-                  icon={<DownloadOutlined />}
-                  loading={downloadingPO}
-                  onClick={handleDownloadPO}
-                  disabled={documentDownloaded}
-                  block
-                >
-                  {documentDownloaded ? 'Downloaded ✓' : 'Download PO'}
-                </Button>
-              </Space>
-            </Card>
-
-            {/* Step 2: Upload Signed */}
-            <Card 
-              size="small" 
-              style={{ 
-                marginBottom: 16,
-                backgroundColor: currentStep === 1 ? '#fff7e6' : '#f5f5f5',
-                borderColor: currentStep === 1 ? '#faad14' : '#d9d9d9'
-              }}
-            >
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>Step 2: Upload Signed Document {!signedDocumentFile && <Text type="danger">*</Text>}</Text>
-                <Dragger
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  maxCount={1}
-                  beforeUpload={(file) => {
-                    handleFileUpload({ file });
-                    return false;
-                  }}
-                  onRemove={() => {
-                    setSignedDocumentFile(null);
-                    setCurrentStep(1);
-                  }}
-                  disabled={!documentDownloaded}
-                  fileList={signedDocumentFile ? [{
-                    uid: '-1',
-                    name: signedDocumentFile.name,
-                    status: 'done',
-                  }] : []}
-                >
-                  <p className="ant-upload-drag-icon">
-                    <InboxOutlined />
-                  </p>
-                  <p className="ant-upload-text">Upload signed document</p>
-                  <p className="ant-upload-hint">PDF, JPG, PNG (Max 10MB)</p>
-                </Dragger>
-              </Space>
-            </Card>
-
-            {/* Step 3: Decision Form */}
             <Form
               form={form}
               layout="vertical"
@@ -675,7 +538,7 @@ const SupervisorPOApprovals = () => {
                 label="Your Decision"
                 rules={[{ required: true, message: 'Please make a decision' }]}
               >
-                <Radio.Group disabled={!signedDocumentFile}>
+                <Radio.Group>
                   <Radio.Button value="approved" style={{ color: '#52c41a' }}>
                     <CheckCircleOutlined /> Approve
                   </Radio.Button>
@@ -704,7 +567,6 @@ const SupervisorPOApprovals = () => {
                     setApprovalModalVisible(false);
                     setSelectedPO(null);
                     form.resetFields();
-                    resetSigningWorkflow();
                   }}>
                     Cancel
                   </Button>
@@ -712,7 +574,6 @@ const SupervisorPOApprovals = () => {
                     type="primary" 
                     htmlType="submit"
                     loading={loading}
-                    disabled={!signedDocumentFile}
                   >
                     Submit Decision
                   </Button>

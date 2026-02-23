@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom'; // Add this import
+import { useNavigate } from 'react-router-dom'; 
 import {
   Card,
   Table,
@@ -19,7 +19,11 @@ import {
   message,
   Spin,
   List,
-  Tooltip
+  Tooltip,
+  Form,
+  TextArea,
+  Divider,
+  Upload,
 } from 'antd';
 import {
   PlusOutlined,
@@ -33,19 +37,42 @@ import {
   FileTextOutlined,
   DownloadOutlined,
   FileOutlined,
-  PaperClipOutlined
+  PaperClipOutlined,
+  DollarOutlined,
+  Option,
+  UploadOutlined,
 } from '@ant-design/icons';
+import { Select, Input  } from 'antd';
 import { purchaseRequisitionAPI } from '../../services/purchaseRequisitionAPI';
+import api from '../../services/api'
 
 const { Title, Text } = Typography;
 
 const EmployeePurchaseRequisitions = ({ onCreateNew }) => {
-  const navigate = useNavigate(); // Add this hook
+  const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const [requisitions, setRequisitions] = useState([]);
+  const [requisition, setRequisition] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedRequisition, setSelectedRequisition] = useState(null);
-  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [acknowledgmentModalVisible, setAcknowledgmentModalVisible] = useState(false);
+  const [selectedDisbursement, setSelectedDisbursement] = useState(null);
+  const [acknowledgmentForm] = Form.useForm();
+
+  // ✅ NEW: Resubmit modal states
+  const [resubmitModalVisible, setResubmitModalVisible] = useState(false);
+  const [resubmitForm] = Form.useForm();
+  const [resubmitting, setResubmitting] = useState(false);
+  const [rejectionHistory, setRejectionHistory] = useState(null);
+  const [availableBudgetCodes, setAvailableBudgetCodes] = useState([]);
+  const [editingItems, setEditingItems] = useState([]);
+  const [editingItemsModal, setEditingItemsModal] = useState(false);
+  const [attachmentFileList, setAttachmentFileList] = useState([]);
+  const [removedAttachmentIds, setRemovedAttachmentIds] = useState([]);
+
+  const { Option } = Select;
+  const { TextArea } = Input;
 
   useEffect(() => {
     fetchRequisitions();
@@ -93,7 +120,13 @@ const EmployeePurchaseRequisitions = ({ onCreateNew }) => {
       'rejected': { color: 'red', text: 'Rejected', icon: <CloseCircleOutlined /> },
       'in_procurement': { color: 'blue', text: 'In Procurement', icon: <ShoppingCartOutlined /> },
       'procurement_complete': { color: 'lime', text: 'Procurement Complete', icon: <CheckCircleOutlined /> },
-      'delivered': { color: 'green', text: 'Delivered', icon: <CheckCircleOutlined /> }
+      'delivered': { color: 'green', text: 'Delivered', icon: <CheckCircleOutlined /> },
+      'partially_disbursed': { color: 'processing', text: 'Partially Disbursed', icon: <DollarOutlined /> },
+      'fully_disbursed': { color: 'cyan', text: 'Fully Disbursed - Need Justification', icon: <FileTextOutlined /> }, // ✅ NEW
+      'justification_pending_supervisor': { color: 'purple', text: 'Justification - Pending Supervisor', icon: <ClockCircleOutlined /> }, // ✅ NEW
+      'justification_pending_finance': { color: 'geekblue', text: 'Justification - Pending Finance', icon: <ClockCircleOutlined /> }, // ✅ NEW
+      'justification_rejected': { color: 'red', text: 'Justification Rejected', icon: <CloseCircleOutlined /> }, // ✅ NEW
+      'completed': { color: 'green', text: 'Completed', icon: <CheckCircleOutlined /> } // ✅ NEW
     };
 
     const statusInfo = statusMap[status] || { color: 'default', text: status };
@@ -125,18 +158,190 @@ const EmployeePurchaseRequisitions = ({ onCreateNew }) => {
     return Math.round((completedSteps / approvalChain.length) * 100);
   };
 
+
+  // ✅ ALSO UPDATE: handleViewDetails to ensure fresh data
   const handleViewDetails = async (requisition) => {
     try {
+      console.log('Viewing details for requisition:', requisition._id);
+      
+      // Always fetch fresh data from server
       const response = await purchaseRequisitionAPI.getRequisition(requisition._id);
+      
       if (response.success) {
+        console.log('Fresh requisition data:', response.data);
         setSelectedRequisition(response.data);
-        setDetailModalVisible(true);
+        setDetailsModalVisible(true);
       } else {
         message.error('Failed to fetch requisition details');
       }
     } catch (error) {
       console.error('Error fetching requisition details:', error);
       message.error('Failed to fetch requisition details');
+    }
+  };
+
+// ✅ ADD: Force refresh function for the details modal
+const refreshModalData = async () => {
+  if (!selectedRequisition) return;
+  
+  try {
+    console.log('Force refreshing modal data...');
+    const response = await api.get(`/purchase-requisitions/${selectedRequisition._id}`);
+    
+    if (response.data.success) {
+      setSelectedRequisition(response.data.data);
+      console.log('✅ Modal data refreshed');
+    }
+  } catch (error) {
+    console.error('Error refreshing modal:', error);
+  }
+};
+
+  // ✅ NEW: Handle resubmit button click
+  const handleResubmitClick = async (requisition) => {
+    try {
+      setSelectedRequisition(requisition);
+      setEditingItems(requisition.items || []);
+      setResubmitModalVisible(true);
+      
+      // Pre-fill form with current values
+      resubmitForm.setFieldsValue({
+        title: requisition.title,
+        itemCategory: requisition.itemCategory,
+        budgetXAF: requisition.budgetXAF,
+        budgetCode: requisition.budgetCode?._id || requisition.budgetCode,
+        urgency: requisition.urgency,
+        deliveryLocation: requisition.deliveryLocation,
+        expectedDate: requisition.expectedDate,
+        justificationOfPurchase: requisition.justificationOfPurchase,
+        justificationOfPreferredSupplier: requisition.justificationOfPreferredSupplier
+      });
+
+      // Initialize attachments
+      const existingAttachments = requisition.attachments?.map((att, index) => ({
+        uid: att._id || `existing-${index}`,
+        name: att.name,
+        status: 'done',
+        url: att.url,
+        existingId: att._id
+      })) || [];
+      setAttachmentFileList(existingAttachments);
+      setRemovedAttachmentIds([]);
+
+      // Fetch available budget codes
+      try {
+        const budgetResponse = await api.get('/budget-codes');
+        if (budgetResponse.data.success) {
+          setAvailableBudgetCodes(budgetResponse.data.data || []);
+        }
+      } catch (budgetError) {
+        console.error('Failed to fetch budget codes:', budgetError);
+      }
+
+      // Fetch rejection history
+      const historyResponse = await purchaseRequisitionAPI.getRejectionHistory(requisition._id);
+      if (historyResponse.success) {
+        setRejectionHistory(historyResponse.data);
+      }
+    } catch (error) {
+      console.error('Error loading requisition for resubmit:', error);
+      message.error('Failed to load requisition details');
+    }
+  };
+
+  // ✅ NEW: Handle resubmit form submission
+  const handleResubmit = async (values) => {
+    if (!selectedRequisition) return;
+
+    try {
+      setResubmitting(true);
+      
+      // Create FormData for file uploads
+      const formData = new FormData();
+      
+      // Add all form fields
+      Object.keys(values).forEach(key => {
+        if (values[key] !== undefined && values[key] !== null) {
+          formData.append(key, values[key]);
+        }
+      });
+
+      // Add items as JSON string
+      formData.append('items', JSON.stringify(editingItems));
+
+      // Add removed attachment IDs
+      if (removedAttachmentIds.length > 0) {
+        formData.append('removedAttachments', JSON.stringify(removedAttachmentIds));
+      }
+
+      // Add new attachment files
+      attachmentFileList.forEach(file => {
+        if (file.originFileObj) {
+          formData.append('attachments', file.originFileObj);
+        }
+      });
+      
+      const response = await purchaseRequisitionAPI.resubmitRequisition(
+        selectedRequisition._id,
+        formData
+      );
+
+      if (response.success) {
+        message.success('Requisition resubmitted successfully!');
+        resubmitForm.resetFields();
+        setResubmitModalVisible(false);
+        setSelectedRequisition(null);
+        setRejectionHistory(null);
+        setEditingItems([]);
+        setAttachmentFileList([]);
+        setRemovedAttachmentIds([]);
+        
+        // Refresh requisitions list
+        await fetchRequisitions();
+      } else {
+        message.error(response.message || 'Failed to resubmit requisition');
+      }
+    } catch (error) {
+      console.error('Resubmit error:', error);
+      message.error(error.response?.data?.message || 'Failed to resubmit requisition');
+    } finally {
+      setResubmitting(false);
+    }
+  };
+
+  const handleAcknowledgeDisbursement = async (values) => {
+    if (!selectedRequisition || !selectedDisbursement) return;
+
+    try {
+      setLoading(true);
+      
+      const response = await purchaseRequisitionAPI.acknowledgeDisbursement(
+        selectedRequisition._id,
+        selectedDisbursement._id,
+        values
+      );
+
+      if (response.success) {
+        message.success('Disbursement receipt acknowledged successfully!');
+        setAcknowledgmentModalVisible(false);
+        setSelectedDisbursement(null);
+        acknowledgmentForm.resetFields();
+        
+        // ✅ REFRESH BOTH LIST AND MODAL
+        await fetchRequisitions();
+        
+        // ✅ CRITICAL: Refresh the details modal
+        const updatedResponse = await api.get(`/purchase-requisitions/${selectedRequisition._id}`);
+        if (updatedResponse.data.success) {
+          setSelectedRequisition(updatedResponse.data.data);
+        }
+      } else {
+        message.error(response.message || 'Failed to acknowledge disbursement');
+      }
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Failed to acknowledge disbursement');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -315,23 +520,49 @@ const EmployeePurchaseRequisitions = ({ onCreateNew }) => {
       title: 'Actions',
       key: 'actions',
       render: (_, record) => (
-        <Button 
-          size="small" 
-          icon={<EyeOutlined />}
-          onClick={() => handleViewDetails(record)}
-        >
-          Details
-        </Button>
+        <Space direction="vertical" size="small">
+          <Button 
+            size="small" 
+            icon={<EyeOutlined />}
+            onClick={() => handleViewDetails(record)}
+          >
+            Details
+          </Button>
+
+          {/* ✅ NEW: Resubmit button for rejected requisitions */}
+          {['rejected', 'supply_chain_rejected'].includes(record.status) && (
+            <Button
+              type="default"
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={() => handleResubmitClick(record)}
+              style={{ borderColor: '#faad14', color: '#faad14' }}
+            >
+              Resubmit
+            </Button>
+          )}
+        </Space>
       ),
-      width: 100
+      width: 120
     }
   ];
 
   const stats = {
     total: requisitions.length,
-    pending: requisitions.filter(r => r.status.includes('pending')).length,
-    approved: requisitions.filter(r => ['approved', 'delivered', 'procurement_complete'].includes(r.status)).length,
-    rejected: requisitions.filter(r => r.status.includes('rejected')).length
+    pending: requisitions.filter(r => 
+      r.status.includes('pending') || 
+      r.status === 'fully_disbursed'
+    ).length,
+    approved: requisitions.filter(r => 
+      ['approved', 'delivered', 'procurement_complete', 'completed'].includes(r.status)
+    ).length,
+    rejected: requisitions.filter(r => 
+      r.status.includes('rejected')
+    ).length,
+    needsJustification: requisitions.filter(r => 
+      r.status === 'fully_disbursed' || 
+      r.status === 'justification_rejected'
+    ).length
   };
 
   return (
@@ -387,13 +618,24 @@ const EmployeePurchaseRequisitions = ({ onCreateNew }) => {
           </Col>
           <Col span={6}>
             <Statistic
-              title="Rejected"
-              value={stats.rejected}
-              prefix={<CloseCircleOutlined />}
-              valueStyle={{ color: '#f5222d' }}
+              title="Needs Justification"
+              value={stats.needsJustification}
+              prefix={<FileTextOutlined />}
+              valueStyle={{ color: '#fa8c16' }}
             />
           </Col>
         </Row>
+
+        {/* ✅ ADD: Alert for items needing justification */}
+        {stats.needsJustification > 0 && (
+          <Alert
+            message={`You have ${stats.needsJustification} requisition(s) that need justification`}
+            description="Please submit justification with receipts for your disbursed requisitions."
+            type="warning"
+            showIcon
+            style={{ marginBottom: '16px' }}
+          />
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '50px' }}>
@@ -429,9 +671,9 @@ const EmployeePurchaseRequisitions = ({ onCreateNew }) => {
             Purchase Requisition Details
           </Space>
         }
-        open={detailModalVisible}
+        open={detailsModalVisible}
         onCancel={() => {
-          setDetailModalVisible(false);
+          setDetailsModalVisible(false);
           setSelectedRequisition(null);
         }}
         footer={null}
@@ -471,6 +713,105 @@ const EmployeePurchaseRequisitions = ({ onCreateNew }) => {
                 </Descriptions.Item>
               </Descriptions>
             </Card>
+
+            {/* ✅ NEW: Disbursement History with Acknowledgment */}
+            {selectedRequisition.disbursements && selectedRequisition.disbursements.length > 0 && (
+              <Card 
+                size="small" 
+                title={
+                  <Space>
+                    <DollarOutlined />
+                    Disbursement History ({selectedRequisition.disbursements.length})
+                  </Space>
+                }
+                style={{ marginBottom: '16px' }}
+              >
+                <Timeline>
+                  {selectedRequisition.disbursements.map((disbursement, index) => (
+                    <Timeline.Item
+                      key={index}
+                      color={disbursement.acknowledged ? 'green' : 'blue'}
+                      dot={disbursement.acknowledged ? <CheckCircleOutlined /> : <DollarOutlined />}
+                    >
+                      <Card size="small" style={{ marginBottom: '8px' }}>
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                          <div>
+                            <Text strong>Payment #{disbursement.disbursementNumber}</Text>
+                            {disbursement.acknowledged && (
+                              <Tag color="success" style={{ marginLeft: '8px' }}>
+                                <CheckCircleOutlined /> Acknowledged
+                              </Tag>
+                            )}
+                            {!disbursement.acknowledged && (
+                              <Tag color="warning" style={{ marginLeft: '8px' }}>
+                                <ClockCircleOutlined /> Awaiting Acknowledgment
+                              </Tag>
+                            )}
+                          </div>
+                          
+                          <Descriptions column={2} size="small">
+                            <Descriptions.Item label="Amount">
+                              <Text strong style={{ color: '#1890ff' }}>
+                                XAF {disbursement.amount?.toLocaleString()}
+                              </Text>
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Disbursed Date">
+                              {new Date(disbursement.date).toLocaleString('en-GB')}
+                            </Descriptions.Item>
+                            
+                            {disbursement.notes && (
+                              <Descriptions.Item label="Disbursement Notes" span={2}>
+                                <Text italic>"{disbursement.notes}"</Text>
+                              </Descriptions.Item>
+                            )}
+                            
+                            {disbursement.acknowledged && (
+                              <>
+                                <Descriptions.Item label="Acknowledged">
+                                  {new Date(disbursement.acknowledgmentDate).toLocaleString('en-GB')}
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Receipt Method">
+                                  <Tag color="green">
+                                    {disbursement.acknowledgmentMethod?.replace('_', ' ').toUpperCase()}
+                                  </Tag>
+                                </Descriptions.Item>
+                                
+                                {disbursement.acknowledgmentNotes && (
+                                  <Descriptions.Item label="Acknowledgment Notes" span={2}>
+                                    <Text italic type="success">"{disbursement.acknowledgmentNotes}"</Text>
+                                  </Descriptions.Item>
+                                )}
+                              </>
+                            )}
+                          </Descriptions>
+
+                          {/* ✅ Show acknowledge button only if not acknowledged */}
+                          {!disbursement.acknowledged && (
+                            <Button
+                              type="primary"
+                              size="small"
+                              icon={<CheckCircleOutlined />}
+                              onClick={() => {
+                                setSelectedDisbursement(disbursement);
+                                acknowledgmentForm.setFieldsValue({
+                                  acknowledgmentMethod: 'cash',
+                                  acknowledgmentNotes: ''
+                                });
+                                setAcknowledgmentModalVisible(true);
+                              }}
+                              style={{ backgroundColor: '#52c41a' }}
+                            >
+                              Acknowledge Receipt
+                            </Button>
+                          )}
+                        </Space>
+                      </Card>
+                    </Timeline.Item>
+                  ))}
+                </Timeline>
+                
+              </Card>
+            )}
 
             {/* Items List */}
             <Card size="small" title={`Items (${selectedRequisition.items?.length || 0})`} style={{ marginBottom: '16px' }}>
@@ -696,6 +1037,598 @@ const EmployeePurchaseRequisitions = ({ onCreateNew }) => {
             </Card>
           </div>
         )}
+      </Modal>
+      {/* ✅ NEW: Acknowledgment Modal */}
+      <Modal
+        title={
+          <Space>
+            <CheckCircleOutlined style={{ color: '#52c41a' }} />
+            Acknowledge Disbursement Receipt
+          </Space>
+        }
+        open={acknowledgmentModalVisible}
+        onCancel={() => {
+          setAcknowledgmentModalVisible(false);
+          setSelectedDisbursement(null);
+          acknowledgmentForm.resetFields();
+        }}
+        footer={null}
+        width={600}
+      >
+        {selectedDisbursement && (
+          <div>
+            <Alert
+              message="Confirm Money Receipt"
+              description={`You are acknowledging receipt of XAF ${selectedDisbursement.amount?.toLocaleString()} for payment #${selectedDisbursement.disbursementNumber}.`}
+              type="info"
+              showIcon
+              style={{ marginBottom: '20px' }}
+            />
+
+            <Form
+              form={acknowledgmentForm}
+              layout="vertical"
+              onFinish={handleAcknowledgeDisbursement}
+            >
+              <Form.Item
+                name="acknowledgmentMethod"
+                label="How did you receive the money?"
+                rules={[{ required: true, message: 'Please select receipt method' }]}
+              >
+                <Select placeholder="Select receipt method">
+                  <Option value="cash">💵 Cash</Option>
+                  <Option value="bank_transfer">🏦 Bank Transfer</Option>
+                  <Option value="cheque">📝 Cheque</Option>
+                  <Option value="mobile_money">📱 Mobile Money</Option>
+                </Select>
+              </Form.Item>
+
+              <Form.Item
+                name="acknowledgmentNotes"
+                label="Additional Notes (Optional)"
+                help="Any comments about receiving the money"
+              >
+                <TextArea
+                  rows={3}
+                  placeholder="E.g., Received in full, Transaction reference: ABC123..."
+                  showCount
+                  maxLength={200}
+                />
+              </Form.Item>
+
+              <Form.Item>
+                <Space>
+                  <Button onClick={() => {
+                    setAcknowledgmentModalVisible(false);
+                    setSelectedDisbursement(null);
+                    acknowledgmentForm.resetFields();
+                  }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={loading}
+                    icon={<CheckCircleOutlined />}
+                    style={{ backgroundColor: '#52c41a' }}
+                  >
+                    Confirm Receipt
+                  </Button>
+                </Space>
+              </Form.Item>
+            </Form>
+          </div>
+        )}
+      </Modal>
+      <Modal
+        title={
+          <Space>
+            <CheckCircleOutlined style={{ color: '#52c41a' }} />
+            Acknowledge Disbursement Receipt
+          </Space>
+        }
+        open={acknowledgmentModalVisible}
+        onCancel={() => {
+          setAcknowledgmentModalVisible(false);
+          setSelectedDisbursement(null);
+          acknowledgmentForm.resetFields();
+        }}
+        footer={null}
+        width={600}
+      >
+        {selectedDisbursement && (
+          <div>
+            <Alert
+              message="Confirm Money Receipt"
+              description={
+                <div>
+                  <p>You are acknowledging receipt of:</p>
+                  <Text strong style={{ fontSize: '16px', color: '#1890ff' }}>
+                    XAF {selectedDisbursement.amount?.toLocaleString()}
+                  </Text>
+                  <br />
+                  <Text type="secondary">
+                    Payment #{selectedDisbursement.disbursementNumber} • Disbursed on {new Date(selectedDisbursement.date).toLocaleDateString('en-GB')}
+                  </Text>
+                </div>
+              }
+              type="info"
+              showIcon
+              style={{ marginBottom: '20px' }}
+            />
+
+            <Alert
+              message="Important"
+              description="By acknowledging, you confirm that you have physically received the money. This action cannot be undone."
+              type="warning"
+              showIcon
+              style={{ marginBottom: '20px' }}
+            />
+
+            <Form
+              form={acknowledgmentForm}
+              layout="vertical"
+              onFinish={handleAcknowledgeDisbursement}
+            >
+              <Form.Item
+                name="acknowledgmentMethod"
+                label="How did you receive the money?"
+                rules={[{ required: true, message: 'Please select receipt method' }]}
+              >
+                <Select placeholder="Select receipt method" size="large">
+                  <Option value="cash">
+                    <Space>
+                      💵 <Text>Cash - Received physical cash</Text>
+                    </Space>
+                  </Option>
+                  <Option value="bank_transfer">
+                    <Space>
+                      🏦 <Text>Bank Transfer - Money credited to bank account</Text>
+                    </Space>
+                  </Option>
+                  {/* <Option value="cheque">
+                    <Space>
+                      📝 <Text>Cheque - Received cheque</Text>
+                    </Space>
+                  </Option> */}
+                  <Option value="mobile_money">
+                    <Space>
+                      📱 <Text>Mobile Money - Received via mobile money</Text>
+                    </Space>
+                  </Option>
+                </Select>
+              </Form.Item>
+
+              <Form.Item
+                name="acknowledgmentNotes"
+                label="Additional Notes (Optional)"
+                help="Any comments about receiving the money (e.g., transaction reference, received from whom, etc.)"
+              >
+                <TextArea
+                  rows={3}
+                  placeholder="E.g., Received in full from Finance Officer. Transaction ref: TXN123456..."
+                  showCount
+                  maxLength={200}
+                />
+              </Form.Item>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                  <Button onClick={() => {
+                    setAcknowledgmentModalVisible(false);
+                    setSelectedDisbursement(null);
+                    acknowledgmentForm.resetFields();
+                  }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    loading={loading}
+                    icon={<CheckCircleOutlined />}
+                    size="large"
+                    style={{ backgroundColor: '#52c41a' }}
+                  >
+                    ✅ Confirm I Received the Money
+                  </Button>
+                </Space>
+              </Form.Item>
+            </Form>
+          </div>
+        )}
+      </Modal>
+
+      {/* ✅ NEW: Resubmit Modal */}
+      <Modal
+        title={
+          <Space>
+            <ReloadOutlined style={{ color: '#faad14' }} />
+            Resubmit Rejected Requisition
+          </Space>
+        }
+        open={resubmitModalVisible}
+        onCancel={() => {
+          setResubmitModalVisible(false);
+          setSelectedRequisition(null);
+          setRejectionHistory(null);
+          setAttachmentFileList([]);
+          setRemovedAttachmentIds([]);
+          resubmitForm.resetFields();
+        }}
+        footer={null}
+        width={900}
+      >
+        {selectedRequisition && (
+          <div>
+            {/* ✅ Show Rejection Details */}
+            {rejectionHistory && rejectionHistory.rejectionHistory && rejectionHistory.rejectionHistory.length > 0 && (
+              <Card 
+                size="small" 
+                title="Previous Rejection Details"
+                style={{ marginBottom: '16px', borderColor: '#ff4d4f' }}
+                headStyle={{ borderColor: '#ff4d4f', backgroundColor: '#fff1f0' }}
+              >
+                {rejectionHistory.rejectionHistory.map((rejection, index) => (
+                  <div key={index} style={{ marginBottom: index < rejectionHistory.rejectionHistory.length - 1 ? '16px' : '0' }}>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Text strong>Rejected by:</Text> {rejection.rejectorName}
+                        <br />
+                        <Text type="secondary" style={{ fontSize: '12px' }}>{rejection.rejectorRole}</Text>
+                      </Col>
+                      <Col span={12}>
+                        <Text strong>Date:</Text> {new Date(rejection.rejectionDate).toLocaleString('en-GB')}
+                      </Col>
+                    </Row>
+                    <div style={{ marginTop: '8px', padding: '10px', backgroundColor: '#fff7e6', borderRadius: '4px' }}>
+                      <Text strong>Reason:</Text>
+                      <br />
+                      <Text italic>{rejection.rejectionReason || 'No reason provided'}</Text>
+                    </div>
+                    {rejection.resubmitted && (
+                      <div style={{ marginTop: '8px', padding: '10px', backgroundColor: '#f6ffed', borderRadius: '4px' }}>
+                        <Text style={{ color: '#52c41a' }}>✓ Resubmitted on {new Date(rejection.resubmittedDate).toLocaleString('en-GB')}</Text>
+                        {rejection.resubmissionNotes && (
+                          <>
+                            <br />
+                            <Text type="secondary" italic>Notes: {rejection.resubmissionNotes}</Text>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {index < rejectionHistory.rejectionHistory.length - 1 && (
+                      <Divider />
+                    )}
+                  </div>
+                ))}
+              </Card>
+            )}
+
+            {/* Edit Form */}
+            <Card size="small" title="Update Requisition Details" style={{ marginBottom: '16px' }}>
+              <Form
+                form={resubmitForm}
+                layout="vertical"
+                onFinish={handleResubmit}
+              >
+                <Form.Item
+                  label="Title"
+                  name="title"
+                  rules={[{ required: true, message: 'Please enter title' }]}
+                >
+                  <Input placeholder="Requisition title" />
+                </Form.Item>
+
+                <Form.Item
+                  label="Category"
+                  name="itemCategory"
+                  rules={[{ required: true, message: 'Please select category' }]}
+                >
+                  <Select placeholder="Select category">
+                    <Option value="IT">IT</Option>
+                    <Option value="Office Supplies">Office Supplies</Option>
+                    <Option value="Hardware">Hardware</Option>
+                    <Option value="all">All</Option>
+                    <Option value="Other">Other</Option>
+                  </Select>
+                </Form.Item>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      label="Budget (XAF)"
+                      name="budgetXAF"
+                      rules={[{ required: true, message: 'Please enter budget amount' }]}
+                    >
+                      <Input type="number" placeholder="Budget amount" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      label="Budget Code"
+                      name="budgetCode"
+                      rules={[{ required: true, message: 'Please select budget code' }]}
+                    >
+                      <Select placeholder="Select budget code" showSearch optionFilterProp="children">
+                        {availableBudgetCodes.map(code => (
+                          <Option key={code._id} value={code._id}>
+                            {code.code} - {code.name} (Available: XAF {(code.budget - code.used).toLocaleString()})
+                          </Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                {/* Attachments Management */}
+                <Form.Item label="Attachments">
+                  <Upload
+                    fileList={attachmentFileList}
+                    onChange={({ fileList: newFileList }) => setAttachmentFileList(newFileList)}
+                    onRemove={(file) => {
+                      // If it's an existing file, add to removed list
+                      if (file.existingId) {
+                        setRemovedAttachmentIds([...removedAttachmentIds, file.existingId]);
+                      }
+                      return true;
+                    }}
+                    beforeUpload={() => false}
+                    multiple
+                    maxCount={5}
+                  >
+                    <Button icon={<UploadOutlined />}>Select Files (Max 5)</Button>
+                  </Upload>
+                  <Text type="secondary" style={{ fontSize: '12px' }}>
+                    You can add new files or remove existing ones. Maximum 5 files total.
+                  </Text>
+                </Form.Item>
+
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      label="Urgency"
+                      name="urgency"
+                      rules={[{ required: true, message: 'Please select urgency' }]}
+                    >
+                      <Select placeholder="Select urgency">
+                        <Option value="Low">Low</Option>
+                        <Option value="Medium">Medium</Option>
+                        <Option value="High">High</Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item label="Items">
+                      <Button 
+                        icon={<EditOutlined />}
+                        onClick={() => setEditingItemsModal(true)}
+                        block
+                      >
+                        Edit Items ({editingItems.length})
+                      </Button>
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Form.Item
+                  label="Delivery Location"
+                  name="deliveryLocation"
+                  rules={[{ required: true, message: 'Please enter delivery location' }]}
+                >
+                  <Input placeholder="Where should items be delivered?" />
+                </Form.Item>
+
+                <Form.Item
+                  label="Expected Delivery Date"
+                  name="expectedDate"
+                  rules={[{ required: true, message: 'Please select expected date' }]}
+                >
+                  <Input type="date" />
+                </Form.Item>
+
+                <Form.Item
+                  label="Justification of Purchase"
+                  name="justificationOfPurchase"
+                  rules={[
+                    { required: true, message: 'Please enter justification' },
+                    { min: 20, message: 'Justification must be at least 20 characters' }
+                  ]}
+                >
+                  <TextArea rows={3} placeholder="Explain why these items are needed..." />
+                </Form.Item>
+
+                <Form.Item
+                  label="Preferred Supplier Justification (Optional)"
+                  name="justificationOfPreferredSupplier"
+                >
+                  <TextArea rows={3} placeholder="Explain why you prefer this supplier..." />
+                </Form.Item>
+
+                <Form.Item
+                  label="Resubmission Notes"
+                  name="resubmissionNotes"
+                  help="Explain what changes you made in response to the rejection feedback"
+                >
+                  <TextArea 
+                    rows={3}
+                    placeholder="E.g., Increased budget to meet quality requirements, found more reliable supplier, adjusted delivery timeline..." 
+                  />
+                </Form.Item>
+
+                <Form.Item style={{ marginBottom: 0 }}>
+                  <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+                    <Button onClick={() => {
+                      setResubmitModalVisible(false);
+                      setSelectedRequisition(null);
+                      setRejectionHistory(null);
+                      resubmitForm.resetFields();
+                    }}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      loading={resubmitting}
+                      icon={<ReloadOutlined />}
+                      style={{ backgroundColor: '#faad14' }}
+                    >
+                      Resubmit Requisition
+                    </Button>
+                  </Space>
+                </Form.Item>
+              </Form>
+            </Card>
+          </div>
+        )}
+      </Modal>
+
+      {/* ✅ NEW: Items Editor Modal */}
+      <Modal
+        title={<Space><EditOutlined />Edit Items</Space>}
+        open={editingItemsModal}
+        onCancel={() => setEditingItemsModal(false)}
+        width={1000}
+        footer={[
+          <Button key="cancel" onClick={() => setEditingItemsModal(false)}>
+            Cancel
+          </Button>,
+          <Button 
+            key="save" 
+            type="primary" 
+            onClick={() => {
+              if (editingItems.length === 0) {
+                message.error('At least one item is required');
+                return;
+              }
+              setEditingItemsModal(false);
+            }}
+          >
+            Save Items
+          </Button>,
+        ]}
+      >
+        <div style={{ marginBottom: '16px' }}>
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingItems([...editingItems, {
+                itemId: '',
+                code: '',
+                description: '',
+                category: '',
+                subcategory: '',
+                quantity: 1,
+                measuringUnit: '',
+                estimatedPrice: 0,
+                projectName: ''
+              }]);
+            }}
+          >
+            Add Item
+          </Button>
+        </div>
+
+        <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+          {editingItems.map((item, index) => (
+            <Card 
+              key={index}
+              size="small"
+              style={{ marginBottom: '12px' }}
+              extra={
+                <Button
+                  type="text"
+                  danger
+                  onClick={() => {
+                    setEditingItems(editingItems.filter((_, i) => i !== index));
+                  }}
+                >
+                  Remove
+                </Button>
+              }
+            >
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form layout="vertical">
+                    <Form.Item label="Item Code" style={{ marginBottom: '8px' }}>
+                      <Input
+                        placeholder="Item code"
+                        value={item.code}
+                        onChange={(e) => {
+                          const newItems = [...editingItems];
+                          newItems[index].code = e.target.value;
+                          setEditingItems(newItems);
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item label="Description" style={{ marginBottom: '8px' }}>
+                      <TextArea
+                        placeholder="Item description"
+                        rows={2}
+                        value={item.description}
+                        onChange={(e) => {
+                          const newItems = [...editingItems];
+                          newItems[index].description = e.target.value;
+                          setEditingItems(newItems);
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item label="Category" style={{ marginBottom: '8px' }}>
+                      <Input
+                        placeholder="Category"
+                        value={item.category}
+                        onChange={(e) => {
+                          const newItems = [...editingItems];
+                          newItems[index].category = e.target.value;
+                          setEditingItems(newItems);
+                        }}
+                      />
+                    </Form.Item>
+                  </Form>
+                </Col>
+                <Col span={12}>
+                  <Form layout="vertical">
+                    <Form.Item label="Quantity" style={{ marginBottom: '8px' }}>
+                      <Input
+                        type="number"
+                        placeholder="Quantity"
+                        value={item.quantity}
+                        onChange={(e) => {
+                          const newItems = [...editingItems];
+                          newItems[index].quantity = parseInt(e.target.value) || 1;
+                          setEditingItems(newItems);
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item label="Measuring Unit" style={{ marginBottom: '8px' }}>
+                      <Input
+                        placeholder="Unit (e.g., pcs, box, kg)"
+                        value={item.measuringUnit}
+                        onChange={(e) => {
+                          const newItems = [...editingItems];
+                          newItems[index].measuringUnit = e.target.value;
+                          setEditingItems(newItems);
+                        }}
+                      />
+                    </Form.Item>
+                    <Form.Item label="Estimated Price (XAF)" style={{ marginBottom: '8px' }}>
+                      <Input
+                        type="number"
+                        placeholder="Price per unit"
+                        value={item.estimatedPrice}
+                        onChange={(e) => {
+                          const newItems = [...editingItems];
+                          newItems[index].estimatedPrice = parseFloat(e.target.value) || 0;
+                          setEditingItems(newItems);
+                        }}
+                      />
+                    </Form.Item>
+                  </Form>
+                </Col>
+              </Row>
+            </Card>
+          ))}
+        </div>
       </Modal>
     </div>
   );

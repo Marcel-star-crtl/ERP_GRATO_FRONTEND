@@ -252,31 +252,21 @@ const UnifiedSupplierPortal = () => {
         return;
       }
 
-      // Extract publicId from Cloudinary URL
-      let publicId = '';
-      if (attachment.url) {
-        const urlParts = attachment.url.split('/');
-        const uploadIndex = urlParts.findIndex(part => part === 'upload');
-        if (uploadIndex !== -1 && uploadIndex + 2 < urlParts.length) {
-          publicId = urlParts.slice(uploadIndex + 2).join('/');
-          // Remove file extension from publicId
-          const lastPart = publicId.split('/').pop();
-          if (lastPart && lastPart.includes('.')) {
-            publicId = publicId.replace(/\.[^/.]+$/, '');
-          }
-        }
-      }
-
-      if (!publicId) {
-        message.error('Invalid attachment URL');
+      if (!attachment || !attachment.url) {
+        message.error('Invalid attachment');
         return;
       }
 
-      const response = await fetch(`/api/files/download/${encodeURIComponent(publicId)}`, {
+      // Convert relative URL to absolute URL using API base URL
+      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+      const absoluteUrl = attachment.url.startsWith('http') ? attachment.url : `${apiBaseUrl}${attachment.url}`;
+      
+      console.log('Downloading from:', absoluteUrl);
+
+      const response = await fetch(absoluteUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${token}`
         }
       });
 
@@ -285,26 +275,35 @@ const UnifiedSupplierPortal = () => {
       }
 
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      
+      // Verify we got a valid file
+      if (blob.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+      
+      console.log('Blob size:', blob.size, 'bytes');
+      console.log('Blob type:', blob.type);
+      
+      const blobUrl = window.URL.createObjectURL(blob);
       
       // Create a temporary link to download the file
       const link = document.createElement('a');
-      link.href = url;
+      link.href = blobUrl;
       link.download = attachment.originalName || attachment.name || 'attachment';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       
       // Clean up the blob URL
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
       
       message.success('File downloaded successfully');
     } catch (error) {
       console.error('Error downloading attachment:', error);
-      message.error('Failed to download attachment');
+      message.error(`Failed to download attachment: ${error.message}`);
       
       // Fallback to direct URL if download fails
-      if (attachment.url) {
+      if (attachment?.url) {
         window.open(attachment.url, '_blank');
       }
     }
@@ -441,6 +440,20 @@ const UnifiedSupplierPortal = () => {
     } finally {
       setQuoteSubmissionLoading(false);
     }
+  };
+
+  const generatePONumber = () => {
+    const year = moment().format('YYYY');
+    const month = moment().format('MM');
+    const seq = String((invoices && invoices.length) ? invoices.length + 1 : 1).padStart(4, '0');
+    return `PO-${year}-${month}-${seq}`;
+  };
+
+  const generateInvoiceNumber = () => {
+    const year = moment().format('YYYY');
+    const month = moment().format('MM');
+    const seq = String((invoices && invoices.length) ? invoices.length + 1 : 1).padStart(4, '0');
+    return `INV-${year}-${month}-${seq}`;
   };
 
   // Handle invoice upload
@@ -639,7 +652,8 @@ const UnifiedSupplierPortal = () => {
     const statusMap = {
       'pending': { color: 'orange', text: 'Pending' },
       'approved': { color: 'green', text: 'Approved' },
-      'rejected': { color: 'red', text: 'Rejected' }
+      'rejected': { color: 'red', text: 'Rejected' },
+      'paid': { color: 'blue', text: 'Paid' }
     };
     const config = statusMap[status] || statusMap['pending'];
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -656,9 +670,10 @@ const UnifiedSupplierPortal = () => {
 
   const invoiceStats = useMemo(() => ({
     total: invoices.length,
-    pending: invoices.filter(inv => inv.approvalStatus === 'pending').length,
+    pending: invoices.filter(inv => inv.approvalStatus === 'pending' || inv.approvalStatus === 'pending_supply_chain_assignment' || inv.approvalStatus === 'pending_finance_approval').length,
     approved: invoices.filter(inv => inv.approvalStatus === 'approved').length,
-    rejected: invoices.filter(inv => inv.approvalStatus === 'rejected').length
+    rejected: invoices.filter(inv => inv.approvalStatus === 'rejected').length,
+    paid: invoices.filter(inv => inv.approvalStatus === 'paid' || inv.paymentStatus === 'paid').length
   }), [invoices]);
 
   // Table columns
@@ -801,12 +816,6 @@ const UnifiedSupplierPortal = () => {
       render: (date) => moment(date).format('DD/MM/YYYY')
     },
     {
-      title: 'Department',
-      dataIndex: 'assignedDepartment',
-      key: 'department',
-      render: (dept) => <Tag color="blue">{dept}</Tag>
-    },
-    {
       title: 'Status',
       dataIndex: 'approvalStatus',
       key: 'status',
@@ -832,29 +841,32 @@ const UnifiedSupplierPortal = () => {
 
   return (
     <Layout style={{ minHeight: '100vh', backgroundColor: '#f0f2f5' }}>
-      <Content style={{ padding: '24px' }}>
+      <Content style={{ padding: '24px 16px' }}>
         {/* Header */}
         <Card style={{ marginBottom: '24px' }}>
-          <Row align="middle" justify="space-between">
-            <Col>
-              <Title level={2} style={{ margin: 0 }}>
+          <Row align="middle" justify="space-between" gutter={[16, 16]}>
+            <Col xs={24} sm={12}>
+              <Title level={3} style={{ margin: 0 }}>
                 <ShoppingCartOutlined /> Supplier Portal
               </Title>
-              <Text type="secondary">Manage RFQ responses and invoice submissions</Text>
+              <Text type="secondary" style={{ fontSize: '12px' }}>Manage RFQ responses and invoices</Text>
             </Col>
-            <Col>
-              <Space>
+            <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
+              <Space wrap>
                 <Button 
                   icon={<ReloadOutlined />} 
                   onClick={refreshAllData} 
                   loading={refreshing}
+                  size="small"
                 >
                   Refresh
                 </Button>
-                <Button
+            <Button
                   type="primary"
                   icon={<PlusOutlined />}
                   onClick={() => setUploadModalVisible(true)}
+                  size="small"
+                  block
                 >
                   Upload Invoice
                 </Button>
@@ -868,8 +880,8 @@ const UnifiedSupplierPortal = () => {
           <Tabs 
             activeKey={activeMainTab} 
             onChange={setActiveMainTab} 
-            size="large"
             type="card"
+            tabBarStyle={{ marginBottom: '16px' }}
           >
             {/* RFQ Tab */}
             <TabPane
@@ -884,44 +896,44 @@ const UnifiedSupplierPortal = () => {
               key="rfq"
             >
               {/* RFQ Statistics */}
-              <Row gutter={16} style={{ marginBottom: '24px' }}>
-                <Col span={6}>
-                  <Card>
+              <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+                <Col xs={24} sm={12} lg={6}>
+                  <Card size="small">
                     <Statistic
                       title="Total RFQs"
                       value={rfqStats.total}
                       prefix={<TagOutlined />}
-                      valueStyle={{ color: '#1890ff' }}
+                      valueStyle={{ color: '#1890ff', fontSize: '20px' }}
                     />
                   </Card>
                 </Col>
-                <Col span={6}>
-                  <Card>
+                <Col xs={24} sm={12} lg={6}>
+                  <Card size="small">
                     <Statistic
-                      title="Pending Quotes"
+                      title="Pending"
                       value={rfqStats.pending}
                       prefix={<ClockCircleOutlined />}
-                      valueStyle={{ color: '#faad14' }}
+                      valueStyle={{ color: '#faad14', fontSize: '20px' }}
                     />
                   </Card>
                 </Col>
-                <Col span={6}>
-                  <Card>
+                <Col xs={24} sm={12} lg={6}>
+                  <Card size="small">
                     <Statistic
-                      title="Quotes Submitted"
+                      title="Submitted"
                       value={rfqStats.submitted}
                       prefix={<SendOutlined />}
-                      valueStyle={{ color: '#1890ff' }}
+                      valueStyle={{ color: '#1890ff', fontSize: '20px' }}
                     />
                   </Card>
                 </Col>
-                <Col span={6}>
-                  <Card>
+                <Col xs={24} sm={12} lg={6}>
+                  <Card size="small">
                     <Statistic
                       title="Selected"
                       value={rfqStats.selected}
                       prefix={<CheckCircleOutlined />}
-                      valueStyle={{ color: '#52c41a' }}
+                      valueStyle={{ color: '#52c41a', fontSize: '20px' }}
                     />
                   </Card>
                 </Col>
@@ -963,9 +975,10 @@ const UnifiedSupplierPortal = () => {
                   pagination={{
                     pageSize: 10,
                     showSizeChanger: true,
-                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} RFQs`
+                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`
                   }}
-                  scroll={{ x: 1000 }}
+                  scroll={{ x: 600 }}
+                  size="small"
                 />
               </Card>
             </TabPane>
@@ -975,50 +988,61 @@ const UnifiedSupplierPortal = () => {
               tab={
                 <Space>
                   <FileTextOutlined />
-                  Invoice Management ({invoiceStats.pending} pending)
+                  {/* Invoice Management ({invoiceStats.pending} pending) */}
+                  Invoice Management 
                 </Space>
               }
               key="invoices"
             >
               {/* Invoice Statistics */}
-              <Row gutter={16} style={{ marginBottom: '24px' }}>
-                <Col span={6}>
-                  <Card>
+              <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+                <Col xs={24} sm={12} lg={6}>
+                  <Card size="small">
                     <Statistic
-                      title="Total Invoices"
+                      title="Total"
                       value={invoiceStats.total}
                       prefix={<FileTextOutlined />}
-                      valueStyle={{ color: '#1890ff' }}
+                      valueStyle={{ color: '#1890ff', fontSize: '20px' }}
                     />
                   </Card>
                 </Col>
-                <Col span={6}>
-                  <Card>
+                <Col xs={24} sm={12} lg={6}>
+                  <Card size="small">
                     <Statistic
-                      title="Pending Approval"
+                      title="Pending"
                       value={invoiceStats.pending}
                       prefix={<ClockCircleOutlined />}
-                      valueStyle={{ color: '#faad14' }}
+                      valueStyle={{ color: '#faad14', fontSize: '20px' }}
                     />
                   </Card>
                 </Col>
-                <Col span={6}>
-                  <Card>
+                <Col xs={24} sm={12} lg={6}>
+                  <Card size="small">
                     <Statistic
                       title="Approved"
                       value={invoiceStats.approved}
                       prefix={<CheckCircleOutlined />}
-                      valueStyle={{ color: '#52c41a' }}
+                      valueStyle={{ color: '#52c41a', fontSize: '20px' }}
                     />
                   </Card>
                 </Col>
-                <Col span={6}>
-                  <Card>
+                <Col xs={24} sm={12} lg={6}>
+                  <Card size="small">
+                    <Statistic
+                      title="Paid"
+                      value={invoiceStats.paid}
+                      prefix={<DollarOutlined />}
+                      valueStyle={{ color: '#1890ff', fontSize: '20px' }}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12} lg={6}>
+                  <Card size="small">
                     <Statistic
                       title="Rejected"
                       value={invoiceStats.rejected}
                       prefix={<CloseCircleOutlined />}
-                      valueStyle={{ color: '#ff4d4f' }}
+                      valueStyle={{ color: '#ff4d4f', fontSize: '20px' }}
                     />
                   </Card>
                 </Col>
@@ -1033,8 +1057,10 @@ const UnifiedSupplierPortal = () => {
                   rowKey={(record) => record._id || record.id || record.key}
                   pagination={{
                     pageSize: 10,
-                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} invoices`
+                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`
                   }}
+                  scroll={{ x: 600 }}
+                  size="small"
                 />
               </Card>
             </TabPane>
@@ -1046,7 +1072,7 @@ const UnifiedSupplierPortal = () => {
           title={
             <Space>
               <TagOutlined />
-              RFQ Details - {selectedRfq?.title}
+              RFQ Details
             </Space>
           }
           open={rfqDetailModalVisible}
@@ -1056,7 +1082,7 @@ const UnifiedSupplierPortal = () => {
           }}
           footer={
             selectedRfq?.status === 'pending_quote' ? (
-              <Space>
+              <Space wrap>
                 <Button onClick={() => setRfqDetailModalVisible(false)}>
                   Close
                 </Button>
@@ -1077,7 +1103,8 @@ const UnifiedSupplierPortal = () => {
               </Button>
             )
           }
-          width={1200}
+          width={window.innerWidth < 768 ? '95%' : 1000}
+          style={{ maxWidth: '95vw' }}
         >
           {selectedRfq && (
             <div>
@@ -1348,8 +1375,8 @@ const UnifiedSupplierPortal = () => {
             quoteForm.resetFields();
           }}
           footer={null}
-          width={1400}
-          style={{ top: 20 }}
+          width={window.innerWidth < 768 ? '95%' : 1200}
+          style={{ maxWidth: '95vw', top: 20 }}
         >
           {selectedRfq && (
             <Form
@@ -1594,11 +1621,12 @@ const UnifiedSupplierPortal = () => {
             form.resetFields();
           }}
           footer={null}
-          width={600}
+          width={window.innerWidth < 576 ? '90%' : 600}
+          style={{ maxWidth: '90vw' }}
         >
           <Alert
-            message="Invoice Upload Requirements"
-            description="Please ensure the PO number follows the format: PO-XX########-X (e.g., PO-NG010000000-1)"
+            message="Invoice Upload Guidance"
+            description="PO and Invoice numbers can use any format. Recommended PO format: PO-YYYY-MM-0000 (e.g., PO-2026-01-0001). Click 'Suggest' to auto-fill."
             type="info"
             showIcon
             style={{ marginBottom: '16px' }}
@@ -1612,17 +1640,17 @@ const UnifiedSupplierPortal = () => {
             <Form.Item
               name="poNumber"
               label="Purchase Order Number (PO)*"
-              rules={[
-                { required: true, message: 'Please enter PO number' },
-                {
-                  pattern: /^PO-\w{2}\d{8,12}-\d+$/i,
-                  message: 'PO number format should be: PO-XX########-X (e.g., PO-NG010000000-1)'
-                }
-              ]}
+              rules={[{ required: true, message: 'Please enter PO number' }]}
             >
-              <Input 
-                placeholder="e.g., PO-NG010000000-1" 
+              <Input
+                placeholder="e.g., PO-2026-01-0001"
                 style={{ textTransform: 'uppercase' }}
+                suffix={(
+                  <Button type="link" onClick={() => {
+                    const suggested = generatePONumber();
+                    form.setFieldsValue({ poNumber: suggested });
+                  }}>Suggest</Button>
+                )}
               />
             </Form.Item>
 
@@ -1631,7 +1659,15 @@ const UnifiedSupplierPortal = () => {
               label="Invoice Number*"
               rules={[{ required: true, message: 'Please enter invoice number' }]}
             >
-              <Input placeholder="Enter invoice number" />
+              <Input
+                placeholder="Enter invoice number"
+                suffix={(
+                  <Button type="link" onClick={() => {
+                    const suggested = generateInvoiceNumber();
+                    form.setFieldsValue({ invoiceNumber: suggested });
+                  }}>Suggest</Button>
+                )}
+              />
             </Form.Item>
 
             <Form.Item
@@ -1704,11 +1740,12 @@ const UnifiedSupplierPortal = () => {
             setSelectedInvoice(null);
           }}
           footer={null}
-          width={800}
+          width={window.innerWidth < 768 ? '95%' : 800}
+          style={{ maxWidth: '95vw' }}
         >
           {selectedInvoice && (
             <div>
-              <Descriptions column={2} bordered>
+              <Descriptions column={window.innerWidth < 576 ? 1 : 2} bordered size="small">
                 <Descriptions.Item label="Invoice Number">
                   {selectedInvoice.invoiceNumber}
                 </Descriptions.Item>

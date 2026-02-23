@@ -66,7 +66,7 @@ const InventoryItemDetails = () => {
         throw new Error('No item ID provided');
       }
 
-      const response = await api.get(`/api/inventory/items/${itemId}`);
+      const response = await api.get(`/inventory/items/${itemId}`);
       
       console.log('Item details response:', response.data);
       
@@ -89,7 +89,7 @@ const InventoryItemDetails = () => {
 
   const fetchTransactionHistory = async () => {
     try {
-      const response = await api.get(`/api/inventory/items/${itemId}/transactions`, {
+      const response = await api.get(`/inventory/items/${itemId}/transactions`, {
         params: {
           limit: 20,
           sortBy: 'date',
@@ -107,7 +107,7 @@ const InventoryItemDetails = () => {
 
   const fetchStockMovement = async () => {
     try {
-      const response = await api.get(`/api/inventory/items/${itemId}/stock-movement`, {
+      const response = await api.get(`/inventory/items/${itemId}/stock-movement`, {
         params: {
           period: '30days'
         }

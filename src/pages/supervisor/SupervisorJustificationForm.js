@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { 
   Card, 
   Descriptions, 
@@ -257,7 +258,12 @@ const SupervisorJustificationForm = ({ requestId: propRequestId, onSuccess, isMo
             {request.requestType?.replace('-', ' ')?.toUpperCase()}
           </Descriptions.Item>
           <Descriptions.Item label="Original Purpose" span={2}>
-            {request.purpose}
+            <div 
+              dangerouslySetInnerHTML={{ 
+                __html: DOMPurify.sanitize(request.purpose || '') 
+              }}
+              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+            />
           </Descriptions.Item>
         </Descriptions>
       </Card>

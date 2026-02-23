@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import { 
   Descriptions, 
   Typography, 
@@ -98,9 +99,13 @@ const AdminRequestDetails = () => {
         <Descriptions.Item label="Request Type">
           {request.requestType?.replace('-', ' ') || 'N/A'}
         </Descriptions.Item>
-        <Descriptions.Item label="Purpose">{request.purpose}</Descriptions.Item>
-        <Descriptions.Item label="Business Justification">
-          {request.businessJustification}
+        <Descriptions.Item label="Purpose">
+          <div 
+            dangerouslySetInnerHTML={{ 
+              __html: DOMPurify.sanitize(request.purpose || '') 
+            }}
+            style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+          />
         </Descriptions.Item>
         <Descriptions.Item label="Urgency">
           <Tag color={

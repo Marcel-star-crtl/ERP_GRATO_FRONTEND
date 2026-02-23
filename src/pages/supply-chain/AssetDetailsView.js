@@ -50,7 +50,7 @@ const AssetDetailsView = () => {
   const fetchAssetDetails = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`/api/fixed-assets/${assetTag}`);
+      const response = await axios.get(`/fixed-assets/${assetTag}`);
       setAsset(response.data.data);
     } catch (error) {
       console.error('Error fetching asset details:', error);
@@ -62,7 +62,7 @@ const AssetDetailsView = () => {
 
   const handlePrintBarcode = async () => {
     try {
-      const response = await axios.get(`/api/fixed-assets/${assetTag}/barcode`);
+      const response = await axios.get(`/fixed-assets/${assetTag}/barcode`);
       const barcodeData = response.data.data.barcode;
       
       const printWindow = window.open('', '_blank');

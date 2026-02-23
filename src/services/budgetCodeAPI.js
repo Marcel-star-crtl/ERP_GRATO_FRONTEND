@@ -166,6 +166,39 @@ export const budgetCodeAPI = {
       console.error('Error deleting budget code:', error);
       throw error;
     }
+  },
+
+  /**
+   * Get detailed usage tracking for a budget code
+   */
+  getBudgetCodeUsageTracking: async (codeId, filters = {}) => {
+    try {
+      const queryParams = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          queryParams.append(key, value);
+        }
+      });
+
+      const url = `${API_BASE_URL}/budget-codes/${codeId}/usage-tracking${queryParams.toString() ? `?${queryParams}` : ''}`;
+      return await makeAuthenticatedRequest(url);
+    } catch (error) {
+      console.error('Error fetching budget code usage tracking:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get department-specific budget dashboard for department heads
+   */
+  getDepartmentBudgetDashboard: async () => {
+    try {
+      const url = `${API_BASE_URL}/budget-codes/department/dashboard`;
+      return await makeAuthenticatedRequest(url);
+    } catch (error) {
+      console.error('Error fetching department budget dashboard:', error);
+      throw error;
+    }
   }
 };
 

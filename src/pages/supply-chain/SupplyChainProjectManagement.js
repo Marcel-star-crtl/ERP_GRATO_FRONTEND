@@ -153,45 +153,50 @@ const EnhancedProjectManagement = () => {
         fetchMyMilestones();
     }, []);
 
-    // const fetchProjects = async (filters = {}) => {
-    //     try {
-    //         setLoading(true);
-    //         const result = await projectAPI.getProjects(filters);
-
-    //         if (result.success) {
-    //             setProjects(result.data || []);
-    //         } else {
-    //             message.error(result.message || 'Failed to fetch projects');
-    //         }
-    //     } catch (error) {
-    //         console.error('Error fetching projects:', error);
-    //         message.error('Failed to fetch projects');
-    //     } finally {
-    //         setLoading(false);
-    //     }
-    // };
 
     const fetchProjects = async (filters = {}) => {
         try {
             setLoading(true);
             
-            // Add draft filter based on active tab
-            const isDraftParam = activeTab === 'drafts' ? 'true' : 'false';
-            const queryParams = new URLSearchParams({
-                isDraft: isDraftParam,
-                ...filters
-            });
+            console.log('🔍 Fetching projects for tab:', activeTab);
             
-            const result = await projectAPI.getProjects(Object.fromEntries(queryParams));
+            // Build query params based on active tab
+            let queryParams = { ...filters };
+            
+            if (activeTab === 'drafts') {
+                queryParams.isDraft = 'true';
+            } else if (activeTab === 'all') {
+                // Don't filter by isDraft - show everything
+                delete queryParams.isDraft;
+            } else {
+                // For active, completed, overdue - only show non-drafts
+                queryParams.isDraft = 'false';
+            }
+            
+            console.log('📋 Query params:', queryParams);
+            
+            const result = await projectAPI.getProjects(queryParams);
+
+            console.log('📦 API Result:', {
+                success: result.success,
+                count: result.data?.length,
+                hasData: !!result.data
+            });
 
             if (result.success) {
-                setProjects(result.data || []);
+                const fetchedProjects = result.data || [];
+                console.log(`✅ Fetched ${fetchedProjects.length} projects`);
+                console.log('Sample project:', fetchedProjects[0]);
+                setProjects(fetchedProjects);
             } else {
+                console.error('❌ Fetch failed:', result.message);
                 message.error(result.message || 'Failed to fetch projects');
+                setProjects([]);
             }
         } catch (error) {
-            console.error('Error fetching projects:', error);
+            console.error('❌ Error fetching projects:', error);
             message.error('Failed to fetch projects');
+            setProjects([]);
         } finally {
             setLoading(false);
         }
@@ -596,10 +601,20 @@ const EnhancedProjectManagement = () => {
                     dueDate: milestone.dueDate ? milestone.dueDate.format('YYYY-MM-DD') : null,
                     weight: milestone.weight || 0,
                     assignedSupervisor: milestone.assignedSupervisor
-                }))
+                })),
+                isDraft: false  // This is a full submission, not a draft
             };
 
-            const result = await projectAPI.createProject(projectData);
+            const response = await fetch(`${API_BASE_URL}/projects`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(projectData)
+            });
+
+            const result = await response.json();
 
             if (result.success) {
                 message.success(`Project "${values.name}" created successfully!`);
@@ -621,6 +636,84 @@ const EnhancedProjectManagement = () => {
             setLoading(false);
         }
     };
+
+
+    // const handleCreateProject = async (values) => {
+    //     try {
+    //         setLoading(true);
+
+    //         if (!values.name || !values.description || !values.projectType || !values.priority || 
+    //             !values.department || !values.projectManager || !values.timeline) {
+    //             message.error('Please fill in all required fields');
+    //             return;
+    //         }
+
+    //         if (!values.timeline || values.timeline.length !== 2) {
+    //             message.error('Please select both start and end dates');
+    //             return;
+    //         }
+
+    //         if (!values.milestones || values.milestones.length === 0) {
+    //             message.error('At least one milestone is required');
+    //             return;
+    //         }
+
+    //         const totalWeight = values.milestones.reduce((sum, m) => sum + (m.weight || 0), 0);
+    //         if (totalWeight !== 100) {
+    //             message.error(`Milestone weights must sum to 100%. Current total: ${totalWeight}%`);
+    //             return;
+    //         }
+
+    //         for (const milestone of values.milestones) {
+    //             if (!milestone.assignedSupervisor) {
+    //                 message.error(`Milestone "${milestone.title}" must have an assigned supervisor`);
+    //                 return;
+    //             }
+    //         }
+
+    //         const projectData = {
+    //             name: values.name,
+    //             description: values.description,
+    //             projectType: values.projectType,
+    //             priority: values.priority,
+    //             department: values.department,
+    //             projectManager: values.projectManager,
+    //             timeline: {
+    //                 startDate: values.timeline[0].format('YYYY-MM-DD'),
+    //                 endDate: values.timeline[1].format('YYYY-MM-DD')
+    //             },
+    //             budgetCodeId: values.budgetCodeId || null,
+    //             milestones: values.milestones.map(milestone => ({
+    //                 title: milestone.title,
+    //                 description: milestone.description || '',
+    //                 dueDate: milestone.dueDate ? milestone.dueDate.format('YYYY-MM-DD') : null,
+    //                 weight: milestone.weight || 0,
+    //                 assignedSupervisor: milestone.assignedSupervisor
+    //             }))
+    //         };
+
+    //         const result = await projectAPI.createProject(projectData);
+
+    //         if (result.success) {
+    //             message.success(`Project "${values.name}" created successfully!`);
+    //             setProjectModalVisible(false);
+    //             form.resetFields();
+
+    //             await Promise.all([
+    //                 fetchProjects(),
+    //                 fetchStats(),
+    //                 fetchBudgetCodes()
+    //             ]);
+    //         } else {
+    //             message.error(result.message || 'Failed to create project');
+    //         }
+    //     } catch (error) {
+    //         console.error('Error creating project:', error);
+    //         message.error('Failed to create project');
+    //     } finally {
+    //         setLoading(false);
+    //     }
+    // };
 
 
     const handleUpdateProject = async (values) => {
@@ -832,6 +925,7 @@ const EnhancedProjectManagement = () => {
         }
     };
 
+
     // const openProjectModal = (project = null) => {
     //     setEditingProject(project);
     //     if (project) {
@@ -841,13 +935,14 @@ const EnhancedProjectManagement = () => {
     //             projectType: project.projectType,
     //             priority: project.priority,
     //             department: project.department,
-    //             projectManager: project.projectManager?._id,
+    //             projectManager: project.projectManager?._id || project.projectManager,
     //             budgetCodeId: project.budgetCode?._id,
     //             timeline: [
     //                 moment(project.timeline?.startDate),
     //                 moment(project.timeline?.endDate)
     //             ],
     //             milestones: project.milestones?.map(milestone => ({
+    //                 ...milestone,
     //                 title: milestone.title,
     //                 description: milestone.description || '',
     //                 dueDate: milestone.dueDate ? moment(milestone.dueDate) : null,
@@ -861,6 +956,7 @@ const EnhancedProjectManagement = () => {
     //     setProjectModalVisible(true);
     // };
 
+
     const openProjectModal = (project = null) => {
         setEditingProject(project);
         if (project) {
@@ -871,7 +967,7 @@ const EnhancedProjectManagement = () => {
                 priority: project.priority,
                 department: project.department,
                 projectManager: project.projectManager?._id || project.projectManager,
-                budgetCodeId: project.budgetCode?._id,
+                budgetCodeId: project.budgetCodeId?._id || project.budgetCodeId, // FIX THIS LINE
                 timeline: [
                     moment(project.timeline?.startDate),
                     moment(project.timeline?.endDate)
@@ -913,54 +1009,129 @@ const EnhancedProjectManagement = () => {
         return colors[priority] || 'default';
     };
 
+    // const getFilteredProjects = () => {
+    //     if (activeTab === 'drafts') {
+    //         return projects.filter(p => p.isDraft);
+    //     }
+        
+    //     switch (activeTab) {
+    //         case 'active':
+    //             return projects.filter(p => !p.isDraft && ['Planning', 'Approved', 'In Progress'].includes(p.status));
+    //         case 'completed':
+    //             return projects.filter(p => !p.isDraft && p.status === 'Completed');
+    //         case 'overdue':
+    //             return projects.filter(p => {
+    //                 if (p.isDraft || p.status === 'Completed') return false;
+    //                 return moment(p.timeline?.endDate).isBefore(moment());
+    //             });
+    //         default:
+    //             return projects.filter(p => !p.isDraft);
+    //     }
+    // };
+
+
     const getFilteredProjects = () => {
+        console.log('🔍 Filtering projects for tab:', activeTab);
+        console.log('Total projects in state:', projects.length);
+        
+        let filtered = [];
+        
         if (activeTab === 'drafts') {
-            return projects.filter(p => p.isDraft);
+            filtered = projects.filter(p => p.isDraft === true);
+        } else if (activeTab === 'active') {
+            filtered = projects.filter(p => 
+                !p.isDraft && 
+                ['Planning', 'Approved', 'In Progress'].includes(p.status)
+            );
+        } else if (activeTab === 'completed') {
+            filtered = projects.filter(p => 
+                !p.isDraft && 
+                p.status === 'Completed'
+            );
+        } else if (activeTab === 'overdue') {
+            filtered = projects.filter(p => {
+                if (p.isDraft || p.status === 'Completed') return false;
+                return moment(p.timeline?.endDate).isBefore(moment());
+            });
+        } else {
+            // 'all' tab - show everything except drafts (or include drafts based on your needs)
+            filtered = projects.filter(p => !p.isDraft);
         }
         
-        switch (activeTab) {
-            case 'active':
-                return projects.filter(p => !p.isDraft && ['Planning', 'Approved', 'In Progress'].includes(p.status));
-            case 'completed':
-                return projects.filter(p => !p.isDraft && p.status === 'Completed');
-            case 'overdue':
-                return projects.filter(p => {
-                    if (p.isDraft || p.status === 'Completed') return false;
-                    return moment(p.timeline?.endDate).isBefore(moment());
-                });
-            default:
-                return projects.filter(p => !p.isDraft);
-        }
+        console.log(`📊 Filtered ${filtered.length} projects for tab "${activeTab}"`);
+        return filtered;
     };
 
 
     const columns = [
+        // {
+        //     title: 'Project Details',
+        //     key: 'details',
+        //     render: (_, record) => (
+        //         <div>
+        //             <Space align="center">
+        //                 <Text strong>{record.name}</Text>
+        //                 {record.isDraft && (
+        //                     <Tag color="orange" icon={<ClockCircleOutlined />}>
+        //                         DRAFT
+        //                     </Tag>
+        //                 )}
+        //             </Space>
+        //             <br />
+        //             <Text type="secondary" style={{ fontSize: '12px' }}>
+        //                 {record.code || 'No code assigned yet'}
+        //             </Text>
+        //             <br />
+        //             <Tag size="small" color="blue">{record.projectType}</Tag>
+        //             <Tag size="small" color={getPriorityColor(record.priority)}>
+        //                 {record.priority}
+        //             </Tag>
+        //         </div>
+        //     ),
+        //     width: 300
+        // },
         {
-            title: 'Project Details',
-            key: 'details',
-            render: (_, record) => (
-                <div>
-                    <Space align="center">
-                        <Text strong>{record.name}</Text>
-                        {record.isDraft && (
-                            <Tag color="orange" icon={<ClockCircleOutlined />}>
-                                DRAFT
-                            </Tag>
-                        )}
-                    </Space>
-                    <br />
-                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                        {record.code || 'No code assigned yet'}
-                    </Text>
-                    <br />
-                    <Tag size="small" color="blue">{record.projectType}</Tag>
-                    <Tag size="small" color={getPriorityColor(record.priority)}>
-                        {record.priority}
+    title: 'Project Details',
+    key: 'details',
+    render: (_, record) => (
+        <div>
+            <Space align="center">
+                <Text strong>{record.name}</Text>
+                {record.isDraft && (
+                    <Tag color="orange" icon={<ClockCircleOutlined />}>
+                        DRAFT
                     </Tag>
-                </div>
-            ),
-            width: 300
-        },
+                )}
+                {(!record.code || record.code === 'NO CODE') && !record.isDraft && (
+                    <Tag color="red" icon={<WarningOutlined />}>
+                        NO CODE
+                    </Tag>
+                )}
+            </Space>
+            <br />
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+                {record.code && record.code !== 'NO CODE' 
+                    ? record.code 
+                    : <Text type="warning">Code not assigned</Text>
+                }
+            </Text>
+            <br />
+            <Tag size="small" color="blue">{record.projectType}</Tag>
+            <Tag size="small" color={getPriorityColor(record.priority)}>
+                {record.priority}
+            </Tag>
+            {record.budgetCodeId && (
+                <>
+                    <br />
+                    <Tag size="small" color="green" icon={<DashboardOutlined />}>
+                        {record.budgetCodeId.code}
+                    </Tag>
+                </>
+            )}
+        </div>
+    ),
+    width: 300
+},
         {
             title: 'Project Manager',
             key: 'manager',
@@ -1054,51 +1225,6 @@ const EnhancedProjectManagement = () => {
             ),
             width: 120
         },
-        // {
-        //     title: 'Actions',
-        //     key: 'actions',
-        //     render: (_, record) => (
-        //         <Space size="small">
-        //             <Tooltip title="View Details">
-        //                 <Button
-        //                     size="small"
-        //                     icon={<EyeOutlined />}
-        //                     onClick={() => {
-        //                         setSelectedProject(record);
-        //                         setDetailsModalVisible(true);
-        //                     }}
-        //                 />
-        //             </Tooltip>
-        //             <Tooltip title="Analytics">
-        //                 <Button
-        //                     size="small"
-        //                     type="primary"
-        //                     icon={<BarChartOutlined />}
-        //                     onClick={() => openAnalyticsModal(record)}
-        //                 />
-        //             </Tooltip>
-        //             <Tooltip title="Edit Project">
-        //                 <Button
-        //                     size="small"
-        //                     icon={<EditOutlined />}
-        //                     onClick={() => openProjectModal(record)}
-        //                 />
-        //             </Tooltip>
-        //             <Tooltip title="Update Status">
-        //                 <Button
-        //                     size="small"
-        //                     type="primary"
-        //                     icon={<PlayCircleOutlined />}
-        //                     onClick={() => openStatusModal(record)}
-        //                 >
-        //                     Status
-        //                 </Button>
-        //             </Tooltip>
-        //         </Space>
-        //     ),
-        //     width: 240,
-        //     fixed: 'right'
-        // }
         {
             title: 'Actions',
             key: 'actions',
@@ -1506,26 +1632,6 @@ const EnhancedProjectManagement = () => {
             </Form.List>
 
             <Divider />
-
-            {/* <Form.Item>
-                <Space>
-                    <Button onClick={() => {
-                        setProjectModalVisible(false);
-                        setEditingProject(null);
-                        form.resetFields();
-                    }}>
-                        Cancel
-                    </Button>
-                    <Button
-                        type="primary"
-                        htmlType="submit"
-                        loading={loading}
-                        icon={editingProject ? <EditOutlined /> : <PlusOutlined />}
-                    >
-                        {editingProject ? 'Update Project' : 'Create Project'}
-                    </Button>
-                </Space>
-            </Form.Item> */}
 
             <Form.Item style={{ marginBottom: 0 }}>
                 <Space>
@@ -3458,18 +3564,31 @@ const EnhancedProjectManagement = () => {
                             </Col>
                             <Col span={12}>
                                 <Card size="small" title="Budget Information">
-                                    {selectedProject.budgetCode ? (
+                                    {selectedProject.budgetCodeId ? (
                                         <Descriptions column={1} size="small">
                                             <Descriptions.Item label="Budget Code">
                                                 <Tag color="blue">
-                                                    {selectedProject.budgetCode.code}
+                                                    {selectedProject.budgetCodeId.code}
                                                 </Tag>
                                             </Descriptions.Item>
                                             <Descriptions.Item label="Budget Name">
-                                                {selectedProject.budgetCode.name}
+                                                {selectedProject.budgetCodeId.name}
                                             </Descriptions.Item>
                                             <Descriptions.Item label="Available Funds">
-                                                XAF {(selectedProject.budgetCode.available || 0).toLocaleString()}
+                                                XAF {(selectedProject.budgetCodeId.remaining || selectedProject.budgetCodeId.available || 0).toLocaleString()}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="Total Budget">
+                                                XAF {(selectedProject.budgetCodeId.budget || 0).toLocaleString()}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="Utilization">
+                                                <Progress 
+                                                    percent={parseFloat(selectedProject.budgetCodeId.utilizationRate || 0)} 
+                                                    size="small"
+                                                    status={
+                                                        selectedProject.budgetCodeId.utilizationStatus === 'healthy' ? 'success' :
+                                                        selectedProject.budgetCodeId.utilizationStatus === 'warning' ? 'normal' : 'exception'
+                                                    }
+                                                />
                                             </Descriptions.Item>
                                         </Descriptions>
                                     ) : (

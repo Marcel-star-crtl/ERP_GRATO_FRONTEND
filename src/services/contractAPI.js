@@ -12,6 +12,17 @@ class ContractApiService {
     }
   }
 
+  async getApprovedSuppliers() {
+    try {
+      const response = await api.get('/suppliers/admin/all', {
+        params: { status: 'approved' }
+      });
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
   async getContractById(contractId) {
     try {
       const response = await api.get(`/contracts/${contractId}`);

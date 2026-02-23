@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import {
   Card,
   Form,
@@ -37,7 +38,8 @@ import {
   DownloadOutlined,
   EyeOutlined,
   ClockCircleOutlined,
-  UserOutlined
+  UserOutlined,
+  HourglassOutlined
 } from '@ant-design/icons';
 import { cashRequestAPI } from '../../services/cashRequestAPI';
 import { budgetCodeAPI } from '../../services/budgetCodeAPI';
@@ -57,9 +59,107 @@ const FinanceCashApprovalForm = () => {
   const [budgetCodes, setBudgetCodes] = useState([]);
   const [selectedBudgetCode, setSelectedBudgetCode] = useState(null);
   
-  // Disbursement state
+  const [canApprove, setCanApprove] = useState(false);
+  const [canDisburse, setCanDisburse] = useState(false);
+  const [isAwaitingCEO, setIsAwaitingCEO] = useState(false);
+  
   const [enableDisbursement, setEnableDisbursement] = useState(false);
   const [disbursementAmount, setDisbursementAmount] = useState(0);
+  const [downloadingPDF, setDownloadingPDF] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    try {
+      setDownloadingPDF(true);
+      message.loading({ content: 'Generating PDF...', key: 'pdf-download' });
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        message.error('Authentication required');
+        return;
+      }
+
+      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+      const pdfUrl = `${apiBaseUrl}/cash-requests/${requestId}/pdf`;
+
+      const response = await fetch(pdfUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to generate PDF');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Cash_Request_${request.displayId || requestId.slice(-6).toUpperCase()}_${Date.now()}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      message.success({ content: 'PDF downloaded successfully!', key: 'pdf-download' });
+    } catch (error) {
+      console.error('PDF download error:', error);
+      message.error({ content: error.message || 'Failed to download PDF', key: 'pdf-download' });
+    } finally {
+      setDownloadingPDF(false);
+    }
+  };
+
+  // ✅ FLEXIBLE: Get true status (same as list component)
+  const getTrueStatus = useCallback((reqData) => {
+    if (!reqData || !reqData.approvalChain) return reqData.status;
+
+    const approvalChain = reqData.approvalChain;
+    
+    // If backend status is pending_finance, trust it
+    if (reqData.status === 'pending_finance') {
+      return 'pending_finance';
+    }
+    
+    // ✅ Check if Finance step is pending (by role, not level)
+    const financeStep = approvalChain.find(step => 
+      step.approver?.role === 'Finance Officer' ||
+      step.approver?.email?.toLowerCase() === 'ranibellmambo@gratoengineering.com'
+    );
+    
+    // If Finance step exists and is pending
+    if (financeStep && financeStep.status === 'pending') {
+      const previousSteps = approvalChain.filter(s => s.level < financeStep.level);
+      const allPreviousApproved = previousSteps.every(s => s.status === 'approved');
+      
+      if (allPreviousApproved) {
+        console.log(`✅ FORM OVERRIDE: Request ${reqData._id.slice(-6)} - Finance step is pending`);
+        return 'pending_finance';
+      }
+    }
+    
+    // Find Head of Business step
+    const hobStep = approvalChain.find(step => 
+      step.approver?.role === 'Head of Business' ||
+      step.approver?.email?.toLowerCase() === 'kelvin.eyong@gratoglobal.com'
+    );
+
+    // Check if Finance approved but HOB pending
+    if (hobStep && hobStep.status === 'pending' && financeStep && financeStep.status === 'approved') {
+      console.log(`✅ FORM OVERRIDE: Request ${reqData._id.slice(-6)} - Finance approved, awaiting HOB`);
+      return 'pending_head_of_business';
+    }
+
+    // If all approved
+    const allApproved = approvalChain.every(step => step.status === 'approved');
+    if (allApproved && reqData.status === 'approved') {
+      return 'approved';
+    }
+
+    return reqData.status;
+  }, []);
 
   useEffect(() => {
     fetchRequestDetails();
@@ -75,19 +175,67 @@ const FinanceCashApprovalForm = () => {
         const reqData = response.data;
         setRequest(reqData);
         
+        // ✅ Get TRUE status using flexible logic
+        const trueStatus = getTrueStatus(reqData);
+        
+        console.log('✅ Finance Form - Request Details:', {
+          requestId: reqData._id.slice(-6),
+          backendStatus: reqData.status,
+          trueStatus: trueStatus,
+          approvalChain: reqData.approvalChain?.map(s => ({
+            level: s.level,
+            role: s.approver?.role,
+            status: s.status
+          }))
+        });
+        
+        // ✅ FLEXIBLE: Find Finance step by role/email, not level
+        const financeStep = reqData.approvalChain?.find(step =>
+          (step.approver?.role === 'Finance Officer' ||
+           step.approver?.email?.toLowerCase() === 'ranibellmambo@gratoengineering.com')
+        );
+        
+        console.log('Finance step found:', financeStep);
+        
+        // Finance can APPROVE if Finance step is pending and previous steps approved
+        let canFinanceApprove = false;
+        if (financeStep && financeStep.status === 'pending') {
+          const previousSteps = reqData.approvalChain.filter(s => s.level < financeStep.level);
+          const allPreviousApproved = previousSteps.every(s => s.status === 'approved');
+          canFinanceApprove = allPreviousApproved;
+        }
+        
+        setCanApprove(canFinanceApprove);
+        
+        // Finance can DISBURSE if TRUE status is 'approved' or 'partially_disbursed'
+        const canFinanceDisburse = ['approved', 'partially_disbursed'].includes(trueStatus);
+        setCanDisburse(canFinanceDisburse);
+        
+        // Request is awaiting HOB
+        const awaitingCEO = trueStatus === 'pending_head_of_business';
+        setIsAwaitingCEO(awaitingCEO);
+        
+        console.log('✅ Finance Actions:', {
+          canApprove: canFinanceApprove,
+          canDisburse: canFinanceDisburse,
+          awaitingCEO
+        });
+        
         // Calculate remaining balance
         const amountToApprove = reqData.amountRequested;
         const alreadyDisbursed = reqData.totalDisbursed || 0;
         const remaining = amountToApprove - alreadyDisbursed;
         
-        // Set initial form values
-        form.setFieldsValue({
-          decision: 'approved',
-          amountApproved: amountToApprove
-        });
-        
-        // Initialize disbursement amount to remaining balance
-        setDisbursementAmount(Math.max(0, remaining));
+        // Set initial form values based on action type
+        if (canFinanceApprove) {
+          form.setFieldsValue({
+            decision: 'approved',
+            amountApproved: amountToApprove
+          });
+        } else if (canFinanceDisburse) {
+          setEnableDisbursement(true);
+          setDisbursementAmount(Math.max(0, remaining));
+        }
       } else {
         message.error('Failed to load request details');
         navigate('/finance/cash-approvals');
@@ -100,7 +248,6 @@ const FinanceCashApprovalForm = () => {
       setLoading(false);
     }
   };
-  
 
   const fetchBudgetCodes = async () => {
     try {
@@ -123,78 +270,24 @@ const FinanceCashApprovalForm = () => {
     setSelectedBudgetCode(budgetCode);
   };
 
-  // const handleSubmit = async (values) => {
-  //   try {
-  //     setSubmitting(true);
-
-  //     const isReimbursement = request.requestMode === 'reimbursement';
-  //     const decision = values.decision;
-
-  //     if (decision === 'approved' && !values.budgetCodeId) {
-  //       message.error('Please select a budget code for approval');
-  //       return;
-  //     }
-
-  //     const payload = {
-  //       decision: decision === 'approved' ? 'approved' : 'rejected',
-  //       comments: values.comments || '',
-  //       amountApproved: decision === 'approved' ? parseFloat(values.amountApproved) : null,
-  //       budgetCodeId: decision === 'approved' ? values.budgetCodeId : null
-  //     };
-
-  //     if (decision === 'approved' && enableDisbursement && disbursementAmount > 0) {
-  //       payload.disbursementAmount = parseFloat(disbursementAmount);
-  //     }
-
-  //     console.log('Submitting finance decision:', payload);
-
-  //     const response = await cashRequestAPI.processFinanceDecision(requestId, payload);
-
-  //     if (response.success) {
-  //       const disbursementText = payload.disbursementAmount 
-  //         ? ` and XAF ${payload.disbursementAmount.toLocaleString()} disbursed`
-  //         : '';
-        
-  //       message.success({
-  //         content: `${isReimbursement ? 'Reimbursement' : 'Cash request'} ${decision === 'approved' ? 'approved' : 'rejected'} successfully${disbursementText}`,
-  //         duration: 5
-  //       });
-        
-  //       setTimeout(() => {
-  //         navigate('/finance/cash-approvals');
-  //       }, 1500);
-  //     } else {
-  //       throw new Error(response.message || 'Failed to process decision');
-  //     }
-  //   } catch (error) {
-  //     console.error('Submit error:', error);
-  //     message.error(error.response?.data?.message || 'Failed to process approval');
-  //   } finally {
-  //     setSubmitting(false);
-  //   }
-  // };
-
-
   const handleSubmit = async (values) => {
     try {
       setSubmitting(true);
 
       const isReimbursement = request.requestMode === 'reimbursement';
-      const decision = values.decision;
 
-      // ✅ FIX: Check if this is an additional disbursement
-      const isAdditionalDisbursement = 
-        ['approved', 'partially_disbursed'].includes(request.status) && 
-        enableDisbursement && 
-        disbursementAmount > 0;
-
-      if (isAdditionalDisbursement) {
-        console.log('💰 Processing additional disbursement via dedicated endpoint');
+      // Disbursement mode
+      if (canDisburse) {
+        console.log('💰 Processing disbursement (HOB already approved)');
         
-        // Use processDisbursement instead of processFinanceDecision
+        if (!disbursementAmount || disbursementAmount <= 0) {
+          message.error('Please enter a valid disbursement amount');
+          return;
+        }
+        
         const response = await cashRequestAPI.processDisbursement(requestId, {
           amount: disbursementAmount,
-          notes: values.comments || 'Additional disbursement by Finance'
+          notes: values.disbursementNotes || 'Disbursement by Finance'
         });
 
         if (response.success) {
@@ -210,46 +303,47 @@ const FinanceCashApprovalForm = () => {
           throw new Error(response.message || 'Failed to process disbursement');
         }
         
-        return; // Exit early
-      }
-
-      // ✅ ORIGINAL APPROVAL LOGIC (for pending_finance requests)
-      if (decision === 'approved' && !values.budgetCodeId) {
-        message.error('Please select a budget code for approval');
         return;
       }
 
-      const payload = {
-        decision: decision === 'approved' ? 'approved' : 'rejected',
-        comments: values.comments || '',
-        amountApproved: decision === 'approved' ? parseFloat(values.amountApproved) : null,
-        budgetCodeId: decision === 'approved' ? values.budgetCodeId : null
-      };
+      // Approval mode
+      if (canApprove) {
+        const decision = values.decision;
+        
+        if (decision === 'approved' && !values.budgetCodeId) {
+          message.error('Please select a budget code for approval');
+          return;
+        }
 
-      if (decision === 'approved' && enableDisbursement && disbursementAmount > 0) {
-        payload.disbursementAmount = parseFloat(disbursementAmount);
+        const payload = {
+          decision: decision === 'approved' ? 'approved' : 'rejected',
+          comments: values.comments || '',
+          amountApproved: decision === 'approved' ? parseFloat(values.amountApproved) : null,
+          budgetCodeId: decision === 'approved' ? values.budgetCodeId : null
+        };
+
+        console.log('✅ Submitting finance approval:', payload);
+
+        const response = await cashRequestAPI.processFinanceDecision(requestId, payload);
+
+        if (response.success) {
+          message.success({
+            content: `${isReimbursement ? 'Reimbursement' : 'Cash request'} ${decision === 'approved' ? 'approved and forwarded to Head of Business' : 'rejected'}`,
+            duration: 5
+          });
+          
+          setTimeout(() => {
+            navigate('/finance/cash-approvals');
+          }, 1500);
+        } else {
+          throw new Error(response.message || 'Failed to process decision');
+        }
+        
+        return;
       }
 
-      console.log('Submitting finance decision:', payload);
-
-      const response = await cashRequestAPI.processFinanceDecision(requestId, payload);
-
-      if (response.success) {
-        const disbursementText = payload.disbursementAmount 
-          ? ` and XAF ${payload.disbursementAmount.toLocaleString()} disbursed`
-          : '';
-        
-        message.success({
-          content: `${isReimbursement ? 'Reimbursement' : 'Cash request'} ${decision === 'approved' ? 'approved' : 'rejected'} successfully${disbursementText}`,
-          duration: 5
-        });
-        
-        setTimeout(() => {
-          navigate('/finance/cash-approvals');
-        }, 1500);
-      } else {
-        throw new Error(response.message || 'Failed to process decision');
-      }
+      message.error('Invalid action for current request status');
+      
     } catch (error) {
       console.error('Submit error:', error);
       message.error(error.response?.data?.message || 'Failed to process request');
@@ -339,7 +433,6 @@ const FinanceCashApprovalForm = () => {
     }
   ];
 
-  // ✅ CALCULATE DISBURSEMENT INFO
   const amountRequested = request.amountRequested || 0;
   const totalDisbursed = request.totalDisbursed || 0;
   const remainingBalance = request.remainingBalance || (amountRequested - totalDisbursed);
@@ -354,12 +447,157 @@ const FinanceCashApprovalForm = () => {
     ? Math.round(((totalDisbursed + disbursementAmount) / amountRequested) * 100) 
     : 0;
 
+  const trueStatus = getTrueStatus(request);
+
   return (
-    <div style={{ padding: '24px' }}>
-      <Card>
-        <Title level={3}>
-          <BankOutlined /> {isReimbursement ? 'Reimbursement' : 'Cash Advance'} Approval
-        </Title>
+    <>
+      <style>
+        {`
+          /* Optimize scrolling performance with hardware acceleration */
+          .ant-card-body,
+          .ant-modal-body,
+          .ant-table-body,
+          .ant-form {
+            -webkit-overflow-scrolling: touch;
+            transform: translateZ(0);
+            will-change: transform;
+          }
+          
+          /* Remove smooth scroll behavior for better performance */
+          * {
+            scroll-behavior: auto !important;
+          }
+          
+          /* Optimize rendering with CSS containment - exclude interactive elements */
+          .ant-table-tbody > tr {
+            contain: layout style;
+          }
+          
+          /* Custom scrollbar styling */
+          ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+          }
+          
+          ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+          }
+          
+          ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+          }
+          
+          ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+          }
+          
+          /* Optimize table scrolling */
+          .ant-table-body {
+            overflow-y: auto !important;
+            transform: translateZ(0);
+            -webkit-overflow-scrolling: touch;
+          }
+          
+          /* Ensure dropdowns render correctly above all content */
+          .ant-select-dropdown,
+          .ant-picker-dropdown,
+          .ant-dropdown,
+          .ant-popover,
+          .ant-tooltip {
+            transform: none !important;
+            will-change: auto !important;
+            contain: none !important;
+            z-index: 9999 !important;
+          }
+          
+          /* Ensure modal content allows dropdowns to show */
+          .ant-modal-body,
+          .ant-modal-content {
+            overflow: visible !important;
+          }
+          
+          /* Ensure form items don't hide dropdowns */
+          .ant-form-item {
+            position: relative;
+            z-index: auto;
+          }
+          
+          /* Reduce animations for better scroll performance */
+          .ant-input,
+          .ant-select,
+          .ant-input-number,
+          .ant-picker {
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          }
+          
+          /* Fast modal transitions */
+          .ant-modal {
+            transition: opacity 0.2s ease;
+          }
+        `}
+      </style>
+      
+      <div style={{ padding: '24px' }}>
+        <Card>
+          {/* <Title level={3}>
+            <BankOutlined /> {isReimbursement ? 'Reimbursement' : 'Cash Advance'} 
+            {canApprove && ' - Finance Approval'}
+            {canDisburse && ' - Disbursement'}
+            {isAwaitingCEO && ' - Awaiting HOB'}
+          </Title> */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <Title level={3} style={{ margin: 0 }}>
+              <BankOutlined /> {isReimbursement ? 'Reimbursement' : 'Cash Advance'} 
+              {canApprove && ' - Finance Approval'}
+              {canDisburse && ' - Disbursement'}
+              {isAwaitingCEO && ' - Awaiting HOB'}
+            </Title>
+            
+            {/* PDF Download Button - Visible for disbursed/completed requests */}
+            {['partially_disbursed', 'fully_disbursed', 'completed', 
+              'justification_pending_supervisor', 'justification_pending_departmental_head',
+              'justification_pending_hr', 'justification_pending_finance'].includes(trueStatus) && (
+              <Tooltip title="Download official PDF with approval chain and disbursement details">
+                <Button
+                  type="primary"
+                  danger
+                  icon={<DownloadOutlined />}
+                  onClick={handleDownloadPDF}
+                  loading={downloadingPDF}
+                  size="large"
+                >
+                  {downloadingPDF ? 'Generating PDF...' : 'Download PDF'}
+                </Button>
+              </Tooltip>
+            )}
+          </div>
+
+          {/* Status-based alerts */}
+          {isAwaitingCEO && (
+            <Alert
+              message="Awaiting Head of Business Approval"
+              description="You have approved this request and allocated budget. It is now awaiting final approval from the Head of Business before disbursement can proceed."
+              type="info"
+              icon={<HourglassOutlined />}
+              showIcon
+              closable
+              style={{ marginBottom: '24px' }}
+            />
+          )}
+
+          {canDisburse && (
+          <Alert
+            message="Ready for Disbursement"
+            description="This request has been fully approved (including by Head of Business). You can now disburse funds to the employee."
+            type="success"
+            icon={<CheckCircleOutlined />}
+            showIcon
+            closable
+            style={{ marginBottom: '24px' }}
+          />
+        )}
 
         {/* Request Type Badge */}
         {isReimbursement && (
@@ -373,7 +611,7 @@ const FinanceCashApprovalForm = () => {
           />
         )}
 
-        {/* ✅ DISBURSEMENT STATUS CARD (NEW) */}
+        {/* Disbursement Status Card - keep same as before */}
         {hasExistingDisbursements && (
           <Card 
             size="small" 
@@ -391,6 +629,7 @@ const FinanceCashApprovalForm = () => {
             }
             style={{ marginBottom: '24px', backgroundColor: '#f9f9f9' }}
           >
+            {/* Keep existing disbursement status UI */}
             <Row gutter={16} style={{ marginBottom: '16px' }}>
               <Col span={6}>
                 <Statistic
@@ -436,7 +675,7 @@ const FinanceCashApprovalForm = () => {
               strokeColor={disbursementProgress === 100 ? '#52c41a' : '#1890ff'}
             />
 
-            {/* ✅ DISBURSEMENT HISTORY (NEW) */}
+            {/* Disbursement History */}
             {request.disbursements && request.disbursements.length > 0 && (
               <>
                 <Divider style={{ margin: '16px 0' }} />
@@ -460,6 +699,27 @@ const FinanceCashApprovalForm = () => {
                         <Text strong style={{ color: '#1890ff' }}>
                           XAF {disbursement.amount?.toLocaleString()}
                         </Text>
+                        <br />
+                        {disbursement.acknowledged ? (
+                          <>
+                            <Tag color="green">Acknowledged</Tag>
+                            {disbursement.acknowledgmentDate && (
+                              <Text type="secondary" style={{ fontSize: '11px' }}>
+                                <ClockCircleOutlined /> {new Date(disbursement.acknowledgmentDate).toLocaleString('en-GB')}
+                              </Text>
+                            )}
+                            {disbursement.acknowledgmentNotes && (
+                              <>
+                                <br />
+                                <Text italic style={{ fontSize: '11px' }}>
+                                  "{disbursement.acknowledgmentNotes}"
+                                </Text>
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <Tag color="orange">Not Acknowledged</Tag>
+                        )}
                         {disbursement.notes && (
                           <>
                             <br />
@@ -470,10 +730,20 @@ const FinanceCashApprovalForm = () => {
                     </Timeline.Item>
                   ))}
                 </Timeline>
+                <Divider style={{ margin: '16px 0' }} />
+                  <Button
+                    type="dashed"
+                    block
+                    icon={<DownloadOutlined />}
+                    onClick={handleDownloadPDF}
+                    loading={downloadingPDF}
+                  >
+                    {downloadingPDF ? 'Generating PDF...' : 'Download Complete Report (PDF)'}
+                  </Button>
               </>
             )}
 
-            {remainingBalance > 0 && (
+            {remainingBalance > 0 && canDisburse && (
               <Alert
                 message="Action Required"
                 description={`This request still has XAF ${remainingBalance.toLocaleString()} remaining to be disbursed.`}
@@ -485,6 +755,129 @@ const FinanceCashApprovalForm = () => {
             )}
           </Card>
         )}
+
+        {/* ✅ NEW: Budget Reconciliation Card - Track impact on allocated budget */}
+        {request.justification && (() => {
+          const disbursedAmount = request.disbursementDetails?.amount || request.amountApproved || 0;
+          return (
+          <Card 
+            size="small" 
+            title={
+              <Space>
+                <BankOutlined />
+                <Text strong>Budget Reconciliation & Reimbursement Status</Text>
+              </Space>
+            }
+            style={{ marginBottom: '24px', backgroundColor: request.justification.balanceReturned < 0 ? '#fff7e6' : '#f6f9ff' }}
+          >
+            <Row gutter={16} style={{ marginBottom: '16px' }}>
+              <Col span={6}>
+                <Card size="small" style={{ textAlign: 'center' }}>
+                  <Text type="secondary">Allocated Budget</Text>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1890ff' }}>
+                    XAF {(disbursedAmount).toLocaleString()}
+                  </div>
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small" style={{ textAlign: 'center' }}>
+                  <Text type="secondary">Amount Spent</Text>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ff4d4f' }}>
+                    XAF {(request.justification?.amountSpent || 0).toLocaleString()}
+                  </div>
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small" style={{ textAlign: 'center', backgroundColor: request.justification.balanceReturned < 0 ? '#fff7e6' : '#f6f9ff' }}>
+                  <Text type="secondary">
+                    {request.justification.balanceReturned < 0 ? '💰 Reimbursement Due' : 'Budget Return'}
+                  </Text>
+                  <div style={{ 
+                    fontSize: '18px', 
+                    fontWeight: 'bold', 
+                    color: request.justification.balanceReturned < 0 ? '#ff7a45' : '#52c41a' 
+                  }}>
+                    XAF {Math.abs(request.justification.balanceReturned).toLocaleString()}
+                  </div>
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small" style={{ textAlign: 'center' }}>
+                  <Text type="secondary">Budget Variance</Text>
+                  <div style={{ 
+                    fontSize: '18px', 
+                    fontWeight: 'bold', 
+                    color: Math.abs(request.justification.balanceReturned) > (disbursedAmount) * 0.1 ? '#ff4d4f' : '#52c41a'
+                  }}>
+                    {request.justification.balanceReturned < 0 ? '+' : '-'} XAF {Math.abs(request.justification.balanceReturned).toLocaleString()}
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+
+            {/* Budget Impact Alert */}
+            {request.justification.balanceReturned < 0 && (
+              <Alert
+                message="⚠️ Budget Overspend - Reimbursement Required"
+                description={
+                  <div>
+                    <p style={{ marginBottom: '8px' }}>
+                      Employee spent <strong>XAF {Math.abs(request.justification.balanceReturned).toLocaleString()}</strong> more than allocated, using their own funds.
+                    </p>
+                    <ul style={{ marginBottom: 0, paddingLeft: '20px' }}>
+                      <li>Original Budget Allocation: <strong>XAF {(disbursedAmount).toLocaleString()}</strong></li>
+                      <li>Total Actual Spending: <strong>XAF {(request.justification.amountSpent || 0).toLocaleString()}</strong></li>
+                      <li><strong style={{ color: '#ff7a45' }}>Budget Overspend: XAF {Math.abs(request.justification.balanceReturned).toLocaleString()}</strong></li>
+                      <li style={{ marginTop: '8px' }}>
+                        <strong style={{ color: '#ff7a45' }}>⚠️ Action Required:</strong>
+                        <ul style={{ marginTop: '4px' }}>
+                          <li>Approve additional budget allocation</li>
+                          <li>Process reimbursement to employee</li>
+                          <li>Update cost center budget records</li>
+                        </ul>
+                      </li>
+                    </ul>
+                  </div>
+                }
+                type="warning"
+                showIcon
+                style={{ marginTop: '16px' }}
+              />
+            )}
+
+            {request.justification.balanceReturned > 0 && (
+              <Alert
+                message="✅ Budget Under Spent"
+                description={
+                  <div>
+                    <p style={{ marginBottom: '8px' }}>
+                      Employee spent less than allocated and will return <strong>XAF {request.justification.balanceReturned.toLocaleString()}</strong> to the company.
+                    </p>
+                    <ul style={{ marginBottom: 0, paddingLeft: '20px' }}>
+                      <li>Allocated: <strong>XAF {(disbursedAmount).toLocaleString()}</strong></li>
+                      <li>Spent: <strong>XAF {(request.justification.amountSpent || 0).toLocaleString()}</strong></li>
+                      <li><strong style={{ color: '#52c41a' }}>Amount to Return: XAF {request.justification.balanceReturned.toLocaleString()}</strong></li>
+                    </ul>
+                  </div>
+                }
+                type="success"
+                showIcon
+                style={{ marginTop: '16px' }}
+              />
+            )}
+
+            {request.justification.balanceReturned === 0 && (
+              <Alert
+                message="✅ Exact Budget Match"
+                description={`Employee spent exactly the allocated amount. Budget is balanced with no return or reimbursement required.`}
+                type="success"
+                showIcon
+                style={{ marginTop: '16px' }}
+              />
+            )}
+          </Card>
+        );
+        })()}
 
         {/* Employee & Request Details */}
         <Descriptions bordered column={2} size="small" style={{ marginBottom: '24px' }}>
@@ -518,15 +911,35 @@ const FinanceCashApprovalForm = () => {
           <Descriptions.Item label="Submitted Date">
             {new Date(request.createdAt).toLocaleDateString('en-GB')}
           </Descriptions.Item>
-          <Descriptions.Item label="Purpose" span={2}>
-            {request.purpose}
+          <Descriptions.Item label="Current Status">
+            <Space direction="vertical" size="small">
+              <Tag color={
+                trueStatus === 'pending_finance' ? 'orange' :
+                trueStatus === 'pending_head_of_business' ? 'purple' :
+                trueStatus === 'approved' ? 'green' :
+                trueStatus === 'partially_disbursed' ? 'blue' :
+                'default'
+              }>
+                {trueStatus?.replace(/_/g, ' ').toUpperCase()}
+              </Tag>
+              {request.status !== trueStatus && (
+                <Text type="secondary" style={{ fontSize: '10px' }}>
+                  (Backend: {request.status.replace(/_/g, ' ')})
+                </Text>
+              )}
+            </Space>
           </Descriptions.Item>
-          <Descriptions.Item label="Business Justification" span={2}>
-            {request.businessJustification}
+          <Descriptions.Item label="Purpose" span={2}>
+            <div 
+              dangerouslySetInnerHTML={{ 
+                __html: DOMPurify.sanitize(request.purpose || '') 
+              }}
+              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+            />
           </Descriptions.Item>
         </Descriptions>
 
-        {/* Itemized Breakdown (if exists) */}
+        {/* Itemized Breakdown - keep same */}
         {hasItemizedBreakdown && (
           <Card 
             size="small" 
@@ -563,7 +976,7 @@ const FinanceCashApprovalForm = () => {
           </Card>
         )}
 
-        {/* Receipt Documents (for reimbursements) */}
+        {/* Receipt Documents - keep same */}
         {isReimbursement && hasReceiptDocuments && (
           <Card
             size="small"
@@ -599,7 +1012,7 @@ const FinanceCashApprovalForm = () => {
           </Card>
         )}
 
-        {/* Approval Chain Progress */}
+        {/* Approval Chain Progress - keep same */}
         {request.approvalChain && request.approvalChain.length > 0 && (
           <Card size="small" title="Approval Chain Progress" style={{ marginBottom: '24px' }}>
             <Row gutter={[16, 16]}>
@@ -659,246 +1072,355 @@ const FinanceCashApprovalForm = () => {
 
         <Divider />
 
-        {/* Finance Decision Form */}
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSubmit}
-          initialValues={{
-            decision: 'approved',
-            amountApproved: amountRequested
-          }}
-        >
-          <Form.Item
-            name="decision"
-            label="Your Decision"
-            rules={[{ required: true, message: 'Please make a decision' }]}
+        {/* CONDITIONAL FORM RENDERING - Same as before but with updated logic */}
+        
+        {/* MODE 1: Awaiting HOB */}
+        {isAwaitingCEO && (
+          <Alert
+            message="No Action Required at This Time"
+            description={
+              <div>
+                <p>You have successfully approved this request and allocated budget code.</p>
+                <p>The request is now awaiting final approval from <Text strong>Head of Business (Mr. E.T Kelvin)</Text>.</p>
+                <p>Once the Head of Business approves, you will be able to disburse funds.</p>
+              </div>
+            }
+            type="info"
+            showIcon
+            icon={<InfoCircleOutlined />}
+            action={
+              <Button size="small" onClick={() => navigate('/finance/cash-approvals')}>
+                Back to Approvals
+              </Button>
+            }
+          />
+        )}
+
+        {/* MODE 2: Finance Approval Form */}
+        {canApprove && (
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={handleSubmit}
+            initialValues={{
+              decision: 'approved',
+              amountApproved: amountRequested
+            }}
           >
-            <Radio.Group>
-              <Radio.Button value="approved" style={{ color: '#52c41a' }}>
-                <CheckCircleOutlined /> Approve {isReimbursement ? 'Reimbursement' : 'Request'}
-              </Radio.Button>
-              <Radio.Button value="rejected" style={{ color: '#f5222d' }}>
-                <CloseCircleOutlined /> Reject {isReimbursement ? 'Reimbursement' : 'Request'}
-              </Radio.Button>
-            </Radio.Group>
-          </Form.Item>
+            <Alert
+              message="Finance Approval Required"
+              description="Review the request details above and make your approval decision. If approved, allocate a budget code. The request will then go to Head of Business for final approval."
+              type="warning"
+              showIcon
+              icon={<WarningOutlined />}
+              style={{ marginBottom: '16px' }}
+            />
 
-          <Form.Item noStyle shouldUpdate={(prev, curr) => prev.decision !== curr.decision}>
-            {({ getFieldValue }) =>
-              getFieldValue('decision') === 'approved' ? (
-                <>
-                  <Form.Item
-                    name="budgetCodeId"
-                    label={
-                      <Space>
-                        <span>Budget Code</span>
-                        <Tag color="red">Required</Tag>
-                      </Space>
-                    }
-                    rules={[{ required: true, message: 'Budget code is required for approval' }]}
-                  >
-                    <Select
-                      placeholder="Select budget code"
-                      showSearch
-                      filterOption={(input, option) =>
-                        option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+            <Form.Item
+              name="decision"
+              label="Your Decision"
+              rules={[{ required: true, message: 'Please make a decision' }]}
+            >
+              <Radio.Group>
+                <Radio.Button value="approved" style={{ color: '#52c41a' }}>
+                  <CheckCircleOutlined /> Approve & Forward to HOB
+                </Radio.Button>
+                <Radio.Button value="rejected" style={{ color: '#f5222d' }}>
+                  <CloseCircleOutlined /> Reject {isReimbursement ? 'Reimbursement' : 'Request'}
+                </Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+
+            <Form.Item noStyle shouldUpdate={(prev,curr) => prev.decision !== curr.decision}>
+              {({ getFieldValue }) =>
+                getFieldValue('decision') === 'approved' ? (
+                  <>
+                    <Form.Item
+                      name="budgetCodeId"
+                      label={
+                        <Space>
+                          <span>Budget Code</span>
+                          <Tag color="red">Required</Tag>
+                        </Space>
                       }
-                      onChange={handleBudgetCodeChange}
+                      rules={[{ required: true, message: 'Budget code is required for approval' }]}
                     >
-                      {budgetCodes.map(bc => (
-                        <Option key={bc._id} value={bc._id}>
-                          {bc.code} - {bc.name} (Available: XAF {bc.remaining.toLocaleString()})
-                        </Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
+                      <Select
+                        placeholder="Select budget code"
+                        showSearch
+                        filterOption={(input, option) =>
+                          option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                        }
+                        onChange={handleBudgetCodeChange}
+                      >
+                        {budgetCodes.map(bc => (
+                          <Option key={bc._id} value={bc._id}>
+                            {bc.code} - {bc.name} (Available: XAF {bc.remaining.toLocaleString()})
+                          </Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
 
-                  {selectedBudgetCode && (
+                    {selectedBudgetCode && (
+                      <Alert
+                        message="Budget Code Information"
+                        description={
+                          <div>
+                            <Text>Budget: XAF {selectedBudgetCode.budget.toLocaleString()}</Text>
+                            <br />
+                            <Text>Used: XAF {selectedBudgetCode.used.toLocaleString()}</Text>
+                            <br />
+                            <Text strong>Available: XAF {selectedBudgetCode.remaining.toLocaleString()}</Text>
+                          </div>
+                        }
+                        type="info"
+                        showIcon
+                        style={{ marginBottom: '16px' }}
+                      />
+                    )}
+
+                    <Form.Item
+                      name="amountApproved"
+                      label="Amount to Approve (XAF)"
+                      rules={[{ required: true, message: 'Please enter amount to approve' }]}
+                    >
+                      <InputNumber
+                        style={{ width: '100%' }}
+                        min={0}
+                        max={amountRequested}
+                        step={1000}
+                        formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                        parser={(value) => value.replace(/,/g, '')}
+                      />
+                    </Form.Item>
+
                     <Alert
-                      message="Budget Code Information"
-                      description={
-                        <div>
-                          <Text>Budget: XAF {selectedBudgetCode.budget.toLocaleString()}</Text>
-                          <br />
-                          <Text>Used: XAF {selectedBudgetCode.used.toLocaleString()}</Text>
-                          <br />
-                          <Text strong>Available: XAF {selectedBudgetCode.remaining.toLocaleString()}</Text>
-                        </div>
-                      }
+                      message="Next Step: HOB Approval"
+                      description="After you approve, this request will be sent to the Head of Business for final approval. You will be able to disburse funds once the HOB approves."
                       type="info"
                       showIcon
+                      icon={<InfoCircleOutlined />}
                       style={{ marginBottom: '16px' }}
                     />
-                  )}
+                  </>
+                ) : null
+              }
+            </Form.Item>
 
-                  <Form.Item
-                    name="amountApproved"
-                    label="Amount to Approve (XAF)"
-                    rules={[{ required: true, message: 'Please enter amount to approve' }]}
-                  >
-                    <InputNumber
-                      style={{ width: '100%' }}
-                      min={0}
-                      max={amountRequested}
-                      step={1000}
-                      formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                      parser={(value) => value.replace(/,/g, '')}
-                      onChange={(value) => {
-                        if (enableDisbursement) {
-                          setDisbursementAmount(Math.min(value, remainingBalance));
-                        }
-                      }}
-                    />
-                  </Form.Item>
+            <Form.Item
+              name="comments"
+              label="Comments"
+              rules={[{ required: true, message: 'Please provide comments for your decision' }]}
+            >
+              <TextArea
+                rows={4}
+                placeholder="Explain your decision (required for audit trail)..."
+                showCount
+                maxLength={500}
+              />
+            </Form.Item>
 
-                  <Divider />
+            <Form.Item>
+              <Space>
+                <Button onClick={() => navigate('/finance/cash-approvals')}>
+                  Cancel
+                </Button>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={submitting}
+                  icon={form.getFieldValue('decision') === 'approved' ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
+                >
+                  {submitting ? 'Processing...' : `${form.getFieldValue('decision') === 'approved' ? 'Approve & Forward to HOB' : 'Reject'}`}
+                </Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        )}
 
-                  {/* ✅ UPDATED DISBURSEMENT SECTION */}
-                  <Card 
-                    size="small" 
-                    title={
-                      <Space>
-                        <SendOutlined />
-                        <Text strong>Immediate Disbursement</Text>
-                        <Tag color="orange">Optional</Tag>
-                        {hasExistingDisbursements && (
-                          <Tag color="blue">Additional Payment</Tag>
-                        )}
-                      </Space>
-                    }
-                    style={{ marginBottom: '24px', backgroundColor: '#f9f9f9' }}
-                  >
-                    <Space direction="vertical" style={{ width: '100%' }}>
-                      {hasExistingDisbursements && (
-                        <Alert
-                          message={`XAF ${totalDisbursed.toLocaleString()} already disbursed. Remaining: XAF ${remainingBalance.toLocaleString()}`}
-                          type="info"
-                          showIcon
-                          icon={<InfoCircleOutlined />}
-                        />
-                      )}
-
-                      <Space>
-                        <Button
-                          type={enableDisbursement ? 'primary' : 'default'}
-                          onClick={() => {
-                            setEnableDisbursement(!enableDisbursement);
-                            if (!enableDisbursement) {
-                              setDisbursementAmount(remainingBalance);
-                            }
-                          }}
-                        >
-                          {enableDisbursement ? 'Disbursement Enabled' : 'Enable Disbursement'}
-                        </Button>
-                        <Tooltip title={hasExistingDisbursements 
-                          ? "Add an additional payment to this partially disbursed request" 
-                          : "You can approve now and disburse later, or disburse immediately"
-                        }>
-                          <InfoCircleOutlined style={{ color: '#1890ff' }} />
-                        </Tooltip>
-                      </Space>
-
-                      {enableDisbursement && (
-                        <>
-                          <Alert
-                            message="Immediate Disbursement"
-                            description={hasExistingDisbursements 
-                              ? "You are adding an additional payment. Enter the amount to disburse now." 
-                              : "Funds will be disbursed immediately upon approval. You can disburse partial or full amount."
-                            }
-                            type="info"
-                            showIcon
-                          />
-
-                          <Form.Item label="Disbursement Amount (XAF)" style={{ marginBottom: 0 }}>
-                            <InputNumber
-                              style={{ width: '100%' }}
-                              min={0}
-                              max={remainingBalance}
-                              step={1000}
-                              value={disbursementAmount}
-                              onChange={setDisbursementAmount}
-                              formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                              parser={(value) => value.replace(/,/g, '')}
-                            />
-                          </Form.Item>
-
-                          <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
-                            <Col span={8}>
-                              <Statistic
-                                title="Amount Requested"
-                                value={amountRequested}
-                                precision={0}
-                                valueStyle={{ color: '#3f8600', fontSize: '14px' }}
-                                prefix="XAF"
-                              />
-                            </Col>
-                            <Col span={8}>
-                              <Statistic
-                                title="Disbursing Now"
-                                value={disbursementAmount}
-                                precision={0}
-                                valueStyle={{ color: '#1890ff', fontSize: '14px' }}
-                                prefix="XAF"
-                              />
-                            </Col>
-                            <Col span={8}>
-                              <Statistic
-                                title="After This Payment"
-                                value={remainingAfterDisbursement}
-                                precision={0}
-                                valueStyle={{ color: remainingAfterDisbursement > 0 ? '#cf1322' : '#3f8600', fontSize: '14px' }}
-                                prefix="XAF"
-                              />
-                            </Col>
-                          </Row>
-
-                          <Progress 
-                            percent={newDisbursementProgress} 
-                            status={newDisbursementProgress === 100 ? 'success' : 'active'}
-                            format={(percent) => `${percent}% ${newDisbursementProgress === 100 ? '(Full)' : '(Partial)'}`}
-                          />
-                        </>
-                      )}
-                    </Space>
-                  </Card>
-                </>
-              ) : null
-            }
-          </Form.Item>
-
-          <Form.Item
-            name="comments"
-            label="Comments"
-            rules={[{ required: true, message: 'Please provide comments for your decision' }]}
+        {/* MODE 3: Disbursement Form */}
+        {canDisburse && (
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={handleSubmit}
           >
-            <TextArea
-              rows={4}
-              placeholder="Explain your decision (required for audit trail)..."
-              showCount
-              maxLength={500}
+            <Alert
+              message="Disbursement Ready"
+              description="This request has been fully approved (including by Head of Business). You can now disburse funds to the employee."
+              type="success"
+              showIcon
+              icon={<CheckCircleOutlined />}
+              style={{ marginBottom: '24px' }}
             />
-          </Form.Item>
 
-          <Form.Item>
-            <Space>
-              <Button onClick={() => navigate('/finance/cash-approvals')}>
-                Cancel
+            <Card 
+              size="small" 
+              title={
+                <Space>
+                  <SendOutlined />
+                  <Text strong>Disbursement Details</Text>
+                  {hasExistingDisbursements && (
+                    <Tag color="blue">Additional Payment</Tag>
+                  )}
+                </Space>
+              }
+              style={{ marginBottom: '24px', backgroundColor: '#f9f9f9' }}
+            >
+              <Space direction="vertical" style={{ width: '100%' }} size="large">
+                {hasExistingDisbursements && (
+                  <Alert
+                    message={`XAF ${totalDisbursed.toLocaleString()} already disbursed. Remaining: XAF ${remainingBalance.toLocaleString()}`}
+                    type="info"
+                    showIcon
+                    icon={<InfoCircleOutlined />}
+                  />
+                )}
+
+                {!hasExistingDisbursements && (
+                  <Alert
+                    message="First Disbursement"
+                    description="This is the first payment for this request. You can disburse the full amount or make a partial payment."
+                    type="info"
+                    showIcon
+                  />
+                )}
+
+                <Form.Item 
+                  label={
+                    <Space>
+                      <span>Disbursement Amount (XAF)</span>
+                      <Tag color="red">Required</Tag>
+                    </Space>
+                  }
+                  style={{ marginBottom: 0 }}
+                >
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    min={0}
+                    max={remainingBalance}
+                    step={1000}
+                    value={disbursementAmount}
+                    onChange={setDisbursementAmount}
+                    formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                    parser={(value) => value.replace(/,/g, '')}
+                  />
+                  <Text type="secondary" style={{ fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                    Maximum: XAF {remainingBalance.toLocaleString()}
+                  </Text>
+                </Form.Item>
+
+                <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
+                  <Col span={8}>
+                    <Statistic
+                      title="Amount Requested"
+                      value={amountRequested}
+                      precision={0}
+                      valueStyle={{ fontSize: '14px' }}
+                      prefix="XAF"
+                    />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic
+                      title="Disbursing Now"
+                      value={disbursementAmount}
+                      precision={0}
+                      valueStyle={{ color: '#1890ff', fontSize: '14px' }}
+                      prefix="XAF"
+                    />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic
+                      title="After This Payment"
+                      value={remainingAfterDisbursement}
+                      precision={0}
+                      valueStyle={{ 
+                        color: remainingAfterDisbursement > 0 ? '#cf1322' : '#3f8600', 
+                        fontSize: '14px' 
+                      }}
+                      prefix="XAF"
+                    />
+                  </Col>
+                </Row>
+
+                <Progress 
+                  percent={newDisbursementProgress} 
+                  status={newDisbursementProgress === 100 ? 'success' : 'active'}
+                  strokeColor={newDisbursementProgress === 100 ? '#52c41a' : '#1890ff'}
+                  format={(percent) => `${percent}% ${newDisbursementProgress === 100 ? '(Full Payment)' : '(Partial)'}`}
+                />
+
+                {remainingAfterDisbursement > 0 && disbursementAmount > 0 && (
+                  <Alert
+                    message="Partial Disbursement"
+                    description={`After this payment, XAF ${remainingAfterDisbursement.toLocaleString()} will remain to be disbursed. You can make additional payments later.`}
+                    type="warning"
+                    showIcon
+                    icon={<WarningOutlined />}
+                  />
+                )}
+
+                {newDisbursementProgress === 100 && disbursementAmount > 0 && (
+                  <Alert
+                    message="Full Disbursement"
+                    description="This payment will complete the full disbursement. The request will move to 'Fully Disbursed' status and await justification from the employee."
+                    type="success"
+                    showIcon
+                    icon={<CheckCircleOutlined />}
+                  />
+                )}
+              </Space>
+            </Card>
+
+            <Form.Item
+              name="disbursementNotes"
+              label="Disbursement Notes"
+              rules={[{ required: false }]}
+            >
+              <TextArea
+                rows={3}
+                placeholder="Optional notes about this disbursement (e.g., payment method, reference number)..."
+                showCount
+                maxLength={300}
+              />
+            </Form.Item>
+
+            <Form.Item>
+              <Space>
+                <Button onClick={() => navigate('/finance/cash-approvals')}>
+                  Cancel
+                </Button>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={submitting}
+                  icon={<SendOutlined />}
+                  disabled={!disbursementAmount || disbursementAmount <= 0 || disbursementAmount > remainingBalance}
+                >
+                  {submitting ? 'Processing Disbursement...' : `Disburse XAF ${disbursementAmount.toLocaleString()}`}
+                </Button>
+              </Space>
+            </Form.Item>
+          </Form>
+        )}
+
+        {/* If none of the modes apply */}
+        {!canApprove && !canDisburse && !isAwaitingCEO && (
+          <Alert
+            message="Invalid Action"
+            description="This request cannot be processed at this time. It may have already been processed or is in an invalid state."
+            type="error"
+            showIcon
+            action={
+              <Button size="small" onClick={() => navigate('/finance/cash-approvals')}>
+                Back to Approvals
               </Button>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={submitting}
-                icon={form.getFieldValue('decision') === 'approved' ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-              >
-                {submitting ? 'Processing...' : `${form.getFieldValue('decision') === 'approved' ? 'Approve' : 'Reject'} ${isReimbursement ? 'Reimbursement' : 'Request'}`}
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
+            }
+          />
+        )}
       </Card>
     </div>
+    </>
   );
 };
 
@@ -913,8 +1435,7 @@ export default FinanceCashApprovalForm;
 
 
 
-
-// import React, { useState, useEffect } from 'react';
+// import React, { useState, useEffect, useCallback } from 'react';
 // import { useParams, useNavigate } from 'react-router-dom';
 // import {
 //   Card,
@@ -938,7 +1459,8 @@ export default FinanceCashApprovalForm;
 //   Table,
 //   Progress,
 //   Badge,
-//   Tooltip
+//   Tooltip,
+//   Timeline
 // } from 'antd';
 // import {
 //   CheckCircleOutlined,
@@ -950,1430 +1472,17 @@ export default FinanceCashApprovalForm;
 //   WarningOutlined,
 //   InfoCircleOutlined,
 //   DownloadOutlined,
-//   EyeOutlined
-// } from '@ant-design/icons';
-// import { cashRequestAPI } from '../../services/cashRequestAPI';
-// import { budgetCodeAPI } from '../../services/budgetCodeAPI';
-
-// const { Title, Text, Paragraph } = Typography;
-// const { TextArea } = Input;
-// const { Option } = Select;
-
-// const FinanceCashApprovalForm = () => {
-//   const { requestId } = useParams();
-//   const navigate = useNavigate();
-//   const [form] = Form.useForm();
-  
-//   const [loading, setLoading] = useState(true);
-//   const [submitting, setSubmitting] = useState(false);
-//   const [request, setRequest] = useState(null);
-//   const [budgetCodes, setBudgetCodes] = useState([]);
-//   const [selectedBudgetCode, setSelectedBudgetCode] = useState(null);
-  
-//   // Disbursement state
-//   const [enableDisbursement, setEnableDisbursement] = useState(false);
-//   const [disbursementAmount, setDisbursementAmount] = useState(0);
-
-//   useEffect(() => {
-//     fetchRequestDetails();
-//     fetchBudgetCodes();
-//   }, [requestId]);
-
-//   const fetchRequestDetails = async () => {
-//     try {
-//       setLoading(true);
-//       const response = await cashRequestAPI.getRequestById(requestId);
-      
-//       if (response.success) {
-//         setRequest(response.data);
-        
-//         // Set initial form values
-//         form.setFieldsValue({
-//           decision: 'approved',
-//           amountApproved: response.data.amountRequested
-//         });
-        
-//         // Initialize disbursement amount
-//         setDisbursementAmount(response.data.amountRequested);
-//       } else {
-//         message.error('Failed to load request details');
-//         navigate('/finance/cash-approvals');
-//       }
-//     } catch (error) {
-//       console.error('Error fetching request:', error);
-//       message.error('Failed to load request details');
-//       navigate('/finance/cash-approvals');
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const fetchBudgetCodes = async () => {
-//     try {
-//       const response = await budgetCodeAPI.getBudgetCodes();
-      
-//       if (response.success) {
-//         // Filter active budget codes with remaining balance
-//         const activeCodes = response.data.filter(
-//           code => code.status === 'active' && code.remaining > 0
-//         );
-//         setBudgetCodes(activeCodes);
-//       }
-//     } catch (error) {
-//       console.error('Error fetching budget codes:', error);
-//       message.warning('Could not load budget codes');
-//     }
-//   };
-
-//   // const fetchBudgetCodes = async () => {
-//   //   try {
-//   //     // Call your budget codes API
-//   //     const response = await cashRequestAPI.get('/budget-codes/available');
-//   //     if (response.data.success) {
-//   //       setBudgetCodes(response.data.data || []);
-//   //     }
-//   //   } catch (error) {
-//   //     console.error('Error fetching budget codes:', error);
-//   //     // Non-blocking error
-//   //   }
-//   // };
-
-//   const handleBudgetCodeChange = (budgetCodeId) => {
-//     const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
-//     setSelectedBudgetCode(budgetCode);
-//   };
-
-//   const handleSubmit = async (values) => {
-//     try {
-//       setSubmitting(true);
-
-//       const isReimbursement = request.requestMode === 'reimbursement';
-//       const decision = values.decision;
-
-//       if (decision === 'approved' && !values.budgetCodeId) {
-//         message.error('Please select a budget code for approval');
-//         return;
-//       }
-
-//       // Build payload
-//       const payload = {
-//         decision: decision === 'approved' ? 'approved' : 'rejected',
-//         comments: values.comments || '',
-//         amountApproved: decision === 'approved' ? parseFloat(values.amountApproved) : null,
-//         budgetCodeId: decision === 'approved' ? values.budgetCodeId : null
-//       };
-
-//       // Add disbursement if enabled
-//       if (decision === 'approved' && enableDisbursement && disbursementAmount > 0) {
-//         payload.disbursementAmount = parseFloat(disbursementAmount);
-//       }
-
-//       console.log('Submitting finance decision:', payload);
-
-//       const response = await cashRequestAPI.processFinanceDecision(requestId, payload);
-
-//       if (response.success) {
-//         const disbursementText = payload.disbursementAmount 
-//           ? ` and XAF ${payload.disbursementAmount.toLocaleString()} disbursed`
-//           : '';
-        
-//         message.success({
-//           content: `${isReimbursement ? 'Reimbursement' : 'Cash request'} ${decision === 'approved' ? 'approved' : 'rejected'} successfully${disbursementText}`,
-//           duration: 5
-//         });
-        
-//         setTimeout(() => {
-//           navigate('/finance/cash-approvals');
-//         }, 1500);
-//       } else {
-//         throw new Error(response.message || 'Failed to process decision');
-//       }
-//     } catch (error) {
-//       console.error('Submit error:', error);
-//       message.error(error.response?.data?.message || 'Failed to process approval');
-//     } finally {
-//       setSubmitting(false);
-//     }
-//   };
-
-//   const handleDownloadReceipt = async (attachment) => {
-//     try {
-//       const blob = await cashRequestAPI.downloadAttachment(attachment.publicId);
-//       const url = window.URL.createObjectURL(blob);
-//       const link = document.createElement('a');
-//       link.href = url;
-//       link.download = attachment.name;
-//       document.body.appendChild(link);
-//       link.click();
-//       document.body.removeChild(link);
-//       window.URL.revokeObjectURL(url);
-//       message.success('Receipt downloaded successfully');
-//     } catch (error) {
-//       console.error('Download error:', error);
-//       message.error('Failed to download receipt');
-//     }
-//   };
-
-//   if (loading) {
-//     return (
-//       <Card>
-//         <div style={{ textAlign: 'center', padding: '40px' }}>
-//           <Spin size="large" />
-//           <div style={{ marginTop: '16px' }}>Loading request details...</div>
-//         </div>
-//       </Card>
-//     );
-//   }
-
-//   if (!request) {
-//     return (
-//       <Card>
-//         <Alert
-//           message="Request Not Found"
-//           description="The requested cash request could not be found."
-//           type="error"
-//           showIcon
-//         />
-//       </Card>
-//     );
-//   }
-
-//   const isReimbursement = request.requestMode === 'reimbursement';
-//   const hasReceiptDocuments = request.reimbursementDetails?.receiptDocuments?.length > 0;
-//   const hasItemizedBreakdown = 
-//     (isReimbursement && request.reimbursementDetails?.itemizedBreakdown?.length > 0) ||
-//     (!isReimbursement && request.itemizedBreakdown?.length > 0);
-
-//   const itemizedData = isReimbursement 
-//     ? request.reimbursementDetails?.itemizedBreakdown 
-//     : request.itemizedBreakdown;
-
-//   const itemizedColumns = [
-//     {
-//       title: 'Description',
-//       dataIndex: 'description',
-//       key: 'description',
-//       width: '40%'
-//     },
-//     {
-//       title: 'Category',
-//       dataIndex: 'category',
-//       key: 'category',
-//       width: '30%',
-//       render: (category) => category ? (
-//         <Tag color="blue">{category.replace(/-/g, ' ').toUpperCase()}</Tag>
-//       ) : '-'
-//     },
-//     {
-//       title: 'Amount (XAF)',
-//       dataIndex: 'amount',
-//       key: 'amount',
-//       width: '30%',
-//       render: (amount) => (
-//         <Text strong style={{ color: '#1890ff' }}>
-//           {parseFloat(amount).toLocaleString()}
-//         </Text>
-//       )
-//     }
-//   ];
-
-//   const approvedAmount = parseFloat(form.getFieldValue('amountApproved') || request.amountRequested);
-//   const remainingAfterDisbursement = approvedAmount - disbursementAmount;
-//   const disbursementProgress = approvedAmount > 0 ? Math.round((disbursementAmount / approvedAmount) * 100) : 0;
-
-//   return (
-//     <div style={{ padding: '24px' }}>
-//       <Card>
-//         <Title level={3}>
-//           <BankOutlined /> {isReimbursement ? 'Reimbursement' : 'Cash Advance'} Approval
-//         </Title>
-
-//         {/* Request Type Badge */}
-//         {isReimbursement && (
-//           <Alert
-//             message="Reimbursement Request"
-//             description="Employee has already spent personal funds and is requesting reimbursement."
-//             type="info"
-//             icon={<DollarOutlined />}
-//             showIcon
-//             style={{ marginBottom: '24px' }}
-//           />
-//         )}
-
-//         {/* Employee & Request Details */}
-//         <Descriptions bordered column={2} size="small" style={{ marginBottom: '24px' }}>
-//           <Descriptions.Item label="Request ID">
-//             <Tag color="blue">REQ-{requestId.slice(-6).toUpperCase()}</Tag>
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Request Mode">
-//             <Tag color={isReimbursement ? 'orange' : 'green'}>
-//               {isReimbursement ? 'Reimbursement' : 'Cash Advance'}
-//             </Tag>
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Employee">
-//             <Text strong>{request.employee?.fullName}</Text>
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Department">
-//             <Tag color="blue">{request.employee?.department}</Tag>
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Type">
-//             {request.requestType?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Urgency">
-//             <Tag color={request.urgency === 'high' ? 'red' : request.urgency === 'medium' ? 'orange' : 'green'}>
-//               {request.urgency?.toUpperCase()}
-//             </Tag>
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Amount Requested">
-//             <Text strong style={{ color: '#1890ff', fontSize: '16px' }}>
-//               XAF {request.amountRequested.toLocaleString()}
-//             </Text>
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Submitted Date">
-//             {new Date(request.createdAt).toLocaleDateString('en-GB')}
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Purpose" span={2}>
-//             {request.purpose}
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Business Justification" span={2}>
-//             {request.businessJustification}
-//           </Descriptions.Item>
-//         </Descriptions>
-
-//         {/* Itemized Breakdown (if exists) */}
-//         {hasItemizedBreakdown && (
-//           <Card 
-//             size="small" 
-//             title={
-//               <Space>
-//                 <FileTextOutlined />
-//                 <Text strong>Itemized Breakdown</Text>
-//                 <Badge count={itemizedData.length} style={{ backgroundColor: '#52c41a' }} />
-//               </Space>
-//             }
-//             style={{ marginBottom: '24px' }}
-//           >
-//             <Table
-//               dataSource={itemizedData}
-//               columns={itemizedColumns}
-//               pagination={false}
-//               size="small"
-//               rowKey={(record, index) => index}
-//               summary={() => (
-//                 <Table.Summary fixed>
-//                   <Table.Summary.Row>
-//                     <Table.Summary.Cell index={0} colSpan={2}>
-//                       <Text strong>Total</Text>
-//                     </Table.Summary.Cell>
-//                     <Table.Summary.Cell index={1}>
-//                       <Text strong style={{ color: '#1890ff', fontSize: '16px' }}>
-//                         XAF {itemizedData.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0).toLocaleString()}
-//                       </Text>
-//                     </Table.Summary.Cell>
-//                   </Table.Summary.Row>
-//                 </Table.Summary>
-//               )}
-//             />
-//           </Card>
-//         )}
-
-//         {/* Receipt Documents (for reimbursements) */}
-//         {isReimbursement && hasReceiptDocuments && (
-//           <Card
-//             size="small"
-//             title={
-//               <Space>
-//                 <FileTextOutlined />
-//                 <Text strong>Receipt Documents</Text>
-//                 <Badge count={request.reimbursementDetails.receiptDocuments.length} style={{ backgroundColor: '#52c41a' }} />
-//               </Space>
-//             }
-//             style={{ marginBottom: '24px' }}
-//           >
-//             <Space wrap>
-//               {request.reimbursementDetails.receiptDocuments.map((doc, index) => (
-//                 <Space key={index}>
-//                   <Button
-//                     icon={<EyeOutlined />}
-//                     size="small"
-//                     onClick={() => window.open(doc.url, '_blank')}
-//                   >
-//                     View
-//                   </Button>
-//                   <Button
-//                     icon={<DownloadOutlined />}
-//                     size="small"
-//                     onClick={() => handleDownloadReceipt(doc)}
-//                   >
-//                     {doc.name}
-//                   </Button>
-//                 </Space>
-//               ))}
-//             </Space>
-//           </Card>
-//         )}
-
-//         {/* Approval Chain Progress */}
-//         {request.approvalChain && request.approvalChain.length > 0 && (
-//           <Card size="small" title="Approval Chain Progress" style={{ marginBottom: '24px' }}>
-//             <Row gutter={[16, 16]}>
-//               {request.approvalChain.map((step, index) => (
-//                 <Col span={24} key={index}>
-//                   <div style={{ 
-//                     padding: '12px', 
-//                     border: `1px solid ${step.status === 'approved' ? '#52c41a' : step.status === 'rejected' ? '#ff4d4f' : '#d9d9d9'}`,
-//                     borderRadius: '6px',
-//                     backgroundColor: step.status === 'pending' ? '#fff7e6' : '#fafafa'
-//                   }}>
-//                     <Row align="middle">
-//                       <Col span={16}>
-//                         <Space>
-//                           {step.status === 'approved' ? (
-//                             <CheckCircleOutlined style={{ color: '#52c41a', fontSize: '20px' }} />
-//                           ) : step.status === 'rejected' ? (
-//                             <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: '20px' }} />
-//                           ) : (
-//                             <WarningOutlined style={{ color: '#faad14', fontSize: '20px' }} />
-//                           )}
-//                           <div>
-//                             <Text strong>Level {step.level}: {step.approver?.name}</Text>
-//                             <br />
-//                             <Text type="secondary" style={{ fontSize: '12px' }}>
-//                               {step.approver?.role} - {step.approver?.email}
-//                             </Text>
-//                           </div>
-//                         </Space>
-//                       </Col>
-//                       <Col span={8} style={{ textAlign: 'right' }}>
-//                         <Tag color={
-//                           step.status === 'approved' ? 'green' : 
-//                           step.status === 'rejected' ? 'red' : 
-//                           'orange'
-//                         }>
-//                           {step.status.toUpperCase()}
-//                         </Tag>
-//                         {step.actionDate && (
-//                           <div style={{ fontSize: '11px', marginTop: '4px' }}>
-//                             {new Date(step.actionDate).toLocaleDateString('en-GB')}
-//                           </div>
-//                         )}
-//                       </Col>
-//                     </Row>
-//                     {step.comments && (
-//                       <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f0f0f0' }}>
-//                         <Text italic style={{ fontSize: '12px' }}>"{step.comments}"</Text>
-//                       </div>
-//                     )}
-//                   </div>
-//                 </Col>
-//               ))}
-//             </Row>
-//           </Card>
-//         )}
-
-//         <Divider />
-
-//         {/* Finance Decision Form */}
-//         <Form
-//           form={form}
-//           layout="vertical"
-//           onFinish={handleSubmit}
-//           initialValues={{
-//             decision: 'approved',
-//             amountApproved: request.amountRequested
-//           }}
-//         >
-//           <Form.Item
-//             name="decision"
-//             label="Your Decision"
-//             rules={[{ required: true, message: 'Please make a decision' }]}
-//           >
-//             <Radio.Group>
-//               <Radio.Button value="approved" style={{ color: '#52c41a' }}>
-//                 <CheckCircleOutlined /> Approve {isReimbursement ? 'Reimbursement' : 'Request'}
-//               </Radio.Button>
-//               <Radio.Button value="rejected" style={{ color: '#f5222d' }}>
-//                 <CloseCircleOutlined /> Reject {isReimbursement ? 'Reimbursement' : 'Request'}
-//               </Radio.Button>
-//             </Radio.Group>
-//           </Form.Item>
-
-//           <Form.Item noStyle shouldUpdate={(prev, curr) => prev.decision !== curr.decision}>
-//             {({ getFieldValue }) =>
-//               getFieldValue('decision') === 'approved' ? (
-//                 <>
-//                   <Form.Item
-//                     name="budgetCodeId"
-//                     label={
-//                       <Space>
-//                         <span>Budget Code</span>
-//                         <Tag color="red">Required</Tag>
-//                       </Space>
-//                     }
-//                     rules={[{ required: true, message: 'Budget code is required for approval' }]}
-//                   >
-//                     <Select
-//                       placeholder="Select budget code"
-//                       showSearch
-//                       filterOption={(input, option) =>
-//                         option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-//                       }
-//                       onChange={handleBudgetCodeChange}
-//                     >
-//                       {budgetCodes.map(bc => (
-//                         <Option key={bc._id} value={bc._id}>
-//                           {bc.code} - {bc.name} (Available: XAF {bc.remaining.toLocaleString()})
-//                         </Option>
-//                       ))}
-//                     </Select>
-//                   </Form.Item>
-
-//                   {selectedBudgetCode && (
-//                     <Alert
-//                       message="Budget Code Information"
-//                       description={
-//                         <div>
-//                           <Text>Budget: XAF {selectedBudgetCode.budget.toLocaleString()}</Text>
-//                           <br />
-//                           <Text>Used: XAF {selectedBudgetCode.used.toLocaleString()}</Text>
-//                           <br />
-//                           <Text strong>Available: XAF {selectedBudgetCode.remaining.toLocaleString()}</Text>
-//                         </div>
-//                       }
-//                       type="info"
-//                       showIcon
-//                       style={{ marginBottom: '16px' }}
-//                     />
-//                   )}
-
-//                   <Form.Item
-//                     name="amountApproved"
-//                     label="Amount to Approve (XAF)"
-//                     rules={[{ required: true, message: 'Please enter amount to approve' }]}
-//                   >
-//                     <InputNumber
-//                       style={{ width: '100%' }}
-//                       min={0}
-//                       max={request.amountRequested}
-//                       step={1000}
-//                       formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-//                       parser={(value) => value.replace(/,/g, '')}
-//                       onChange={(value) => {
-//                         if (enableDisbursement) {
-//                           setDisbursementAmount(value);
-//                         }
-//                       }}
-//                     />
-//                   </Form.Item>
-
-//                   <Divider />
-
-//                   {/* Disbursement Section */}
-//                   <Card 
-//                     size="small" 
-//                     title={
-//                       <Space>
-//                         <SendOutlined />
-//                         <Text strong>Immediate Disbursement</Text>
-//                         <Tag color="orange">Optional</Tag>
-//                       </Space>
-//                     }
-//                     style={{ marginBottom: '24px', backgroundColor: '#f9f9f9' }}
-//                   >
-//                     <Space direction="vertical" style={{ width: '100%' }}>
-//                       <Space>
-//                         <Button
-//                           type={enableDisbursement ? 'primary' : 'default'}
-//                           onClick={() => {
-//                             setEnableDisbursement(!enableDisbursement);
-//                             if (!enableDisbursement) {
-//                               setDisbursementAmount(approvedAmount);
-//                             }
-//                           }}
-//                         >
-//                           {enableDisbursement ? 'Disbursement Enabled' : 'Enable Disbursement'}
-//                         </Button>
-//                         <Tooltip title="You can approve now and disburse later, or disburse immediately">
-//                           <InfoCircleOutlined style={{ color: '#1890ff' }} />
-//                         </Tooltip>
-//                       </Space>
-
-//                       {enableDisbursement && (
-//                         <>
-//                           <Alert
-//                             message="Immediate Disbursement"
-//                             description="Funds will be disbursed immediately upon approval. You can disburse partial or full amount."
-//                             type="info"
-//                             showIcon
-//                           />
-
-//                           <Form.Item label="Disbursement Amount (XAF)" style={{ marginBottom: 0 }}>
-//                             <InputNumber
-//                               style={{ width: '100%' }}
-//                               min={0}
-//                               max={approvedAmount}
-//                               step={1000}
-//                               value={disbursementAmount}
-//                               onChange={setDisbursementAmount}
-//                               formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-//                               parser={(value) => value.replace(/,/g, '')}
-//                             />
-//                           </Form.Item>
-
-//                           <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
-//                             <Col span={8}>
-//                               <Statistic
-//                                 title="Approved Amount"
-//                                 value={approvedAmount}
-//                                 precision={0}
-//                                 valueStyle={{ color: '#3f8600' }}
-//                                 prefix="XAF"
-//                               />
-//                             </Col>
-//                             <Col span={8}>
-//                               <Statistic
-//                                 title="Disbursing Now"
-//                                 value={disbursementAmount}
-//                                 precision={0}
-//                                 valueStyle={{ color: '#1890ff' }}
-//                                 prefix="XAF"
-//                               />
-//                             </Col>
-//                             <Col span={8}>
-//                               <Statistic
-//                                 title="Remaining"
-//                                 value={remainingAfterDisbursement}
-//                                 precision={0}
-//                                 valueStyle={{ color: remainingAfterDisbursement > 0 ? '#cf1322' : '#3f8600' }}
-//                                 prefix="XAF"
-//                               />
-//                             </Col>
-//                           </Row>
-
-//                           <Progress 
-//                             percent={disbursementProgress} 
-//                             status={disbursementProgress === 100 ? 'success' : 'active'}
-//                             format={(percent) => `${percent}% ${disbursementProgress === 100 ? '(Full)' : '(Partial)'}`}
-//                           />
-//                         </>
-//                       )}
-//                     </Space>
-//                   </Card>
-//                 </>
-//               ) : null
-//             }
-//           </Form.Item>
-
-//           <Form.Item
-//             name="comments"
-//             label="Comments"
-//             rules={[{ required: true, message: 'Please provide comments for your decision' }]}
-//           >
-//             <TextArea
-//               rows={4}
-//               placeholder="Explain your decision (required for audit trail)..."
-//               showCount
-//               maxLength={500}
-//             />
-//           </Form.Item>
-
-//           <Form.Item>
-//             <Space>
-//               <Button onClick={() => navigate('/finance/cash-approvals')}>
-//                 Cancel
-//               </Button>
-//               <Button
-//                 type="primary"
-//                 htmlType="submit"
-//                 loading={submitting}
-//                 icon={form.getFieldValue('decision') === 'approved' ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-//               >
-//                 {submitting ? 'Processing...' : `${form.getFieldValue('decision') === 'approved' ? 'Approve' : 'Reject'} ${isReimbursement ? 'Reimbursement' : 'Request'}`}
-//               </Button>
-//             </Space>
-//           </Form.Item>
-//         </Form>
-//       </Card>
-//     </div>
-//   );
-// };
-
-// export default FinanceCashApprovalForm;
-
-
-
-
-
-
-
-
-
-// import React, { useState, useEffect } from 'react';
-// import { useParams, useNavigate } from 'react-router-dom';
-// import {
-//   Card,
-//   Form,
-//   Input,
-//   InputNumber,
-//   Button,
-//   Select,
-//   Space,
-//   Typography,
-//   Descriptions,
-//   Tag,
-//   Divider,
-//   Alert,
-//   message,
-//   Spin,
-//   Modal,
-//   Radio,
-//   Row,
-//   Col
-// } from 'antd';
-// import {
-//   CheckCircleOutlined,
-//   CloseCircleOutlined,
-//   DollarOutlined,
-//   ArrowLeftOutlined,
-//   BankOutlined,
-//   InfoCircleOutlined
+//   EyeOutlined,
+//   ClockCircleOutlined,
+//   ExclamationCircleOutlined,
+//   UserOutlined,
+//   HourglassOutlined
 // } from '@ant-design/icons';
 // import { cashRequestAPI } from '../../services/cashRequestAPI';
 // import { budgetCodeAPI } from '../../services/budgetCodeAPI';
 
 // const { Title, Text } = Typography;
 // const { TextArea } = Input;
-
-// const FinanceCashApprovalForm = () => {
-//   const { requestId } = useParams();
-//   const navigate = useNavigate();
-//   const [form] = Form.useForm();
-
-//   const [request, setRequest] = useState(null);
-//   const [budgetCodes, setBudgetCodes] = useState([]);
-//   const [loading, setLoading] = useState(true);
-//   const [submitting, setSubmitting] = useState(false);
-//   const [decision, setDecision] = useState(null);
-//   const [selectedBudgetCode, setSelectedBudgetCode] = useState(null);
-
-//   useEffect(() => {
-//     fetchRequestDetails();
-//     fetchBudgetCodes();
-//   }, [requestId]);
-
-//   const fetchRequestDetails = async () => {
-//     try {
-//       const response = await cashRequestAPI.getFinanceRequests();
-      
-//       if (response.success) {
-//         const req = response.data.find(r => r._id === requestId);
-        
-//         if (req) {
-//           setRequest(req);
-          
-//           // Pre-fill form with request amount
-//           form.setFieldsValue({
-//             amountApproved: req.amountRequested
-//           });
-
-//           // If budget already allocated, select it
-//           if (req.budgetAllocation && req.budgetAllocation.budgetCodeId) {
-//             form.setFieldsValue({
-//               budgetCodeId: req.budgetAllocation.budgetCodeId
-//             });
-            
-//             // Find and set the selected budget code for display
-//             const existingBudgetCode = await budgetCodeAPI.getBudgetCodeById(req.budgetAllocation.budgetCodeId);
-//             if (existingBudgetCode.success) {
-//               setSelectedBudgetCode(existingBudgetCode.data);
-//             }
-//           }
-//         } else {
-//           message.error('Request not found');
-//           navigate('/finance/cash-approvals');
-//         }
-//       }
-//     } catch (error) {
-//       console.error('Error fetching request:', error);
-//       message.error('Failed to load request details');
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const fetchBudgetCodes = async () => {
-//     try {
-//       const response = await budgetCodeAPI.getBudgetCodes();
-      
-//       if (response.success) {
-//         // Filter active budget codes with remaining balance
-//         const activeCodes = response.data.filter(
-//           code => code.status === 'active' && code.remaining > 0
-//         );
-//         setBudgetCodes(activeCodes);
-//       }
-//     } catch (error) {
-//       console.error('Error fetching budget codes:', error);
-//       message.warning('Could not load budget codes');
-//     }
-//   };
-
-//   const handleBudgetCodeChange = (budgetCodeId) => {
-//     const selected = budgetCodes.find(code => code._id === budgetCodeId);
-//     setSelectedBudgetCode(selected);
-//   };
-
-//   const handleSubmit = async (values) => {
-//     if (!decision) {
-//       message.error('Please select Approve or Reject');
-//       return;
-//     }
-
-//     console.log('=== SUBMITTING FINANCE DECISION ===');
-//     console.log('Decision:', decision);
-//     console.log('Form Values:', values);
-
-//     Modal.confirm({
-//       title: `${decision === 'approve' ? 'Approve' : 'Reject'} Cash Request?`,
-//       content: decision === 'approve' 
-//         ? (
-//             <div>
-//               <p>You are about to approve this cash request for XAF {values.amountApproved?.toLocaleString()}.</p>
-//               {selectedBudgetCode && (
-//                 <div style={{ marginTop: '12px', padding: '10px', backgroundColor: '#f0f5ff', borderRadius: '4px' }}>
-//                   <strong>Budget Impact:</strong>
-//                   <div style={{ marginTop: '4px', fontSize: '12px' }}>
-//                     • Budget Code: {selectedBudgetCode.code}
-//                     <br />
-//                     • Current Available: XAF {selectedBudgetCode.remaining?.toLocaleString()}
-//                     <br />
-//                     • After Approval: XAF {(selectedBudgetCode.remaining - values.amountApproved)?.toLocaleString()}
-//                   </div>
-//                 </div>
-//               )}
-//               <p style={{ marginTop: '12px', color: '#ff4d4f', fontWeight: 'bold' }}>
-//                 This action cannot be undone.
-//               </p>
-//             </div>
-//           )
-//         : 'You are about to reject this cash request. This action cannot be undone.',
-//       okText: decision === 'approve' ? 'Yes, Approve' : 'Yes, Reject',
-//       okType: decision === 'approve' ? 'primary' : 'danger',
-//       cancelText: 'Cancel',
-//       onOk: async () => {
-//         try {
-//           setSubmitting(true);
-
-//           const finalAmountApproved = decision === 'approve' ? values.amountApproved : undefined;
-//           const finalDisbursementAmount = decision === 'approve'
-//             ? (values.disbursementAmount || values.amountApproved)
-//             : undefined;
-
-//           const payload = {
-//             decision: decision === 'approve' ? 'approved' : 'rejected',
-//             comments: values.comments || '',
-//             amountApproved: finalAmountApproved,
-//             budgetCodeId: decision === 'approve' ? values.budgetCodeId : undefined,
-//             disbursementAmount: finalDisbursementAmount
-//           };
-
-//           console.log('Sending payload:', payload);
-
-//           const response = await cashRequestAPI.processFinanceDecision(
-//             requestId,
-//             payload
-//           );
-
-//           if (response.success) {
-//             // Enhanced success message with budget info
-//             if (decision === 'approve' && response.data.budgetAllocation) {
-//               const budgetInfo = response.data.budgetAllocation;
-//               message.success({
-//                 content: (
-//                   <div>
-//                     <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
-//                       ✅ Cash request {budgetInfo.status === 'disbursed' ? 'approved and disbursed' : 'approved'}!
-//                     </div>
-//                     <div style={{ fontSize: '12px' }}>
-//                       💰 Budget {budgetInfo.status === 'disbursed' ? 'disbursed' : 'reserved'} from {budgetInfo.budgetCode}
-//                     </div>
-//                     <div style={{ fontSize: '12px' }}>
-//                       📊 Remaining: XAF {budgetInfo.remainingBudget?.toLocaleString()}
-//                     </div>
-//                   </div>
-//                 ),
-//                 duration: 5
-//               });
-//             } else {
-//               message.success(
-//                 decision === 'approve' 
-//                   ? 'Cash request approved successfully!' 
-//                   : 'Cash request rejected'
-//               );
-//             }
-            
-//             setTimeout(() => {
-//               navigate('/finance/cash-approvals');
-//             }, 1500);
-//           } else {
-//             throw new Error(response.message || 'Failed to process decision');
-//           }
-
-//         } catch (error) {
-//           console.error('Error processing decision:', error);
-//           message.error(
-//             error.response?.data?.message || 
-//             error.message || 
-//             'Failed to process finance decision'
-//           );
-//         } finally {
-//           setSubmitting(false);
-//         }
-//       }
-//     });
-//   };
-
-//   const getStatusTag = (status) => {
-//     const statusMap = {
-//       'pending_finance': { color: 'orange', text: 'Pending Your Approval' },
-//       'approved': { color: 'green', text: 'Approved' },
-//       'disbursed': { color: 'cyan', text: 'Disbursed' },
-//       'denied': { color: 'red', text: 'Denied' }
-//     };
-
-//     const info = statusMap[status] || { color: 'default', text: status };
-//     return <Tag color={info.color}>{info.text}</Tag>;
-//   };
-
-//   const getAllocationStatusTag = (status) => {
-//     const statusMap = {
-//       'allocated': { color: 'orange', text: 'Reserved', icon: '🔒' },
-//       'spent': { color: 'red', text: 'Disbursed', icon: '💸' },
-//       'released': { color: 'blue', text: 'Released', icon: '🔓' },
-//       'pending': { color: 'gold', text: 'Pending', icon: '⏳' }
-//     };
-
-//     const info = statusMap[status] || { color: 'default', text: status, icon: '❓' };
-//     return (
-//       <Tag color={info.color}>
-//         {info.icon} {info.text}
-//       </Tag>
-//     );
-//   };
-
-//   if (loading) {
-//     return (
-//       <div style={{ padding: '24px', textAlign: 'center' }}>
-//         <Spin size="large" />
-//         <div style={{ marginTop: '16px' }}>Loading request details...</div>
-//       </div>
-//     );
-//   }
-
-//   if (!request) {
-//     return (
-//       <div style={{ padding: '24px' }}>
-//         <Alert
-//           message="Request Not Found"
-//           description="The requested cash request could not be found."
-//           type="error"
-//           showIcon
-//         />
-//       </div>
-//     );
-//   }
-
-//   // Check if finance can still approve/reject
-//   const financeStep = request.approvalChain?.find(
-//     s => s.approver.email === 'ranibellmambo@gratoengineering.com'
-//   );
-
-//   const canProcess = financeStep && financeStep.status === 'pending';
-
-//   return (
-//     <div style={{ padding: '24px' }}>
-//       <Button
-//         icon={<ArrowLeftOutlined />}
-//         onClick={() => navigate('/finance/cash-approvals')}
-//         style={{ marginBottom: '16px' }}
-//       >
-//         Back to Finance Approvals
-//       </Button>
-
-//       <Card>
-//         <Title level={2}>
-//           <DollarOutlined /> Finance Approval - Cash Request
-//         </Title>
-
-//         {!canProcess && (
-//           <Alert
-//             message="Cannot Process"
-//             description={`This request has already been ${financeStep?.status || 'processed'} and cannot be modified.`}
-//             type="warning"
-//             showIcon
-//             style={{ marginBottom: '24px' }}
-//           />
-//         )}
-
-//         {/* ============================================ */}
-//         {/* NEW: BUDGET STATUS CARD */}
-//         {/* ============================================ */}
-//         {request.budgetAllocation && request.budgetAllocation.budgetCodeId && (
-//           <>
-//             <Divider orientation="left">
-//               <BankOutlined /> Current Budget Allocation
-//             </Divider>
-            
-//             <Card 
-//               type="inner" 
-//               style={{ 
-//                 marginBottom: '24px',
-//                 backgroundColor: request.budgetAllocation.allocationStatus === 'spent' ? '#fff7e6' : '#f0f5ff',
-//                 borderLeft: `4px solid ${
-//                   request.budgetAllocation.allocationStatus === 'spent' ? '#fa8c16' : 
-//                   request.budgetAllocation.allocationStatus === 'allocated' ? '#1890ff' : 
-//                   '#52c41a'
-//                 }`
-//               }}
-//             >
-//               <Row gutter={16}>
-//                 <Col span={12}>
-//                   <Descriptions bordered size="small" column={1}>
-//                     <Descriptions.Item label="Budget Code">
-//                       <Tag color="blue" style={{ fontSize: '14px' }}>
-//                         {request.budgetAllocation.budgetCode}
-//                       </Tag>
-//                     </Descriptions.Item>
-//                     <Descriptions.Item label="Allocated Amount">
-//                       <Text strong style={{ fontSize: '16px', color: '#1890ff' }}>
-//                         XAF {request.budgetAllocation.allocatedAmount?.toLocaleString()}
-//                       </Text>
-//                     </Descriptions.Item>
-//                     <Descriptions.Item label="Allocation Status">
-//                       {getAllocationStatusTag(request.budgetAllocation.allocationStatus)}
-//                     </Descriptions.Item>
-//                   </Descriptions>
-//                 </Col>
-//                 <Col span={12}>
-//                   <Descriptions bordered size="small" column={1}>
-//                     {request.budgetAllocation.actualSpent > 0 && (
-//                       <Descriptions.Item label="Actually Spent">
-//                         <Text type="danger" strong>
-//                           XAF {request.budgetAllocation.actualSpent?.toLocaleString()}
-//                         </Text>
-//                       </Descriptions.Item>
-//                     )}
-//                     {request.budgetAllocation.balanceReturned > 0 && (
-//                       <Descriptions.Item label="Balance Returned">
-//                         <Text type="success" strong>
-//                           XAF {request.budgetAllocation.balanceReturned?.toLocaleString()}
-//                         </Text>
-//                       </Descriptions.Item>
-//                     )}
-//                     <Descriptions.Item label="Assigned By">
-//                       <Text type="secondary">
-//                         {request.budgetAllocation.assignedBy?.fullName || 'System'}
-//                       </Text>
-//                     </Descriptions.Item>
-//                     <Descriptions.Item label="Assigned Date">
-//                       <Text type="secondary">
-//                         {request.budgetAllocation.assignedAt 
-//                           ? new Date(request.budgetAllocation.assignedAt).toLocaleDateString('en-GB')
-//                           : 'N/A'
-//                         }
-//                       </Text>
-//                     </Descriptions.Item>
-//                   </Descriptions>
-//                 </Col>
-//               </Row>
-
-//               {/* Budget Impact Explanation */}
-//               <Alert
-//                 style={{ marginTop: '12px' }}
-//                 message={
-//                   request.budgetAllocation.allocationStatus === 'spent' 
-//                     ? '💸 Budget Disbursed' 
-//                     : request.budgetAllocation.allocationStatus === 'allocated'
-//                     ? '🔒 Budget Reserved'
-//                     : 'ℹ️ Budget Status'
-//                 }
-//                 description={
-//                   request.budgetAllocation.allocationStatus === 'spent' 
-//                     ? `This budget has been disbursed. Funds have been deducted from ${request.budgetAllocation.budgetCode}.` 
-//                     : request.budgetAllocation.allocationStatus === 'allocated'
-//                     ? `This budget is reserved but not yet disbursed. Funds will be deducted when you disburse the cash.`
-//                     : `Budget allocation status: ${request.budgetAllocation.allocationStatus}`
-//                 }
-//                 type={
-//                   request.budgetAllocation.allocationStatus === 'spent' ? 'warning' :
-//                   request.budgetAllocation.allocationStatus === 'allocated' ? 'info' :
-//                   'default'
-//                 }
-//                 showIcon
-//                 icon={<InfoCircleOutlined />}
-//               />
-//             </Card>
-//           </>
-//         )}
-
-//         {/* Request Details */}
-//         <Divider orientation="left">Request Information</Divider>
-        
-//         <Descriptions bordered column={2}>
-//           <Descriptions.Item label="Request ID">
-//             {request.displayId || `REQ-${requestId.slice(-6).toUpperCase()}`}
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Status">
-//             {getStatusTag(request.status)}
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Employee">
-//             {request.employee?.fullName || 'N/A'}
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Department">
-//             {request.employee?.department || 'N/A'}
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Request Type">
-//             {request.requestType?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Urgency">
-//             <Tag color={request.urgency === 'high' ? 'red' : request.urgency === 'medium' ? 'orange' : 'green'}>
-//               {request.urgency?.toUpperCase()}
-//             </Tag>
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Amount Requested" span={2}>
-//             <Text strong style={{ fontSize: '18px', color: '#1890ff' }}>
-//               XAF {Number(request.amountRequested || 0).toLocaleString()}
-//             </Text>
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Purpose" span={2}>
-//             {request.purpose}
-//           </Descriptions.Item>
-//           <Descriptions.Item label="Business Justification" span={2}>
-//             {request.businessJustification}
-//           </Descriptions.Item>
-//         </Descriptions>
-
-//         {/* Approval Chain */}
-//         <Divider orientation="left">Approval History</Divider>
-        
-//         {request.approvalChain && request.approvalChain.length > 0 && (
-//           <div style={{ marginBottom: '24px' }}>
-//             {request.approvalChain.map((step, index) => (
-//               <Card
-//                 key={index}
-//                 size="small"
-//                 style={{ marginBottom: '12px' }}
-//                 type={step.status === 'approved' ? 'default' : step.status === 'pending' ? 'inner' : undefined}
-//               >
-//                 <Space direction="vertical" style={{ width: '100%' }}>
-//                   <Space>
-//                     <Text strong>Level {step.level}:</Text>
-//                     <Text>{step.approver.name}</Text>
-//                     <Tag>{step.approver.role}</Tag>
-//                     <Tag color={
-//                       step.status === 'approved' ? 'green' : 
-//                       step.status === 'pending' ? 'orange' : 
-//                       'red'
-//                     }>
-//                       {step.status === 'approved' ? <CheckCircleOutlined /> : 
-//                        step.status === 'pending' ? '⏳' : 
-//                        <CloseCircleOutlined />}
-//                       {' '}{step.status.toUpperCase()}
-//                     </Tag>
-//                   </Space>
-                  
-//                   {step.comments && (
-//                     <Text type="secondary" italic>
-//                       💬 {step.comments}
-//                     </Text>
-//                   )}
-                  
-//                   {step.actionDate && (
-//                     <Text type="secondary" style={{ fontSize: '12px' }}>
-//                       {new Date(step.actionDate).toLocaleString('en-GB')}
-//                     </Text>
-//                   )}
-//                 </Space>
-//               </Card>
-//             ))}
-//           </div>
-//         )}
-
-//         {/* Approval Form */}
-//         {canProcess && (
-//           <>
-//             <Divider orientation="left">Your Decision</Divider>
-
-//             <Form
-//               form={form}
-//               layout="vertical"
-//               onFinish={handleSubmit}
-//               disabled={submitting}
-//             >
-//               {/* Decision Radio */}
-//               <Form.Item
-//                 label={<Text strong style={{ fontSize: '16px' }}>Decision</Text>}
-//                 required
-//               >
-//                 <Radio.Group
-//                   value={decision}
-//                   onChange={(e) => setDecision(e.target.value)}
-//                   size="large"
-//                   buttonStyle="solid"
-//                 >
-//                   <Radio.Button value="approve" style={{ marginRight: '12px' }}>
-//                     <CheckCircleOutlined /> Approve
-//                   </Radio.Button>
-//                   <Radio.Button value="reject">
-//                     <CloseCircleOutlined /> Reject
-//                   </Radio.Button>
-//                 </Radio.Group>
-//               </Form.Item>
-
-//               {/* Approval Fields */}
-//               {decision === 'approve' && (
-//                 <>
-//                   <Form.Item
-//                     name="budgetCodeId"
-//                     label="Budget Code"
-//                     rules={[{ required: true, message: 'Please select a budget code' }]}
-//                   >
-//                     <Select
-//                       placeholder="Select budget code"
-//                       showSearch
-//                       optionFilterProp="children"
-//                       size="large"
-//                       onChange={handleBudgetCodeChange}
-//                     >
-//                       {budgetCodes.map(code => (
-//                         <Select.Option key={code._id} value={code._id}>
-//                           {code.code} - {code.name} (Available: XAF {code.remaining.toLocaleString()})
-//                         </Select.Option>
-//                       ))}
-//                     </Select>
-//                   </Form.Item>
-
-//                   {/* Budget Preview Card */}
-//                   {selectedBudgetCode && (
-//                     <Card 
-//                       size="small" 
-//                       style={{ 
-//                         marginBottom: '16px', 
-//                         backgroundColor: '#f0f5ff',
-//                         borderLeft: '4px solid #1890ff'
-//                       }}
-//                     >
-//                       <Row gutter={16}>
-//                         <Col span={8}>
-//                           <Text type="secondary" style={{ fontSize: '12px' }}>
-//                             Current Available
-//                           </Text>
-//                           <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#52c41a' }}>
-//                             XAF {selectedBudgetCode.remaining?.toLocaleString()}
-//                           </div>
-//                         </Col>
-//                         <Col span={8}>
-//                           <Text type="secondary" style={{ fontSize: '12px' }}>
-//                             To Reserve/Disburse
-//                           </Text>
-//                           <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1890ff' }}>
-//                             XAF {form.getFieldValue('amountApproved')?.toLocaleString() || '0'}
-//                           </div>
-//                         </Col>
-//                         <Col span={8}>
-//                           <Text type="secondary" style={{ fontSize: '12px' }}>
-//                             After Transaction
-//                           </Text>
-//                           <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#fa8c16' }}>
-//                             XAF {(selectedBudgetCode.remaining - (form.getFieldValue('amountApproved') || 0))?.toLocaleString()}
-//                           </div>
-//                         </Col>
-//                       </Row>
-//                     </Card>
-//                   )}
-
-//                   <Form.Item
-//                     name="amountApproved"
-//                     label="Amount to Approve"
-//                     rules={[
-//                       { required: true, message: 'Please enter amount to approve' },
-//                       { type: 'number', min: 1, message: 'Amount must be greater than 0' },
-//                       {
-//                         validator: (_, value) => {
-//                           if (selectedBudgetCode && value > selectedBudgetCode.remaining) {
-//                             return Promise.reject(
-//                               new Error(`Amount exceeds available budget (XAF ${selectedBudgetCode.remaining.toLocaleString()})`)
-//                             );
-//                           }
-//                           return Promise.resolve();
-//                         }
-//                       }
-//                     ]}
-//                   >
-//                     <InputNumber
-//                       style={{ width: '100%' }}
-//                       placeholder="Enter amount"
-//                       formatter={value => `XAF ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-//                       parser={value => value.replace(/XAF\s?|(,*)/g, '')}
-//                       size="large"
-//                       onChange={() => {
-//                         // Trigger re-render of budget preview card
-//                         setSelectedBudgetCode({...selectedBudgetCode});
-//                       }}
-//                     />
-//                   </Form.Item>
-
-//                   <Form.Item
-//                     name="disbursementAmount"
-//                     label={
-//                       <span>
-//                         Disburse Immediately (Optional)
-//                         <Text type="secondary" style={{ fontSize: '12px', marginLeft: '8px' }}>
-//                           💡 Leave empty to reserve only
-//                         </Text>
-//                       </span>
-//                     }
-//                     tooltip="Leave empty to approve only (reserves budget). Enter amount to approve and disburse in one step (deducts budget)."
-//                   >
-//                     <InputNumber
-//                       style={{ width: '100%' }}
-//                       placeholder="Enter amount to disburse (optional)"
-//                       formatter={value => value ? `XAF ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''}
-//                       parser={value => value.replace(/XAF\s?|(,*)/g, '')}
-//                       size="large"
-//                     />
-//                   </Form.Item>
-
-//                   <Alert
-//                     message="Budget Allocation Workflow"
-//                     description={
-//                       <div style={{ fontSize: '12px' }}>
-//                         <div style={{ marginBottom: '8px' }}>
-//                           <strong>🔒 Reserve Only (No Disbursement):</strong>
-//                           <ul style={{ marginTop: '4px', paddingLeft: '20px' }}>
-//                             <li>Budget will be <strong>reserved</strong> but not deducted</li>
-//                             <li>Request status becomes "Approved - Awaiting Disbursement"</li>
-//                             <li>Budget remains available for other allocations</li>
-//                           </ul>
-//                         </div>
-//                         <div>
-//                           <strong>💸 Reserve & Disburse (Immediate):</strong>
-//                           <ul style={{ marginTop: '4px', paddingLeft: '20px' }}>
-//                             <li>Budget will be <strong>reserved and immediately deducted</strong></li>
-//                             <li>Request status becomes "Disbursed - Awaiting Justification"</li>
-//                             <li>Budget is removed from available pool</li>
-//                           </ul>
-//                         </div>
-//                       </div>
-//                     }
-//                     type="info"
-//                     showIcon
-//                     icon={<InfoCircleOutlined />}
-//                     style={{ marginBottom: '16px' }}
-//                   />
-//                 </>
-//               )}
-
-//               {/* Comments */}
-//               <Form.Item
-//                 name="comments"
-//                 label="Comments"
-//                 rules={[
-//                   { required: decision === 'reject', message: 'Please provide a reason for rejection' }
-//                 ]}
-//               >
-//                 <TextArea
-//                   rows={4}
-//                   placeholder={
-//                     decision === 'approve' 
-//                       ? 'Add any comments or notes (optional)' 
-//                       : 'Please explain why this request is being rejected'
-//                   }
-//                 />
-//               </Form.Item>
-
-//               {/* Submit Buttons */}
-//               <Form.Item>
-//                 <Space>
-//                   <Button
-//                     type="primary"
-//                     htmlType="submit"
-//                     size="large"
-//                     icon={decision === 'approve' ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-//                     loading={submitting}
-//                     disabled={!decision}
-//                     danger={decision === 'reject'}
-//                   >
-//                     {decision === 'approve' ? 'Approve Request' : 'Reject Request'}
-//                   </Button>
-                  
-//                   <Button
-//                     size="large"
-//                     onClick={() => navigate('/finance/cash-approvals')}
-//                     disabled={submitting}
-//                   >
-//                     Cancel
-//                   </Button>
-//                 </Space>
-//               </Form.Item>
-//             </Form>
-//           </>
-//         )}
-//       </Card>
-//     </div>
-//   );
-// };
-
-// export default FinanceCashApprovalForm;
-
-
-
-
-
-
-// import React, { useState, useEffect } from 'react';
-// import { useParams, useNavigate } from 'react-router-dom';
-// import {
-//   Card,
-//   Form,
-//   Input,
-//   Button,
-//   Radio,
-//   Typography,
-//   Space,
-//   Alert,
-//   Descriptions,
-//   Tag,
-//   Divider,
-//   InputNumber,
-//   Select,
-//   message,
-//   Spin,
-//   Row,
-//   Col,
-//   Statistic,
-//   Table,
-//   Progress,
-//   Badge,
-//   Tooltip
-// } from 'antd';
-// import {
-//   CheckCircleOutlined,
-//   CloseCircleOutlined,
-//   DollarOutlined,
-//   FileTextOutlined,
-//   BankOutlined,
-//   SendOutlined,
-//   WarningOutlined,
-//   InfoCircleOutlined,
-//   DownloadOutlined,
-//   EyeOutlined
-// } from '@ant-design/icons';
-// import { cashRequestAPI } from '../../services/cashRequestAPI';
-// import { budgetCodeAPI } from '../../services/budgetCodeAPI';
-
-// const { Title, Text, Paragraph } = Typography;
-// const { TextArea } = Input;
 // const { Option } = Select;
 
 // const FinanceCashApprovalForm = () => {
@@ -2387,9 +1496,58 @@ export default FinanceCashApprovalForm;
 //   const [budgetCodes, setBudgetCodes] = useState([]);
 //   const [selectedBudgetCode, setSelectedBudgetCode] = useState(null);
   
+//   // ✅ NEW: Track what action Finance can take
+//   const [canApprove, setCanApprove] = useState(false);
+//   const [canDisburse, setCanDisburse] = useState(false);
+//   const [isAwaitingCEO, setIsAwaitingCEO] = useState(false);
+  
 //   // Disbursement state
 //   const [enableDisbursement, setEnableDisbursement] = useState(false);
 //   const [disbursementAmount, setDisbursementAmount] = useState(0);
+
+//   // ✅ IMPROVED: Get true status from approval chain with better logic
+//   const getTrueStatus = useCallback((reqData) => {
+//     if (!reqData || !reqData.approvalChain) return reqData.status;
+
+//     const approvalChain = reqData.approvalChain;
+    
+//     // ✅ FIX 1: If backend status is pending_finance, trust it (Finance hasn't acted yet)
+//     if (reqData.status === 'pending_finance') {
+//       console.log(`✅ FORM: Request ${reqData._id?.slice(-6)} - Status is pending_finance (Finance hasn't acted)`);
+//       return 'pending_finance';
+//     }
+    
+//     // Find Head of Business step
+//     const hobStep = approvalChain.find(step => 
+//       step.approver?.role === 'Head of Business' ||
+//       step.approver?.email?.toLowerCase() === 'kelvin.eyong@gratoglobal.com'
+//     );
+
+//     // Only override if HOB exists AND is pending AND Finance already approved
+//     if (hobStep && hobStep.status === 'pending') {
+//       // Check if Finance has already approved
+//       const financeStep = approvalChain.find(step =>
+//         step.approver?.role === 'Finance Officer' ||
+//         step.approver?.email?.toLowerCase() === 'ranibellmambo@gratoengineering.com'
+//       );
+      
+//       // Only return pending_head_of_business if Finance already approved
+//       if (financeStep && financeStep.status === 'approved') {
+//         console.log(`✅ FORM OVERRIDE: Request ${reqData._id?.slice(-6)} - Finance approved, awaiting HOB`);
+//         return 'pending_head_of_business';
+//       }
+//     }
+
+//     // If all approval steps are approved, it's truly approved
+//     const allApproved = approvalChain.every(step => step.status === 'approved');
+//     if (allApproved && reqData.status === 'approved') {
+//       console.log(`✅ FORM: Request ${reqData._id?.slice(-6)} - All approvals complete, ready for disbursement`);
+//       return 'approved'; // Truly ready for disbursement
+//     }
+
+//     // Otherwise, return backend status
+//     return reqData.status;
+//   }, []);
 
 //   useEffect(() => {
 //     fetchRequestDetails();
@@ -2402,16 +1560,54 @@ export default FinanceCashApprovalForm;
 //       const response = await cashRequestAPI.getRequestById(requestId);
       
 //       if (response.success) {
-//         setRequest(response.data);
+//         const reqData = response.data;
+//         setRequest(reqData);
         
-//         // Set initial form values
-//         form.setFieldsValue({
-//           decision: 'approved',
-//           amountApproved: response.data.amountRequested
+//         // ✅ V2 FLOW: Determine Finance's allowed actions using TRUE status
+//         const trueStatus = getTrueStatus(reqData);
+        
+//         console.log('✅ Finance Form Action Status:', {
+//           backendStatus: reqData.status,
+//           trueStatus: trueStatus,
+//           financeStep: reqData.approvalChain?.find(s => s.approver?.role === 'Finance Officer'),
+//           hobStep: reqData.approvalChain?.find(s => s.approver?.role === 'Head of Business')
 //         });
         
-//         // Initialize disbursement amount
-//         setDisbursementAmount(response.data.amountRequested);
+//         // Finance can APPROVE if TRUE status is 'pending_finance'
+//         const canFinanceApprove = trueStatus === 'pending_finance';
+//         setCanApprove(canFinanceApprove);
+        
+//         // ✅ FIX: Finance can DISBURSE only if TRUE status is 'approved' or 'partially_disbursed'
+//         const canFinanceDisburse = ['approved', 'partially_disbursed'].includes(trueStatus);
+//         setCanDisburse(canFinanceDisburse);
+        
+//         // ✅ FIX: Request is awaiting HOB approval (after Finance approved)
+//         const awaitingCEO = trueStatus === 'pending_head_of_business';
+//         setIsAwaitingCEO(awaitingCEO);
+        
+//         console.log('✅ Finance Form Actions Allowed:', {
+//           canApprove: canFinanceApprove,
+//           canDisburse: canFinanceDisburse,
+//           awaitingCEO
+//         });
+        
+//         // Calculate remaining balance
+//         const amountToApprove = reqData.amountRequested;
+//         const alreadyDisbursed = reqData.totalDisbursed || 0;
+//         const remaining = amountToApprove - alreadyDisbursed;
+        
+//         // Set initial form values based on action type
+//         if (canFinanceApprove) {
+//           // Finance approval mode
+//           form.setFieldsValue({
+//             decision: 'approved',
+//             amountApproved: amountToApprove
+//           });
+//         } else if (canFinanceDisburse) {
+//           // Disbursement mode - no approval decision needed
+//           setEnableDisbursement(true);
+//           setDisbursementAmount(Math.max(0, remaining));
+//         }
 //       } else {
 //         message.error('Failed to load request details');
 //         navigate('/finance/cash-approvals');
@@ -2430,7 +1626,6 @@ export default FinanceCashApprovalForm;
 //       const response = await budgetCodeAPI.getBudgetCodes();
       
 //       if (response.success) {
-//         // Filter active budget codes with remaining balance
 //         const activeCodes = response.data.filter(
 //           code => code.status === 'active' && code.remaining > 0
 //         );
@@ -2442,19 +1637,6 @@ export default FinanceCashApprovalForm;
 //     }
 //   };
 
-//   // const fetchBudgetCodes = async () => {
-//   //   try {
-//   //     // Call your budget codes API
-//   //     const response = await cashRequestAPI.get('/budget-codes/available');
-//   //     if (response.data.success) {
-//   //       setBudgetCodes(response.data.data || []);
-//   //     }
-//   //   } catch (error) {
-//   //     console.error('Error fetching budget codes:', error);
-//   //     // Non-blocking error
-//   //   }
-//   // };
-
 //   const handleBudgetCodeChange = (budgetCodeId) => {
 //     const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
 //     setSelectedBudgetCode(budgetCode);
@@ -2465,49 +1647,80 @@ export default FinanceCashApprovalForm;
 //       setSubmitting(true);
 
 //       const isReimbursement = request.requestMode === 'reimbursement';
-//       const decision = values.decision;
 
-//       if (decision === 'approved' && !values.budgetCodeId) {
-//         message.error('Please select a budget code for approval');
+//       // ✅ V2 FIX: Handle DISBURSEMENT ONLY (when status is 'approved' or 'partially_disbursed')
+//       if (canDisburse) {
+//         console.log('💰 Processing disbursement (HOB already approved)');
+        
+//         if (!disbursementAmount || disbursementAmount <= 0) {
+//           message.error('Please enter a valid disbursement amount');
+//           return;
+//         }
+        
+//         // Use processDisbursement endpoint
+//         const response = await cashRequestAPI.processDisbursement(requestId, {
+//           amount: disbursementAmount,
+//           notes: values.disbursementNotes || 'Disbursement by Finance'
+//         });
+
+//         if (response.success) {
+//           message.success({
+//             content: `XAF ${disbursementAmount.toLocaleString()} disbursed successfully`,
+//             duration: 5
+//           });
+          
+//           setTimeout(() => {
+//             navigate('/finance/cash-approvals');
+//           }, 1500);
+//         } else {
+//           throw new Error(response.message || 'Failed to process disbursement');
+//         }
+        
+//         return; // Exit early
+//       }
+
+//       // ✅ V2 APPROVAL LOGIC (for pending_finance requests)
+//       if (canApprove) {
+//         const decision = values.decision;
+        
+//         if (decision === 'approved' && !values.budgetCodeId) {
+//           message.error('Please select a budget code for approval');
+//           return;
+//         }
+
+//         const payload = {
+//           decision: decision === 'approved' ? 'approved' : 'rejected',
+//           comments: values.comments || '',
+//           amountApproved: decision === 'approved' ? parseFloat(values.amountApproved) : null,
+//           budgetCodeId: decision === 'approved' ? values.budgetCodeId : null
+//         };
+
+//         console.log('✅ Submitting finance approval:', payload);
+
+//         const response = await cashRequestAPI.processFinanceDecision(requestId, payload);
+
+//         if (response.success) {
+//           message.success({
+//             content: `${isReimbursement ? 'Reimbursement' : 'Cash request'} ${decision === 'approved' ? 'approved and forwarded to Head of Business' : 'rejected'}`,
+//             duration: 5
+//           });
+          
+//           setTimeout(() => {
+//             navigate('/finance/cash-approvals');
+//           }, 1500);
+//         } else {
+//           throw new Error(response.message || 'Failed to process decision');
+//         }
+        
 //         return;
 //       }
 
-//       // Build payload
-//       const payload = {
-//         decision: decision === 'approved' ? 'approved' : 'rejected',
-//         comments: values.comments || '',
-//         amountApproved: decision === 'approved' ? parseFloat(values.amountApproved) : null,
-//         budgetCodeId: decision === 'approved' ? values.budgetCodeId : null
-//       };
-
-//       // Add disbursement if enabled
-//       if (decision === 'approved' && enableDisbursement && disbursementAmount > 0) {
-//         payload.disbursementAmount = parseFloat(disbursementAmount);
-//       }
-
-//       console.log('Submitting finance decision:', payload);
-
-//       const response = await cashRequestAPI.processFinanceDecision(requestId, payload);
-
-//       if (response.success) {
-//         const disbursementText = payload.disbursementAmount 
-//           ? ` and XAF ${payload.disbursementAmount.toLocaleString()} disbursed`
-//           : '';
-        
-//         message.success({
-//           content: `${isReimbursement ? 'Reimbursement' : 'Cash request'} ${decision === 'approved' ? 'approved' : 'rejected'} successfully${disbursementText}`,
-//           duration: 5
-//         });
-        
-//         setTimeout(() => {
-//           navigate('/finance/cash-approvals');
-//         }, 1500);
-//       } else {
-//         throw new Error(response.message || 'Failed to process decision');
-//       }
+//       // If neither canApprove nor canDisburse, show error
+//       message.error('Invalid action for current request status');
+      
 //     } catch (error) {
 //       console.error('Submit error:', error);
-//       message.error(error.response?.data?.message || 'Failed to process approval');
+//       message.error(error.response?.data?.message || 'Failed to process request');
 //     } finally {
 //       setSubmitting(false);
 //     }
@@ -2594,16 +1807,70 @@ export default FinanceCashApprovalForm;
 //     }
 //   ];
 
-//   const approvedAmount = parseFloat(form.getFieldValue('amountApproved') || request.amountRequested);
-//   const remainingAfterDisbursement = approvedAmount - disbursementAmount;
-//   const disbursementProgress = approvedAmount > 0 ? Math.round((disbursementAmount / approvedAmount) * 100) : 0;
+//   // ✅ CALCULATE DISBURSEMENT INFO
+//   const amountRequested = request.amountRequested || 0;
+//   const totalDisbursed = request.totalDisbursed || 0;
+//   const remainingBalance = request.remainingBalance || (amountRequested - totalDisbursed);
+//   const disbursementProgress = amountRequested > 0 
+//     ? Math.round((totalDisbursed / amountRequested) * 100) 
+//     : 0;
+//   const hasExistingDisbursements = (request.disbursements?.length || 0) > 0;
+
+//   const approvedAmount = parseFloat(form.getFieldValue('amountApproved') || amountRequested);
+//   const remainingAfterDisbursement = Math.max(0, remainingBalance - disbursementAmount);
+//   const newDisbursementProgress = amountRequested > 0 
+//     ? Math.round(((totalDisbursed + disbursementAmount) / amountRequested) * 100) 
+//     : 0;
+
+//   // ✅ Get true status for display
+//   const trueStatus = getTrueStatus(request);
 
 //   return (
 //     <div style={{ padding: '24px' }}>
 //       <Card>
 //         <Title level={3}>
-//           <BankOutlined /> {isReimbursement ? 'Reimbursement' : 'Cash Advance'} Approval
+//           <BankOutlined /> {isReimbursement ? 'Reimbursement' : 'Cash Advance'} 
+//           {canApprove && ' - Finance Approval'}
+//           {canDisburse && ' - Disbursement'}
+//           {isAwaitingCEO && ' - Awaiting HOB'}
 //         </Title>
+
+//         {/* ✅ NEW: Status-based alerts */}
+//         {isAwaitingCEO && (
+//           <Alert
+//             message="Awaiting Head of Business Approval"
+//             description="You have approved this request and allocated budget. It is now awaiting final approval from the Head of Business before disbursement can proceed."
+//             type="info"
+//             icon={<HourglassOutlined />}
+//             showIcon
+//             closable
+//             style={{ marginBottom: '24px' }}
+//           />
+//         )}
+
+//         {canDisburse && (
+//           <Alert
+//             message="Ready for Disbursement"
+//             description="This request has been fully approved (including by Head of Business). You can now disburse funds to the employee."
+//             type="success"
+//             icon={<CheckCircleOutlined />}
+//             showIcon
+//             closable
+//             style={{ marginBottom: '24px' }}
+//           />
+//         )}
+
+//         {canApprove && (
+//           <Alert
+//             message="Finance Approval Required"
+//             description="This request is awaiting your approval at the Finance level. Review the details below and make your decision."
+//             type="warning"
+//             icon={<ExclamationCircleOutlined />}
+//             showIcon
+//             closable
+//             style={{ marginBottom: '24px' }}
+//           />
+//         )}
 
 //         {/* Request Type Badge */}
 //         {isReimbursement && (
@@ -2615,6 +1882,119 @@ export default FinanceCashApprovalForm;
 //             showIcon
 //             style={{ marginBottom: '24px' }}
 //           />
+//         )}
+
+//         {/* ✅ DISBURSEMENT STATUS CARD */}
+//         {hasExistingDisbursements && (
+//           <Card 
+//             size="small" 
+//             title={
+//               <Space>
+//                 <SendOutlined />
+//                 <Text strong>Disbursement Status</Text>
+//                 {remainingBalance > 0 && (
+//                   <Tag color="orange">Partial Payment</Tag>
+//                 )}
+//                 {remainingBalance === 0 && (
+//                   <Tag color="success">Fully Paid</Tag>
+//                 )}
+//               </Space>
+//             }
+//             style={{ marginBottom: '24px', backgroundColor: '#f9f9f9' }}
+//           >
+//             <Row gutter={16} style={{ marginBottom: '16px' }}>
+//               <Col span={6}>
+//                 <Statistic
+//                   title="Amount Requested"
+//                   value={amountRequested}
+//                   precision={0}
+//                   valueStyle={{ fontSize: '16px' }}
+//                   prefix="XAF"
+//                 />
+//               </Col>
+//               <Col span={6}>
+//                 <Statistic
+//                   title="Already Disbursed"
+//                   value={totalDisbursed}
+//                   precision={0}
+//                   valueStyle={{ color: '#1890ff', fontSize: '16px' }}
+//                   prefix="XAF"
+//                 />
+//               </Col>
+//               <Col span={6}>
+//                 <Statistic
+//                   title="Remaining Balance"
+//                   value={remainingBalance}
+//                   precision={0}
+//                   valueStyle={{ color: remainingBalance > 0 ? '#cf1322' : '#52c41a', fontSize: '16px' }}
+//                   prefix="XAF"
+//                 />
+//               </Col>
+//               <Col span={6}>
+//                 <Statistic
+//                   title="Progress"
+//                   value={disbursementProgress}
+//                   precision={0}
+//                   valueStyle={{ fontSize: '16px' }}
+//                   suffix="%"
+//                 />
+//               </Col>
+//             </Row>
+
+//             <Progress 
+//               percent={disbursementProgress} 
+//               status={disbursementProgress === 100 ? 'success' : 'active'}
+//               strokeColor={disbursementProgress === 100 ? '#52c41a' : '#1890ff'}
+//             />
+
+//             {/* DISBURSEMENT HISTORY */}
+//             {request.disbursements && request.disbursements.length > 0 && (
+//               <>
+//                 <Divider style={{ margin: '16px 0' }} />
+//                 <Text strong style={{ display: 'block', marginBottom: '12px' }}>
+//                   Payment History ({request.disbursements.length})
+//                 </Text>
+//                 <Timeline mode="left" style={{ marginTop: '12px' }}>
+//                   {request.disbursements.map((disbursement, index) => (
+//                     <Timeline.Item
+//                       key={index}
+//                       color={index === request.disbursements.length - 1 ? 'green' : 'blue'}
+//                       dot={<DollarOutlined />}
+//                     >
+//                       <div style={{ fontSize: '12px' }}>
+//                         <Text strong>Payment #{disbursement.disbursementNumber}</Text>
+//                         <br />
+//                         <Text type="secondary">
+//                           <ClockCircleOutlined /> {new Date(disbursement.date).toLocaleString('en-GB')}
+//                         </Text>
+//                         <br />
+//                         <Text strong style={{ color: '#1890ff' }}>
+//                           XAF {disbursement.amount?.toLocaleString()}
+//                         </Text>
+//                         {disbursement.notes && (
+//                           <>
+//                             <br />
+//                             <Text italic style={{ fontSize: '11px' }}>"{disbursement.notes}"</Text>
+//                           </>
+//                         )}
+//                       </div>
+//                     </Timeline.Item>
+//                   ))}
+//                 </Timeline>
+//               </>
+//             )}
+
+//             {remainingBalance > 0 && canDisburse && (
+//               <Alert
+//                 message="Action Required"
+//                 description={`This request still has XAF ${remainingBalance.toLocaleString()} remaining to be disbursed.`}
+//                 type="warning"
+//                 showIcon
+//                 icon={<WarningOutlined />}
+//                 style={{ marginTop: '12px' }}
+//               />
+//             )}
+//           </Card>
 //         )}
 
 //         {/* Employee & Request Details */}
@@ -2643,11 +2023,30 @@ export default FinanceCashApprovalForm;
 //           </Descriptions.Item>
 //           <Descriptions.Item label="Amount Requested">
 //             <Text strong style={{ color: '#1890ff', fontSize: '16px' }}>
-//               XAF {request.amountRequested.toLocaleString()}
+//               XAF {amountRequested.toLocaleString()}
 //             </Text>
 //           </Descriptions.Item>
 //           <Descriptions.Item label="Submitted Date">
 //             {new Date(request.createdAt).toLocaleDateString('en-GB')}
+//           </Descriptions.Item>
+//           <Descriptions.Item label="Current Status" span={2}>
+//             <Space direction="vertical" size="small">
+//               <Tag color={
+//                 trueStatus === 'pending_finance' ? 'orange' :
+//                 trueStatus === 'pending_head_of_business' ? 'purple' :
+//                 trueStatus === 'approved' ? 'green' :
+//                 trueStatus === 'partially_disbursed' ? 'blue' :
+//                 'default'
+//               }>
+//                 {trueStatus?.replace(/_/g, ' ').toUpperCase()}
+//               </Tag>
+//               {/* ✅ Show warning if backend status differs */}
+//               {request.status !== trueStatus && (
+//                 <Text type="secondary" style={{ fontSize: '10px' }}>
+//                   (Backend status: {request.status.replace(/_/g, ' ')})
+//                 </Text>
+//               )}
+//             </Space>
 //           </Descriptions.Item>
 //           <Descriptions.Item label="Purpose" span={2}>
 //             {request.purpose}
@@ -2657,7 +2056,7 @@ export default FinanceCashApprovalForm;
 //           </Descriptions.Item>
 //         </Descriptions>
 
-//         {/* Itemized Breakdown (if exists) */}
+//         {/* Itemized Breakdown */}
 //         {hasItemizedBreakdown && (
 //           <Card 
 //             size="small" 
@@ -2694,7 +2093,7 @@ export default FinanceCashApprovalForm;
 //           </Card>
 //         )}
 
-//         {/* Receipt Documents (for reimbursements) */}
+//         {/* Receipt Documents */}
 //         {isReimbursement && hasReceiptDocuments && (
 //           <Card
 //             size="small"
@@ -2790,304 +2189,360 @@ export default FinanceCashApprovalForm;
 
 //         <Divider />
 
-//         {/* Finance Decision Form */}
-//         <Form
-//           form={form}
-//           layout="vertical"
-//           onFinish={handleSubmit}
-//           initialValues={{
-//             decision: 'approved',
-//             amountApproved: request.amountRequested
-//           }}
-//         >
-//           <Form.Item
-//             name="decision"
-//             label="Your Decision"
-//             rules={[{ required: true, message: 'Please make a decision' }]}
+//         {/* ✅ V2 CONDITIONAL FORM RENDERING */}
+        
+//         {/* MODE 1: Awaiting HOB - Show info only */}
+//         {isAwaitingCEO && (
+//           <Alert
+//             message="No Action Required at This Time"
+//             description={
+//               <div>
+//                 <p>You have successfully approved this request and allocated budget code.</p>
+//                 <p>The request is now awaiting final approval from <Text strong>Head of Business (Mr. E.T Kelvin)</Text>.</p>
+//                 <p>Once the Head of Business approves, you will be able to disburse funds.</p>
+//               </div>
+//             }
+//             type="info"
+//             showIcon
+//             icon={<InfoCircleOutlined />}
+//             action={
+//               <Button size="small" onClick={() => navigate('/finance/cash-approvals')}>
+//                 Back to Approvals
+//               </Button>
+//             }
+//           />
+//         )}
+
+//         {/* MODE 2: Finance Approval Form (pending_finance) */}
+//         {canApprove && (
+//           <Form
+//             form={form}
+//             layout="vertical"
+//             onFinish={handleSubmit}
+//             initialValues={{
+//               decision: 'approved',
+//               amountApproved: amountRequested
+//             }}
 //           >
-//             <Radio.Group>
-//               <Radio.Button value="approved" style={{ color: '#52c41a' }}>
-//                 <CheckCircleOutlined /> Approve {isReimbursement ? 'Reimbursement' : 'Request'}
-//               </Radio.Button>
-//               <Radio.Button value="rejected" style={{ color: '#f5222d' }}>
-//                 <CloseCircleOutlined /> Reject {isReimbursement ? 'Reimbursement' : 'Request'}
-//               </Radio.Button>
-//             </Radio.Group>
-//           </Form.Item>
+//             <Alert
+//               message="Finance Approval Required"
+//               description="Review the request details above and make your approval decision. If approved, allocate a budget code. The request will then go to Head of Business for final approval."
+//               type="warning"
+//               showIcon
+//               icon={<WarningOutlined />}
+//               style={{ marginBottom: '16px' }}
+//             />
 
-//           <Form.Item noStyle shouldUpdate={(prev, curr) => prev.decision !== curr.decision}>
-//             {({ getFieldValue }) =>
-//               {getFieldValue('decision') === 'approved' && (
-//                 <>
-//                   {/* Budget Code Selection */}
-//                   <Form.Item
-//                     name="budgetCodeId"
-//                     label={
-//                       <Space>
-//                         <span>Budget Code</span>
-//                         <Tag color="red">Required</Tag>
-//                       </Space>
-//                     }
-//                     rules={[{ required: true, message: 'Budget code is required for approval' }]}
-//                   >
-//                     <Select
-//                       placeholder="Select budget code"
-//                       showSearch
-//                       filterOption={(input, option) =>
-//                         option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+//             <Form.Item
+//               name="decision"
+//               label="Your Decision"
+//               rules={[{ required: true, message: 'Please make a decision' }]}
+//             >
+//               <Radio.Group>
+//                 <Radio.Button value="approved" style={{ color:'#52c41a' }}>
+//                   <CheckCircleOutlined /> Approve & Forward to HOB
+//                 </Radio.Button>
+//                 <Radio.Button value="rejected" style={{ color: '#f5222d' }}>
+//                   <CloseCircleOutlined /> Reject {isReimbursement ? 'Reimbursement' : 'Request'}
+//                 </Radio.Button>
+//               </Radio.Group>
+//             </Form.Item>
+
+//             <Form.Item noStyle shouldUpdate={(prev, curr) => prev.decision !== curr.decision}>
+//               {({ getFieldValue }) =>
+//                 getFieldValue('decision') === 'approved' ? (
+//                   <>
+//                     <Form.Item
+//                       name="budgetCodeId"
+//                       label={
+//                         <Space>
+//                           <span>Budget Code</span>
+//                           <Tag color="red">Required</Tag>
+//                         </Space>
 //                       }
-//                       onChange={handleBudgetCodeChange}
+//                       rules={[{ required: true, message: 'Budget code is required for approval' }]}
 //                     >
-//                       {budgetCodes.map(bc => (
-//                         <Option key={bc._id} value={bc._id}>
-//                           {bc.code} - {bc.name} (Available: XAF {bc.remaining.toLocaleString()})
-//                         </Option>
-//                       ))}
-//                     </Select>
-//                   </Form.Item>
+//                       <Select
+//                         placeholder="Select budget code"
+//                         showSearch
+//                         filterOption={(input, option) =>
+//                           option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+//                         }
+//                         onChange={handleBudgetCodeChange}
+//                       >
+//                         {budgetCodes.map(bc => (
+//                           <Option key={bc._id} value={bc._id}>
+//                             {bc.code} - {bc.name} (Available: XAF {bc.remaining.toLocaleString()})
+//                           </Option>
+//                         ))}
+//                       </Select>
+//                     </Form.Item>
 
-//                   {selectedBudgetCode && (
+//                     {selectedBudgetCode && (
+//                       <Alert
+//                         message="Budget Code Information"
+//                         description={
+//                           <div>
+//                             <Text>Budget: XAF {selectedBudgetCode.budget.toLocaleString()}</Text>
+//                             <br />
+//                             <Text>Used: XAF {selectedBudgetCode.used.toLocaleString()}</Text>
+//                             <br />
+//                             <Text strong>Available: XAF {selectedBudgetCode.remaining.toLocaleString()}</Text>
+//                           </div>
+//                         }
+//                         type="info"
+//                         showIcon
+//                         style={{ marginBottom: '16px' }}
+//                       />
+//                     )}
+
+//                     <Form.Item
+//                       name="amountApproved"
+//                       label="Amount to Approve (XAF)"
+//                       rules={[{ required: true, message: 'Please enter amount to approve' }]}
+//                     >
+//                       <InputNumber
+//                         style={{ width: '100%' }}
+//                         min={0}
+//                         max={amountRequested}
+//                         step={1000}
+//                         formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+//                         parser={(value) => value.replace(/,/g, '')}
+//                       />
+//                     </Form.Item>
+
 //                     <Alert
-//                       message="Budget Code Information"
-//                       description={
-//                         <div>
-//                           <Text>Budget: XAF {selectedBudgetCode.budget.toLocaleString()}</Text>
-//                           <br />
-//                           <Text>Used: XAF {selectedBudgetCode.used.toLocaleString()}</Text>
-//                           <br />
-//                           <Text strong>Available: XAF {selectedBudgetCode.remaining.toLocaleString()}</Text>
-//                         </div>
-//                       }
+//                       message="Next Step: HOB Approval"
+//                       description="After you approve, this request will be sent to the Head of Business for final approval. You will be able to disburse funds once the HOB approves."
 //                       type="info"
 //                       showIcon
+//                       icon={<InfoCircleOutlined />}
 //                       style={{ marginBottom: '16px' }}
 //                     />
-//                   )}
+//                   </>
+//                 ) : null
+//               }
+//             </Form.Item>
 
-//                   {/* Approved Amount */}
-//                   <Form.Item
-//                     name="amountApproved"
-//                     label="Amount to Approve (XAF)"
-//                     rules={[{ required: true, message: 'Please enter amount to approve' }]}
-//                     extra={
-//                       approvedAmount < request.amountRequested && (
-//                         <Text type="warning">
-//                           You are approving {Math.round((approvedAmount / request.amountRequested) * 100)}% of requested amount
-//                         </Text>
-//                       )
-//                     }
-//                   >
-//                     <InputNumber
-//                       style={{ width: '100%' }}
-//                       min={0}
-//                       max={request.amountRequested}
-//                       step={1000}
-//                       formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-//                       parser={(value) => value.replace(/,/g, '')}
-//                       onChange={(value) => {
-//                         setDisbursementAmount(value);
-//                         form.setFieldsValue({ disbursementAmount: value });
-//                       }}
-//                     />
-//                   </Form.Item>
+//             <Form.Item
+//               name="comments"
+//               label="Comments"
+//               rules={[{ required: true, message: 'Please provide comments for your decision' }]}
+//             >
+//               <TextArea
+//                 rows={4}
+//                 placeholder="Explain your decision (required for audit trail)..."
+//                 showCount
+//                 maxLength={500}
+//               />
+//             </Form.Item>
 
-//                   <Divider />
+//             <Form.Item>
+//               <Space>
+//                 <Button onClick={() => navigate('/finance/cash-approvals')}>
+//                   Cancel
+//                 </Button>
+//                 <Button
+//                   type="primary"
+//                   htmlType="submit"
+//                   loading={submitting}
+//                   icon={form.getFieldValue('decision') === 'approved' ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
+//                 >
+//                   {submitting ? 'Processing...' : `${form.getFieldValue('decision') === 'approved' ? 'Approve & Forward to HOB' : 'Reject'}`}
+//                 </Button>
+//               </Space>
+//             </Form.Item>
+//           </Form>
+//         )}
 
-//                   {/* Disbursement Section - NEW DESIGN */}
-//                   <Card 
-//                     size="small" 
-//                     title={
-//                       <Space>
-//                         <SendOutlined />
-//                         <Text strong>Disbursement Options</Text>
-//                       </Space>
-//                     }
-//                     style={{ marginBottom: '24px', backgroundColor: '#f9f9f9' }}
-//                   >
-//                     <Space direction="vertical" style={{ width: '100%' }} size="large">
-                      
-//                       {/* Disbursement Mode Selection */}
-//                       <div>
-//                         <Text strong style={{ display: 'block', marginBottom: '8px' }}>
-//                           When would you like to disburse funds?
-//                         </Text>
-//                         <Radio.Group 
-//                           value={enableDisbursement ? 'now' : 'later'}
-//                           onChange={(e) => {
-//                             const isNow = e.target.value === 'now';
-//                             setEnableDisbursement(isNow);
-//                             if (isNow) {
-//                               setDisbursementAmount(approvedAmount);
-//                               form.setFieldsValue({ disbursementAmount: approvedAmount });
-//                             }
-//                           }}
-//                           style={{ width: '100%' }}
-//                         >
-//                           <Space direction="vertical" style={{ width: '100%' }}>
-//                             <Radio value="now" style={{ display: 'block', padding: '12px', border: '1px solid #d9d9d9', borderRadius: '4px', marginBottom: '8px' }}>
-//                               <Space direction="vertical" size="small">
-//                                 <Text strong>Disburse Immediately</Text>
-//                                 <Text type="secondary" style={{ fontSize: '12px' }}>
-//                                   Funds will be disbursed now (full or partial amount)
-//                                 </Text>
-//                               </Space>
-//                             </Radio>
-                            
-//                             <Radio value="later" style={{ display: 'block', padding: '12px', border: '1px solid #d9d9d9', borderRadius: '4px' }}>
-//                               <Space direction="vertical" size="small">
-//                                 <Text strong>Approve Now, Disburse Later</Text>
-//                                 <Text type="secondary" style={{ fontSize: '12px' }}>
-//                                   Budget will be reserved. You can disburse anytime from Finance Dashboard.
-//                                 </Text>
-//                               </Space>
-//                             </Radio>
-//                           </Space>
-//                         </Radio.Group>
-//                       </div>
-
-//                       {/* Immediate Disbursement Section */}
-//                       {enableDisbursement && (
-//                         <>
-//                           <Alert
-//                             message="Immediate Disbursement Mode"
-//                             description="You can disburse the full approved amount now, or make a partial payment."
-//                             type="info"
-//                             showIcon
-//                             icon={<InfoCircleOutlined />}
-//                           />
-
-//                           <Form.Item 
-//                             name="disbursementAmount"
-//                             label="Disbursement Amount (XAF)" 
-//                             style={{ marginBottom: 0 }}
-//                             rules={[
-//                               { required: true, message: 'Please enter disbursement amount' },
-//                               {
-//                                 validator: (_, value) => {
-//                                   if (value > approvedAmount) {
-//                                     return Promise.reject('Cannot exceed approved amount');
-//                                   }
-//                                   return Promise.resolve();
-//                                 }
-//                               }
-//                             ]}
-//                           >
-//                             <InputNumber
-//                               style={{ width: '100%' }}
-//                               min={0}
-//                               max={approvedAmount}
-//                               step={1000}
-//                               value={disbursementAmount}
-//                               onChange={setDisbursementAmount}
-//                               formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-//                               parser={(value) => value.replace(/,/g, '')}
-//                             />
-//                           </Form.Item>
-
-//                           <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
-//                             <Col span={8}>
-//                               <Statistic
-//                                 title="Approved Amount"
-//                                 value={approvedAmount}
-//                                 precision={0}
-//                                 valueStyle={{ color: '#3f8600', fontSize: '18px' }}
-//                                 prefix="XAF"
-//                               />
-//                             </Col>
-//                             <Col span={8}>
-//                               <Statistic
-//                                 title="Disbursing Now"
-//                                 value={disbursementAmount}
-//                                 precision={0}
-//                                 valueStyle={{ color: '#1890ff', fontSize: '18px' }}
-//                                 prefix="XAF"
-//                               />
-//                             </Col>
-//                             <Col span={8}>
-//                               <Statistic
-//                                 title="Remaining"
-//                                 value={approvedAmount - disbursementAmount}
-//                                 precision={0}
-//                                 valueStyle={{ 
-//                                   color: (approvedAmount - disbursementAmount) > 0 ? '#faad14' : '#52c41a',
-//                                   fontSize: '18px'
-//                                 }}
-//                                 prefix="XAF"
-//                               />
-//                             </Col>
-//                           </Row>
-
-//                           <Progress 
-//                             percent={disbursementProgress} 
-//                             status={disbursementProgress === 100 ? 'success' : 'active'}
-//                             format={(percent) => `${percent}% ${disbursementProgress === 100 ? '(Full Disbursement)' : '(Partial Disbursement)'}`}
-//                             strokeColor={{
-//                               '0%': '#108ee9',
-//                               '100%': '#52c41a',
-//                             }}
-//                           />
-
-//                           {disbursementProgress < 100 && (
-//                             <Alert
-//                               message="Partial Disbursement"
-//                               description={`You can disburse the remaining XAF ${(approvedAmount - disbursementAmount).toLocaleString()} later from the Finance Dashboard.`}
-//                               type="warning"
-//                               showIcon
-//                             />
-//                           )}
-//                         </>
-//                       )}
-
-//                       {/* Approve Later Mode */}
-//                       {!enableDisbursement && (
-//                         <Alert
-//                           message="Funds Reserved"
-//                           description="Budget will be reserved for this request. You can process disbursement anytime from Finance Dashboard > Pending Disbursements."
-//                           type="success"
-//                           showIcon
-//                           icon={<CheckCircleOutlined />}
-//                         />
-//                       )}
-//                     </Space>
-//                   </Card>
-//                 </>
-//               )}
-//             }
-//           </Form.Item>
-
-//           <Form.Item
-//             name="comments"
-//             label="Comments"
-//             rules={[{ required: true, message: 'Please provide comments for your decision' }]}
+//         {/* MODE 3: Disbursement Form (approved or partially_disbursed) */}
+//         {canDisburse && (
+//           <Form
+//             form={form}
+//             layout="vertical"
+//             onFinish={handleSubmit}
 //           >
-//             <TextArea
-//               rows={4}
-//               placeholder="Explain your decision (required for audit trail)..."
-//               showCount
-//               maxLength={500}
+//             <Alert
+//               message="Disbursement Ready"
+//               description="This request has been fully approved (including by Head of Business). You can now disburse funds to the employee."
+//               type="success"
+//               showIcon
+//               icon={<CheckCircleOutlined />}
+//               style={{ marginBottom: '24px' }}
 //             />
-//           </Form.Item>
 
-//           <Form.Item>
-//             <Space>
-//               <Button onClick={() => navigate('/finance/cash-approvals')}>
-//                 Cancel
+//             <Card 
+//               size="small" 
+//               title={
+//                 <Space>
+//                   <SendOutlined />
+//                   <Text strong>Disbursement Details</Text>
+//                   {hasExistingDisbursements && (
+//                     <Tag color="blue">Additional Payment</Tag>
+//                   )}
+//                 </Space>
+//               }
+//               style={{ marginBottom: '24px', backgroundColor: '#f9f9f9' }}
+//             >
+//               <Space direction="vertical" style={{ width: '100%' }} size="large">
+//                 {hasExistingDisbursements && (
+//                   <Alert
+//                     message={`XAF ${totalDisbursed.toLocaleString()} already disbursed. Remaining: XAF ${remainingBalance.toLocaleString()}`}
+//                     type="info"
+//                     showIcon
+//                     icon={<InfoCircleOutlined />}
+//                   />
+//                 )}
+
+//                 {!hasExistingDisbursements && (
+//                   <Alert
+//                     message="First Disbursement"
+//                     description="This is the first payment for this request. You can disburse the full amount or make a partial payment."
+//                     type="info"
+//                     showIcon
+//                   />
+//                 )}
+
+//                 <Form.Item 
+//                   label={
+//                     <Space>
+//                       <span>Disbursement Amount (XAF)</span>
+//                       <Tag color="red">Required</Tag>
+//                     </Space>
+//                   }
+//                   style={{ marginBottom: 0 }}
+//                 >
+//                   <InputNumber
+//                     style={{ width: '100%' }}
+//                     min={0}
+//                     max={remainingBalance}
+//                     step={1000}
+//                     value={disbursementAmount}
+//                     onChange={setDisbursementAmount}
+//                     formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+//                     parser={(value) => value.replace(/,/g, '')}
+//                   />
+//                   <Text type="secondary" style={{ fontSize: '12px', marginTop: '4px', display: 'block' }}>
+//                     Maximum: XAF {remainingBalance.toLocaleString()}
+//                   </Text>
+//                 </Form.Item>
+
+//                 {/* ✅ DISBURSEMENT PREVIEW */}
+//                 <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
+//                   <Col span={8}>
+//                     <Statistic
+//                       title="Amount Requested"
+//                       value={amountRequested}
+//                       precision={0}
+//                       valueStyle={{ fontSize: '14px' }}
+//                       prefix="XAF"
+//                     />
+//                   </Col>
+//                   <Col span={8}>
+//                     <Statistic
+//                       title="Disbursing Now"
+//                       value={disbursementAmount}
+//                       precision={0}
+//                       valueStyle={{ color: '#1890ff', fontSize: '14px' }}
+//                       prefix="XAF"
+//                     />
+//                   </Col>
+//                   <Col span={8}>
+//                     <Statistic
+//                       title="After This Payment"
+//                       value={remainingAfterDisbursement}
+//                       precision={0}
+//                       valueStyle={{ 
+//                         color: remainingAfterDisbursement > 0 ? '#cf1322' : '#3f8600', 
+//                         fontSize: '14px' 
+//                       }}
+//                       prefix="XAF"
+//                     />
+//                   </Col>
+//                 </Row>
+
+//                 <Progress 
+//                   percent={newDisbursementProgress} 
+//                   status={newDisbursementProgress === 100 ? 'success' : 'active'}
+//                   strokeColor={newDisbursementProgress === 100 ? '#52c41a' : '#1890ff'}
+//                   format={(percent) => `${percent}% ${newDisbursementProgress === 100 ? '(Full Payment)' : '(Partial)'}`}
+//                 />
+
+//                 {remainingAfterDisbursement > 0 && disbursementAmount > 0 && (
+//                   <Alert
+//                     message="Partial Disbursement"
+//                     description={`After this payment, XAF ${remainingAfterDisbursement.toLocaleString()} will remain to be disbursed. You can make additional payments later.`}
+//                     type="warning"
+//                     showIcon
+//                     icon={<WarningOutlined />}
+//                   />
+//                 )}
+
+//                 {newDisbursementProgress === 100 && disbursementAmount > 0 && (
+//                   <Alert
+//                     message="Full Disbursement"
+//                     description="This payment will complete the full disbursement. The request will move to 'Fully Disbursed' status and await justification from the employee."
+//                     type="success"
+//                     showIcon
+//                     icon={<CheckCircleOutlined />}
+//                   />
+//                 )}
+//               </Space>
+//             </Card>
+
+//             <Form.Item
+//               name="disbursementNotes"
+//               label="Disbursement Notes"
+//               rules={[{ required: false }]}
+//             >
+//               <TextArea
+//                 rows={3}
+//                 placeholder="Optional notes about this disbursement (e.g., payment method, reference number)..."
+//                 showCount
+//                 maxLength={300}
+//               />
+//             </Form.Item>
+
+//             <Form.Item>
+//               <Space>
+//                 <Button onClick={() => navigate('/finance/cash-approvals')}>
+//                   Cancel
+//                 </Button>
+//                 <Button
+//                   type="primary"
+//                   htmlType="submit"
+//                   loading={submitting}
+//                   icon={<SendOutlined />}
+//                   disabled={!disbursementAmount || disbursementAmount <= 0 || disbursementAmount > remainingBalance}
+//                 >
+//                   {submitting ? 'Processing Disbursement...' : `Disburse XAF ${disbursementAmount.toLocaleString()}`}
+//                 </Button>
+//               </Space>
+//             </Form.Item>
+//           </Form>
+//         )}
+
+//         {/* If somehow none of the modes apply, show error */}
+//         {!canApprove && !canDisburse && !isAwaitingCEO && (
+//           <Alert
+//             message="Invalid Action"
+//             description="This request cannot be processed at this time. It may have already been processed or is in an invalid state."
+//             type="error"
+//             showIcon
+//             action={
+//               <Button size="small" onClick={() => navigate('/finance/cash-approvals')}>
+//                 Back to Approvals
 //               </Button>
-//               <Button
-//                 type="primary"
-//                 htmlType="submit"
-//                 loading={submitting}
-//                 icon={form.getFieldValue('decision') === 'approved' ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-//               >
-//                 {submitting ? 'Processing...' : `${form.getFieldValue('decision') === 'approved' ? 'Approve' : 'Reject'} ${isReimbursement ? 'Reimbursement' : 'Request'}`}
-//               </Button>
-//             </Space>
-//           </Form.Item>
-//         </Form>
+//             }
+//           />
+//         )}
 //       </Card>
 //     </div>
 //   );
 // };
 
 // export default FinanceCashApprovalForm;
+
+
+
 

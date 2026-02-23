@@ -13,13 +13,10 @@ import {
   Alert,
   message,
   Tooltip,
-  Badge,
   Statistic,
   Row,
   Col,
   notification,
-  Upload,
-  Steps,
   Divider,
   Spin
 } from 'antd';
@@ -33,21 +30,15 @@ import {
   ReloadOutlined,
   ShopOutlined,
   TeamOutlined,
-  FileOutlined,
-  DownloadOutlined,
-  UploadOutlined,
-  WarningOutlined,
-  CrownOutlined,
-  InboxOutlined
+  // TeamOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
 import { buyerRequisitionAPI } from '../../services/buyerRequisitionAPI';
+import UnifiedSupplierAPI from '../../services/unifiedSupplierAPI';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
-const { Dragger } = Upload;
-const { Step } = Steps;
 
 const SupplyChainPOManagement = () => {
   const [purchaseOrders, setPurchaseOrders] = useState([]);
@@ -55,6 +46,7 @@ const SupplyChainPOManagement = () => {
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({
     pendingAssignment: 0,
@@ -66,13 +58,28 @@ const SupplyChainPOManagement = () => {
   // Assignment workflow states
   const [assignDepartment, setAssignDepartment] = useState('');
   const [assignComments, setAssignComments] = useState('');
-  const [signedDocumentFile, setSignedDocumentFile] = useState(null);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [downloadingPO, setDownloadingPO] = useState(false);
-  const [documentDownloaded, setDocumentDownloaded] = useState(false);
   
   // Rejection states
   const [rejectReason, setRejectReason] = useState('');
+
+  const fetchSuppliers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await UnifiedSupplierAPI.getAllSuppliers({
+        status: 'approved'
+      });
+      
+      if (response.success) {
+        console.log('Fetched suppliers:', response.data);
+        setSuppliers(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching suppliers:', error);
+      message.error('Failed to fetch suppliers');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // Fetch pending POs
   const fetchPendingPOs = useCallback(async () => {
@@ -107,9 +114,28 @@ const SupplyChainPOManagement = () => {
   useEffect(() => {
     fetchPendingPOs();
     fetchStats();
-  }, [fetchPendingPOs, fetchStats]);
+    fetchSuppliers();
+  }, [fetchPendingPOs, fetchStats, fetchSuppliers]);
 
-  // Handle download PO for signing
+  const handlePreviewPO = async () => {
+    if (!selectedPO) {
+      message.error('No purchase order selected');
+      return;
+    }
+
+    try {
+      const response = await buyerRequisitionAPI.previewPurchaseOrderPDF(selectedPO.id);
+      if (response.success) {
+        const url = URL.createObjectURL(response.data);
+        window.open(url, '_blank', 'noopener,noreferrer');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      }
+    } catch (error) {
+      console.error('Error previewing PO:', error);
+      message.error(error.message || 'Failed to preview purchase order');
+    }
+  };
+
   const handleDownloadPO = async () => {
     if (!selectedPO) {
       message.error('No purchase order selected');
@@ -117,88 +143,43 @@ const SupplyChainPOManagement = () => {
     }
 
     try {
-      setDownloadingPO(true);
-      const response = await buyerRequisitionAPI.downloadPOForSigning(selectedPO.id);
-      
+      const response = await buyerRequisitionAPI.downloadPurchaseOrderPDF(selectedPO.id);
       if (response.success) {
-        const { url, fileName } = response.data;
-        
+        const url = URL.createObjectURL(response.data);
         const link = document.createElement('a');
         link.href = url;
-        link.download = fileName || `PO_${selectedPO.poNumber}.pdf`;
-        link.target = '_blank';
+        link.download = response.filename || `PO_${selectedPO.poNumber}.pdf`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
-        message.success('Purchase order downloaded successfully. Please sign and upload.');
-        setDocumentDownloaded(true);
-        setCurrentStep(1);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
       }
     } catch (error) {
       console.error('Error downloading PO:', error);
-      message.error(error.response?.data?.message || 'Failed to download purchase order');
-    } finally {
-      setDownloadingPO(false);
+      message.error(error.message || 'Failed to download purchase order');
     }
   };
 
-  // Handle file upload
-  const handleFileUpload = (info) => {
-    const { file } = info;
-    
-    const isValidType = file.type === 'application/pdf' || 
-                        file.type === 'image/jpeg' || 
-                        file.type === 'image/png' ||
-                        file.type === 'image/jpg';
-    
-    if (!isValidType) {
-      message.error('You can only upload PDF, JPG, or PNG files!');
-      return;
-    }
 
-    const isValidSize = file.size / 1024 / 1024 < 10;
-    if (!isValidSize) {
-      message.error('File must be smaller than 10MB!');
-      return;
-    }
-
-    setSignedDocumentFile(file);
-    message.success(`${file.name} selected successfully`);
-    setCurrentStep(2);
-  };
-
-  // Handle assignment with signed document
+  // Handle assignment (auto-signing)
   const handleAssign = async () => {
     if (!assignDepartment) {
       message.error('Please select a department');
       return;
     }
     
-    if (!signedDocumentFile) {
-      message.error('Please upload the signed document');
-      return;
-    }
-    
     try {
       setLoading(true);
       
-      const formData = new FormData();
-      formData.append('department', assignDepartment);
-      if (assignComments) {
-        formData.append('comments', assignComments);
-      }
-      formData.append('signedDocument', signedDocumentFile);
-      
-      const response = await buyerRequisitionAPI.assignPOToDepartment(
-        selectedPO.id,
-        formData
-      );
+      const response = await buyerRequisitionAPI.assignPOToDepartment(selectedPO.id, {
+        department: assignDepartment,
+        comments: assignComments
+      });
       
       if (response.success) {
         notification.success({
           message: 'Purchase Order Assigned Successfully',
-          description: `PO ${selectedPO.poNumber} has been signed and assigned to ${assignDepartment}. The Department Head will be notified.`,
+          description: `PO ${selectedPO.poNumber} has been assigned to ${assignDepartment}. The Department Head will be notified and signatures will be applied automatically.`,
           duration: 5
         });
         
@@ -221,9 +202,6 @@ const SupplyChainPOManagement = () => {
     setSelectedPO(null);
     setAssignDepartment('');
     setAssignComments('');
-    setSignedDocumentFile(null);
-    setDocumentDownloaded(false);
-    setCurrentStep(0);
   };
 
   // Handle rejection
@@ -333,6 +311,16 @@ const SupplyChainPOManagement = () => {
       width: 130
     },
     {
+      title: 'Status',
+      key: 'status',
+      render: (_, record) => (
+        <Tag color={record.status === 'draft' ? 'default' : 'orange'}>
+          {record.status === 'draft' ? 'Draft' : 'Pending Assignment'}
+        </Tag>
+      ),
+      width: 130
+    },
+    {
       title: 'Actions',
       key: 'actions',
       fixed: 'right',
@@ -347,7 +335,7 @@ const SupplyChainPOManagement = () => {
             />
           </Tooltip>
           
-          <Tooltip title="Download, Sign & Assign">
+          <Tooltip title="Assign to Department">
             <Button 
               size="small" 
               type="primary"
@@ -401,8 +389,8 @@ const SupplyChainPOManagement = () => {
         </div>
 
         <Alert
-          message="Document Signing Workflow"
-          description="For each purchase order, you must: 1) Download the PO 2) Sign it manually 3) Upload the signed document before assigning to a department."
+          message="Automatic Signature Workflow"
+          description="Supply Chain signatures are applied automatically when you assign a purchase order to a department."
           type="info"
           showIcon
           icon={<FileTextOutlined />}
@@ -454,7 +442,7 @@ const SupplyChainPOManagement = () => {
           </Col>
         </Row>
 
-        <Table
+        {/* <Table
           columns={columns}
           dataSource={purchaseOrders}
           loading={loading}
@@ -466,15 +454,48 @@ const SupplyChainPOManagement = () => {
             showQuickJumper: true,
             showTotal: (total) => `Total ${total} purchase orders`
           }}
-        />
+        /> */}
+
+        {purchaseOrders.length === 0 && !loading ? (
+          <Alert
+            message="No Purchase Orders Pending Assignment"
+            description={
+              <div>
+                <p>There are currently no purchase orders waiting for Supply Chain assignment.</p>
+                <p>Purchase orders will appear here when buyers send them for department assignment.</p>
+              </div>
+            }
+            type="info"
+            showIcon
+            icon={<FileTextOutlined />}
+            style={{ marginTop: '24px' }}
+          />
+        ) : (
+          <Table
+            columns={columns}
+            dataSource={purchaseOrders}
+            loading={loading}
+            rowKey="id"
+            scroll={{ x: 1300 }}
+            size="small"
+            pagination={{
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `Total ${total} purchase orders`
+            }}
+            locale={{
+              emptyText: loading ? <Spin /> : 'No purchase orders pending assignment'
+            }}
+          />
+        )}
       </Card>
 
-      {/* Assignment Modal with Signing Workflow */}
+      {/* Assignment Modal */}
       <Modal
         title={
           <Space>
             <SendOutlined />
-            Sign & Assign Purchase Order to Department
+            Assign Purchase Order to Department
           </Space>
         }
         open={assignModalVisible}
@@ -500,125 +521,33 @@ const SupplyChainPOManagement = () => {
               </Descriptions>
             </Card>
 
-            {/* Workflow Steps */}
-            <Steps current={currentStep} style={{ marginBottom: 24 }}>
-              <Step title="Download" icon={<DownloadOutlined />} description="Get PO" />
-              <Step title="Sign" icon={<FileTextOutlined />} description="Sign document" />
-              <Step title="Upload" icon={<UploadOutlined />} description="Upload signed" />
-              <Step title="Assign" icon={<SendOutlined />} description="Complete" />
-            </Steps>
+            <Space style={{ marginBottom: 16 }}>
+              <Button icon={<EyeOutlined />} onClick={handlePreviewPO}>
+                Preview PO
+              </Button>
+              <Button icon={<FileTextOutlined />} onClick={handleDownloadPO}>
+                Download PO
+              </Button>
+            </Space>
 
             <Divider />
 
-            {/* Step 1: Download PO */}
-            <Card 
-              size="small" 
-              style={{ 
-                marginBottom: 16, 
-                backgroundColor: currentStep === 0 ? '#fff7e6' : '#f5f5f5',
-                borderColor: currentStep === 0 ? '#faad14' : '#d9d9d9'
-              }}
-            >
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>
-                  <DownloadOutlined /> Step 1: Download Purchase Order for Signing
-                </Text>
-                <Button
-                  type={currentStep === 0 ? 'primary' : 'default'}
-                  icon={<DownloadOutlined />}
-                  loading={downloadingPO}
-                  onClick={handleDownloadPO}
-                  disabled={documentDownloaded}
-                  block
-                >
-                  {documentDownloaded ? 'PO Downloaded ✓' : 'Download Purchase Order'}
-                </Button>
-                {documentDownloaded && (
-                  <Alert
-                    message="Downloaded successfully. Please sign the document manually (print & scan or digital signature)."
-                    type="success"
-                    showIcon
-                    style={{ marginTop: 8 }}
-                  />
-                )}
-              </Space>
-            </Card>
-
-            {/* Step 2: Upload Signed Document */}
+            {/* Select Department */}
             <Card 
               size="small" 
               style={{ 
                 marginBottom: 16,
-                backgroundColor: currentStep === 1 ? '#fff7e6' : '#f5f5f5',
-                borderColor: currentStep === 1 ? '#faad14' : '#d9d9d9'
+                backgroundColor: '#f5f5f5'
               }}
             >
               <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>
-                  <UploadOutlined /> Step 2: Upload Signed Document {!signedDocumentFile && <Text type="danger">*</Text>}
-                </Text>
-                <Dragger
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  maxCount={1}
-                  beforeUpload={(file) => {
-                    handleFileUpload({ file });
-                    return false;
-                  }}
-                  onRemove={() => {
-                    setSignedDocumentFile(null);
-                    setCurrentStep(1);
-                  }}
-                  disabled={!documentDownloaded}
-                  fileList={signedDocumentFile ? [{
-                    uid: '-1',
-                    name: signedDocumentFile.name,
-                    status: 'done',
-                  }] : []}
-                >
-                  <p className="ant-upload-drag-icon">
-                    <InboxOutlined />
-                  </p>
-                  <p className="ant-upload-text">
-                    Click or drag signed document to upload
-                  </p>
-                  <p className="ant-upload-hint">
-                    Supports PDF, JPG, PNG (Max 10MB)
-                  </p>
-                </Dragger>
-                {!documentDownloaded && (
-                  <Alert
-                    message="Please download the PO first before uploading signed version"
-                    type="warning"
-                    showIcon
-                    style={{ marginTop: 8 }}
-                  />
-                )}
-              </Space>
-            </Card>
-
-            {/* Step 3: Select Department */}
-            <Card 
-              size="small" 
-              style={{ 
-                marginBottom: 16,
-                backgroundColor: currentStep === 2 ? '#fff7e6' : '#f5f5f5',
-                borderColor: currentStep === 2 ? '#faad14' : '#d9d9d9'
-              }}
-            >
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>Step 3: Select Department {!assignDepartment && <Text type="danger">*</Text>}</Text>
+                <Text strong>Select Department {!assignDepartment && <Text type="danger">*</Text>}</Text>
                 <Select 
                   placeholder="Choose department for assignment" 
                   size="large"
                   style={{ width: '100%' }}
                   value={assignDepartment}
-                  onChange={(value) => {
-                    setAssignDepartment(value);
-                    if (value && signedDocumentFile) {
-                      setCurrentStep(3);
-                    }
-                  }}
-                  disabled={!signedDocumentFile}
+                  onChange={(value) => setAssignDepartment(value)}
                 >
                   <Option value="Technical">
                     <div>
@@ -648,7 +577,7 @@ const SupplyChainPOManagement = () => {
             {/* Step 4: Comments (Optional) */}
             <Card size="small" style={{ marginBottom: 16, backgroundColor: '#f5f5f5' }}>
               <Space direction="vertical" style={{ width: '100%' }}>
-                <Text strong>Step 4: Assignment Comments (Optional)</Text>
+                <Text strong>Assignment Comments (Optional)</Text>
                 <TextArea 
                   rows={3} 
                   placeholder="Add any comments about this assignment..."
@@ -656,7 +585,7 @@ const SupplyChainPOManagement = () => {
                   showCount
                   value={assignComments}
                   onChange={(e) => setAssignComments(e.target.value)}
-                  disabled={!assignDepartment || !signedDocumentFile}
+                  disabled={!assignDepartment}
                 />
               </Space>
             </Card>
@@ -674,10 +603,10 @@ const SupplyChainPOManagement = () => {
                 onClick={handleAssign}
                 loading={loading}
                 icon={<SendOutlined />}
-                disabled={!assignDepartment || !signedDocumentFile}
+                disabled={!assignDepartment}
                 size="large"
               >
-                Sign & Assign PO
+                Assign PO
               </Button>
             </Space>
 

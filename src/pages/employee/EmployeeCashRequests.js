@@ -83,36 +83,53 @@ const EmployeeCashRequests = () => {
       return;
     }
 
-    // Check if there's any pending request
-    const hasPendingRequest = requests.some(r => 
-      r.status && r.status.includes('pending')
-    );
+    // Terminal/completed statuses that allow new requests
+    const terminalStatuses = ['denied', 'rejected', 'cancelled', 'completed', 'approved'];
 
-    // Check if there's any disbursed request needing justification
-    const needsJustification = requests.some(r => 
-      ['disbursed', 'justification_pending_supervisor', 
-       'justification_pending_finance', 'justification_rejected'].includes(r.status)
-    );
+    // Check if there's any blocking request
+    const hasBlockingRequest = requests.some(r => {
+      // Terminal statuses don't block
+      if (terminalStatuses.includes(r.status)) {
+        return false;
+      }
+
+      // Pending statuses block
+      if (r.status && r.status.includes('pending')) {
+        return true;
+      }
+
+      // Justification statuses block (except completed justifications)
+      if (['disbursed', 'justification_pending_supervisor', 
+           'justification_pending_finance', 'justification_rejected'].includes(r.status)) {
+        return true;
+      }
+
+      return false;
+    });
     
-    if (!hasPendingRequest && !needsJustification) {
-      setCanCreateNewRequest(true);
-    } else {
-      setCanCreateNewRequest(false);
-    }
+    const canCreate = !hasBlockingRequest;
+    console.log('checkIfCanCreateNewRequest - statuses:', requests.map(r => r.status));
+    console.log('checkIfCanCreateNewRequest - hasBlockingRequest:', hasBlockingRequest, '=> canCreateNewRequest:', canCreate);
+    setCanCreateNewRequest(canCreate);
   };
+
+  // Ensure we re-evaluate permission whenever requests list changes
+  useEffect(() => {
+    checkIfCanCreateNewRequest(requests);
+  }, [requests]);
 
   const showCannotCreateModal = () => {
     Modal.warning({
       title: 'Cannot Create New Request',
       content: (
         <div>
-          <p>You currently have a pending cash request that must be completed first.</p>
-          <p><strong>What you can do:</strong></p>
+          <p>You currently have an active cash request that needs your attention:</p>
+          <p><strong>What's blocking:</strong></p>
           <ul>
-            <li>Wait for your pending request to be approved/rejected</li>
-            <li>If it's still pending first approval, you can <strong>edit</strong> or <strong>delete</strong> it and create a new one</li>
-            <li>Complete any pending justifications</li>
+            <li><strong>Pending requests:</strong> Wait for approval/rejection, or delete if still with first approver</li>
+            <li><strong>Pending justifications:</strong> Complete outstanding justification requirements</li>
           </ul>
+          <p><strong>Note:</strong> If your request was rejected, you can create a new one immediately by clicking "New Request" again.</p>
         </div>
       ),
       okText: 'Understood',

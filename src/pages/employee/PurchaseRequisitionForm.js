@@ -43,13 +43,17 @@ import {
   EyeOutlined,
   DownloadOutlined,
   InboxOutlined,
-  ShopOutlined
+  ShopOutlined,
+  TagOutlined,
+  WarningOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import { purchaseRequisitionAPI } from '../../services/purchaseRequisitionAPI';
 import { projectAPI } from '../../services/projectAPI';
 import { itemAPI } from '../../services/itemAPI';
 import supplierApiService from '../../services/supplierAPI';
 import moment from 'moment';
+import '../../styles/dropdownZIndex.css';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -90,10 +94,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_FILES = 5;
 
 const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, editData }) => {
-  // Redux state
   const { user } = useSelector((state) => state.auth);
-
-  // Form instances
   const [form] = Form.useForm();
   const [itemForm] = Form.useForm();
   const [requestForm] = Form.useForm();
@@ -103,6 +104,7 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
   const [loadingItems, setLoadingItems] = useState(true);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+  const [loadingBudgetCodes, setLoadingBudgetCodes] = useState(false);
   const [fetchError, setFetchError] = useState(null);
   const [supplierError, setSupplierError] = useState(null);
   const [showItemModal, setShowItemModal] = useState(false);
@@ -113,15 +115,17 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
   const [attachments, setAttachments] = useState([]);
   const [databaseItems, setDatabaseItems] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [budgetCodes, setBudgetCodes] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [projectBudgetInfo, setProjectBudgetInfo] = useState(null);
+  const [selectedBudgetCode, setSelectedBudgetCode] = useState(null);
+  const [budgetCodeDetails, setBudgetCodeDetails] = useState(null);
+  const [manualBudget, setManualBudget] = useState(null);
   
-  // Supplier selection state
-  const [suppliers, setSuppliers] = useState([]);
   const [supplierSelectionMode, setSupplierSelectionMode] = useState('database');
   const [selectedSupplier, setSelectedSupplier] = useState(null);
 
-  // Utility functions
   const generateRequisitionNumber = useCallback(() => {
     const now = new Date();
     const year = now.getFullYear();
@@ -132,8 +136,11 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
   }, []);
 
   const calculateTotalCost = useMemo(() => {
+    if (manualBudget !== null && manualBudget > 0) {
+      return manualBudget;
+    }
     return items.reduce((sum, item) => sum + (item.estimatedPrice * item.quantity || 0), 0);
-  }, [items]);
+  }, [items, manualBudget]);
 
   const validateFile = useCallback((file) => {
     const fileName = file.name || file.originalname || '';
@@ -158,54 +165,112 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
     return { valid: true };
   }, []);
 
-  // Fetch suppliers with enhanced error handling
-  const fetchSuppliers = useCallback(async () => {
-    setLoadingSuppliers(true);
-    setSupplierError(null);
-    
+  // Fetch budget codes
+  const fetchBudgetCodes = useCallback(async () => {
     try {
-      console.log('🔍 Starting supplier fetch...');
+      setLoadingBudgetCodes(true);
+      console.log('🔍 Fetching budget codes...');
       
-      // Check authentication
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Please login to continue');
-      }
-      
-      const response = await supplierApiService.getAllSuppliers({ 
-        status: 'active',
-        limit: 100 
-      });
-      
-      console.log('📦 Fetch response:', response);
+      const response = await purchaseRequisitionAPI.getActiveBudgetCodes();
+      console.log('📦 Budget codes response:', response);
       
       if (response.success && Array.isArray(response.data)) {
-        setSuppliers(response.data);
-        console.log(`✅ Successfully loaded ${response.data.length} suppliers`);
+        setBudgetCodes(response.data);
+        console.log(`✅ Loaded ${response.data.length} active budget codes`);
         
         if (response.data.length > 0) {
-          message.success(`Loaded ${response.data.length} active suppliers`);
+          message.success(`Loaded ${response.data.length} active budget codes`);
         } else {
-          message.info('No active suppliers found');
+          message.info('No active budget codes available');
         }
       } else {
-        const errorMsg = response.message || 'Failed to load suppliers';
-        console.error('❌ Fetch failed:', errorMsg);
-        setSupplierError(errorMsg);
-        message.error(errorMsg);
-        setSuppliers([]);
+        console.error('❌ Invalid response structure:', response);
+        setBudgetCodes([]);
+        message.warning('No budget codes available');
       }
-      
     } catch (error) {
-      console.error('💥 Error fetching suppliers:', error);
-      const errorMessage = error.message || 'Failed to load suppliers';
-      setSupplierError(errorMessage);
-      message.error(errorMessage);
-      setSuppliers([]);
+      console.error('❌ Error fetching budget codes:', error);
+      message.error('Failed to load budget codes');
+      setBudgetCodes([]);
     } finally {
-      setLoadingSuppliers(false);
+      setLoadingBudgetCodes(false);
     }
   }, []);
+
+  // Check budget code availability
+  const checkBudgetCodeAvailability = useCallback(async (budgetCodeId, requiredAmount) => {
+    try {
+      const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
+      if (!budgetCode) return { available: false, message: 'Budget code not found' };
+
+      const available = budgetCode.budget - budgetCode.used;
+      
+      if (available < requiredAmount) {
+        return {
+          available: false,
+          message: `Insufficient budget. Available: XAF ${available.toLocaleString()}, Required: XAF ${requiredAmount.toLocaleString()}`
+        };
+      }
+
+      return {
+        available: true,
+        budgetCode: budgetCode,
+        availableAmount: available
+      };
+    } catch (error) {
+      console.error('Error checking budget availability:', error);
+      return { available: false, message: 'Failed to check budget availability' };
+    }
+  }, [budgetCodes]);
+
+  // Handle budget code selection
+  const handleBudgetCodeChange = useCallback((budgetCodeId) => {
+    console.log('Budget code selected:', budgetCodeId);
+    setSelectedBudgetCode(budgetCodeId);
+    
+    if (!budgetCodeId) {
+      setBudgetCodeDetails(null);
+      return;
+    }
+
+    const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
+    if (budgetCode) {
+      console.log('Budget code details:', budgetCode);
+      
+      const available = budgetCode.budget - budgetCode.used;
+      const utilizationRate = Math.round((budgetCode.used / budgetCode.budget) * 100);
+      const status = utilizationRate >= 90 ? 'critical' : 
+                    utilizationRate >= 75 ? 'high' : 
+                    utilizationRate >= 50 ? 'moderate' : 'low';
+      
+      setBudgetCodeDetails({
+        code: budgetCode.code,
+        name: budgetCode.name,
+        department: budgetCode.department,
+        totalBudget: budgetCode.budget,
+        used: budgetCode.used,
+        available: available,
+        utilizationRate: utilizationRate,
+        status: status
+      });
+
+      if (budgetCode.budgetHolder) {
+        form.setFieldsValue({ budgetHolder: budgetCode.budgetHolder });
+      }
+
+      if (calculateTotalCost > 0 && calculateTotalCost > available) {
+        message.warning({
+          content: `Total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds available budget (XAF ${available.toLocaleString()})`,
+          duration: 5
+        });
+      } else if (calculateTotalCost > 0) {
+        message.success({
+          content: `Budget sufficient. Remaining after: XAF ${(available - calculateTotalCost).toLocaleString()}`,
+          duration: 3
+        });
+      }
+    }
+  }, [budgetCodes, calculateTotalCost, form]);
 
   // Fetch database items
   const fetchDatabaseItems = useCallback(async (categoryFilter = null) => {
@@ -292,17 +357,65 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
     }
   }, []);
 
+  // Fetch suppliers
+  const fetchSuppliers = useCallback(async () => {
+    setLoadingSuppliers(true);
+    setSupplierError(null);
+    
+    try {
+      console.log('🔍 Starting supplier fetch...');
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Please login to continue');
+      }
+      
+      const response = await supplierApiService.getAllSuppliers({ 
+        status: 'approved',
+        limit: 100 
+      });
+      
+      console.log('📦 Fetch response:', response);
+      
+      if (response.success && Array.isArray(response.data)) {
+        setSuppliers(response.data);
+        console.log(`✅ Successfully loaded ${response.data.length} suppliers`);
+        
+        if (response.data.length > 0) {
+          message.success(`Loaded ${response.data.length} active suppliers`);
+        } else {
+          message.info('No active suppliers found');
+        }
+      } else {
+        const errorMsg = response.message || 'Failed to load suppliers';
+        console.error('❌ Fetch failed:', errorMsg);
+        setSupplierError(errorMsg);
+        message.error(errorMsg);
+        setSuppliers([]);
+      }
+      
+    } catch (error) {
+      console.error('💥 Error fetching suppliers:', error);
+      const errorMessage = error.message || 'Failed to load suppliers';
+      setSupplierError(errorMessage);
+      message.error(errorMessage);
+      setSuppliers([]);
+    } finally {
+      setLoadingSuppliers(false);
+    }
+  }, []);
+
   // Form initialization
-  const initializeForm = useCallback(() => {
-    if (editData) {
+  const initializeForm = useCallback((isEditMode) => {
+    if (isEditMode && editData) {
       const formData = {
         ...editData,
         expectedDate: editData.expectedDate ? moment(editData.expectedDate) : moment().add(14, 'days'),
         date: editData.createdAt ? moment(editData.createdAt) : moment(),
-        project: editData.project
+        project: editData.project,
+        budgetCode: editData.budgetCode
       };
       
-      // Initialize supplier selection
       if (editData.preferredSupplier) {
         if (editData.supplierId) {
           setSupplierSelectionMode('database');
@@ -317,6 +430,29 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
       form.setFieldsValue(formData);
       setItems(editData.items || []);
       setSelectedProject(editData.project);
+      
+      if (editData.budgetCode) {
+        const budgetCodeId = editData.budgetCode;
+        const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
+        if (budgetCode) {
+          const available = budgetCode.budget - budgetCode.used;
+          const utilizationRate = Math.round((budgetCode.used / budgetCode.budget) * 100);
+          const status = utilizationRate >= 90 ? 'critical' : 
+                        utilizationRate >= 75 ? 'high' : 
+                        utilizationRate >= 50 ? 'moderate' : 'low';
+          
+          setBudgetCodeDetails({
+            code: budgetCode.code,
+            name: budgetCode.name,
+            department: budgetCode.department,
+            totalBudget: budgetCode.budget,
+            used: budgetCode.used,
+            available: available,
+            utilizationRate: utilizationRate,
+            status: status
+          });
+        }
+      }
       
       if (editData.attachments && editData.attachments.length > 0) {
         const existingAttachments = editData.attachments.map((att, index) => ({
@@ -342,15 +478,33 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
         urgency: 'Medium'
       });
     }
-  }, [editData, form, generateRequisitionNumber, user]);
+  }, [editData, form, generateRequisitionNumber, user, budgetCodes]);
 
   // Component initialization
   useEffect(() => {
-    fetchProjects();
-    fetchDatabaseItems();
-    fetchSuppliers();
-    initializeForm();
-  }, [fetchProjects, fetchDatabaseItems, fetchSuppliers, initializeForm]);
+    console.log('Component mounted, fetching data...');
+    
+    const initData = async () => {
+      try {
+        await Promise.all([
+          fetchProjects(),
+          fetchDatabaseItems(),
+          fetchSuppliers(),
+          fetchBudgetCodes()
+        ]);
+        
+        initializeForm(!!editData);
+      } catch (error) {
+        console.error('Error initializing component:', error);
+      }
+    };
+    
+    initData();
+    
+    return () => {
+      console.log('Component unmounting...');
+    };
+  }, []);
 
   // Project selection effect
   useEffect(() => {
@@ -402,9 +556,13 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
   const handleItemModalOk = useCallback(async () => {
     try {
       const values = await itemForm.validateFields();
+      console.log('Item form values:', values);
+      
       const selectedItem = databaseItems.find(item => 
         (item._id || item.id) === values.itemId
       );
+
+      console.log('Selected item from database:', selectedItem);
 
       if (!selectedItem) {
         message.error('Please select a valid item from the database');
@@ -427,11 +585,17 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
         estimatedPrice: selectedItem.standardPrice || 0
       };
 
+      console.log('Item data to add:', itemData);
+
       if (editingItem !== null) {
         const newItems = [...items];
         newItems[editingItem] = itemData;
         setItems(newItems);
+        console.log('Items after editing:', newItems);
         message.success('Item updated successfully');
+        setShowItemModal(false);
+        itemForm.resetFields();
+        setEditingItem(null);
       } else if (existingItemIndex !== -1) {
         Modal.confirm({
           title: 'Item Already Added',
@@ -440,16 +604,33 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
             const newItems = [...items];
             newItems[existingItemIndex].quantity += values.quantity;
             setItems(newItems);
+            console.log('Items after quantity update:', newItems);
             message.success('Quantity updated successfully');
+            setShowItemModal(false);
+            itemForm.resetFields();
+            setEditingItem(null);
+          },
+          onCancel() {
+            // Keep modal open if user cancels
           }
         });
       } else {
-        setItems(prev => [...prev, itemData]);
+        setItems(prevItems => {
+          const updatedItems = [...prevItems, itemData];
+          console.log('Items after adding new item:', updatedItems);
+          console.log('Updated items length:', updatedItems.length);
+          
+          setTimeout(() => {
+            setShowItemModal(false);
+            itemForm.resetFields();
+            setEditingItem(null);
+          }, 0);
+          
+          return updatedItems;
+        });
+        
         message.success('Item added successfully');
       }
-
-      setShowItemModal(false);
-      itemForm.resetFields();
     } catch (error) {
       console.error('Validation failed:', error);
       message.error('Failed to add item. Please try again.');
@@ -489,7 +670,8 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
 
   // File upload handling
   const handleAttachmentChange = useCallback(({ fileList }) => {
-    console.log('Attachment change:', fileList);
+    console.log('📎 Attachment change:', fileList.length, 'files');
+    console.log('Files:', fileList.map(f => ({ name: f.name, status: f.status, hasOrigin: !!f.originFileObj })));
     
     const processedFiles = fileList.map(file => {
       if (file.existing) {
@@ -510,7 +692,8 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
         
         return {
           ...file,
-          status: file.status || 'done'
+          status: file.status || 'done',
+          originFileObj: file.originFileObj
         };
       }
       
@@ -527,152 +710,27 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
     }
 
     setAttachments(validFiles);
+    
+    // ✅ Show success message when files are attached
+    if (validFiles.length > 0) {
+      message.success(`${validFiles.length} file(s) attached successfully`, 2);
+    }
   }, [validateFile]);
 
   const customUploadRequest = useCallback(({ file, onSuccess, onError }) => {
+    const fileData = {
+      uid: file.uid,
+      name: file.name,
+      status: 'done',
+      originFileObj: file,
+      type: file.type,
+      size: file.size
+    };
+    
     setTimeout(() => {
-      onSuccess("ok");
+      onSuccess("ok", fileData);
     }, 0);
   }, []);
-
-  // Form submission
-  const handleSubmit = useCallback(async (values) => {
-    if (items.length === 0) {
-      message.error('Please add at least one item to the requisition');
-      return;
-    }
-
-    // Validate project budget if project is selected
-    if (selectedProject && projectBudgetInfo) {
-      if (calculateTotalCost > projectBudgetInfo.budgetRemaining) {
-        Modal.confirm({
-          title: 'Budget Warning',
-          content: `The total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds the remaining project budget (XAF ${projectBudgetInfo.budgetRemaining.toLocaleString()}). Do you want to continue?`,
-          onOk() {
-            submitRequisition(values);
-          }
-        });
-        return;
-      }
-    }
-
-    submitRequisition(values);
-  }, [items, selectedProject, projectBudgetInfo, calculateTotalCost]);
-
-  const submitRequisition = useCallback(async (values) => {
-    setLoading(true);
-    try {
-      const formData = new FormData();
-
-      // Add all form fields
-      formData.append('requisitionNumber', values.requisitionNumber);
-      formData.append('title', values.title);
-      formData.append('itemCategory', values.itemCategory);
-      formData.append('budgetXAF', values.budgetXAF || '');
-      formData.append('budgetHolder', values.budgetHolder);
-      formData.append('urgency', values.urgency);
-      formData.append('deliveryLocation', values.deliveryLocation);
-      formData.append('expectedDate', values.expectedDate.format('YYYY-MM-DD'));
-      formData.append('justificationOfPurchase', values.justificationOfPurchase);
-      formData.append('justificationOfPreferredSupplier', values.justificationOfPreferredSupplier || '');
-      
-      // Add supplier information
-      if (supplierSelectionMode === 'database' && selectedSupplier) {
-        formData.append('supplierId', selectedSupplier);
-        const supplier = suppliers.find(s => s._id === selectedSupplier);
-        if (supplier) {
-          formData.append('preferredSupplier', supplier.supplierDetails?.companyName || supplier.fullName);
-        }
-      } else if (supplierSelectionMode === 'manual' && values.preferredSupplierName) {
-        formData.append('preferredSupplier', values.preferredSupplierName);
-      }
-      
-      if (selectedProject) {
-        formData.append('project', selectedProject);
-      }
-
-      formData.append('items', JSON.stringify(items));
-
-      // Handle file attachments
-      const newAttachments = attachments.filter(att => !att.existing && att.originFileObj);
-      
-      newAttachments.forEach((file, index) => {
-        console.log(`Adding file ${index + 1}:`, file.name);
-        formData.append('attachments', file.originFileObj, file.name);
-      });
-
-      const existingAttachmentIds = attachments
-        .filter(att => att.existing)
-        .map(att => att._id || att.uid);
-      
-      if (existingAttachmentIds.length > 0) {
-        formData.append('existingAttachments', JSON.stringify(existingAttachmentIds));
-      }
-
-      console.log('Submitting requisition with', newAttachments.length, 'new files...');
-
-      const response = await purchaseRequisitionAPI.createRequisition(formData);
-
-      if (response.success) {
-        message.success('Purchase requisition submitted successfully!');
-        
-        if (response.attachments) {
-          const { uploaded, total } = response.attachments;
-          if (uploaded < total) {
-            message.warning(`${uploaded} out of ${total} attachments uploaded successfully`);
-          } else if (uploaded > 0) {
-            message.success(`All ${uploaded} attachments uploaded successfully`);
-          }
-        }
-        
-        if (onSubmit) {
-          onSubmit(response.data);
-        }
-      } else {
-        message.error(response.message || 'Failed to submit requisition');
-      }
-
-    } catch (error) {
-      console.error('Error submitting requisition:', error);
-      
-      if (error.response?.data?.message) {
-        message.error(error.response.data.message);
-      } else {
-        message.error('Failed to submit requisition. Please try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [items, attachments, selectedProject, suppliers, selectedSupplier, supplierSelectionMode, onSubmit]);
-
-  const handleSaveDraft = useCallback(async () => {
-    try {
-      const values = await form.getFieldsValue();
-      const draftData = {
-        ...values,
-        expectedDate: values.expectedDate ? values.expectedDate.format('YYYY-MM-DD') : moment().add(14, 'days').format('YYYY-MM-DD'),
-        items,
-        project: selectedProject,
-        status: 'draft',
-        lastSaved: new Date(),
-        totalEstimatedCost: calculateTotalCost
-      };
-
-      const response = await purchaseRequisitionAPI.saveDraft(draftData);
-
-      if (response.success) {
-        message.success('Draft saved successfully!');
-        if (onSaveDraft) {
-          onSaveDraft(response.data);
-        }
-      } else {
-        message.error(response.message || 'Failed to save draft');
-      }
-    } catch (error) {
-      console.error('Error saving draft:', error);
-      message.error('Failed to save draft');
-    }
-  }, [form, items, selectedProject, calculateTotalCost, onSaveDraft]);
 
   const handleDownloadAttachment = useCallback(async (attachment) => {
     try {
@@ -735,7 +793,642 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
     }
   }, []);
 
+  const handleSubmit = useCallback(async (values) => {
+    console.log('Form submitted with items:', items);
+    console.log('Items length:', items.length);
+    
+    if (!items || items.length === 0) {
+      message.error('Please add at least one item to the requisition');
+      return;
+    }
+
+    if (!values.budgetCode || !selectedBudgetCode) {
+      message.error('Please select a budget code');
+      return;
+    }
+
+    if (selectedProject && projectBudgetInfo) {
+      if (calculateTotalCost > projectBudgetInfo.budgetRemaining) {
+        Modal.confirm({
+          title: 'Budget Warning',
+          content: `The total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds the remaining project budget (XAF ${projectBudgetInfo.budgetRemaining.toLocaleString()}). Do you want to continue?`,
+          onOk() {
+            checkBudgetAndSubmit(values, items);
+          }
+        });
+        return;
+      }
+    }
+
+    checkBudgetAndSubmit(values, items);
+  }, [items, selectedProject, projectBudgetInfo, calculateTotalCost, selectedBudgetCode]);
+
+  const checkBudgetAndSubmit = useCallback(async (values, itemsToSubmit) => {
+    console.log('checkBudgetAndSubmit received items:', itemsToSubmit);
+    console.log('Items count:', itemsToSubmit?.length);
+    
+    const budgetCheck = await checkBudgetCodeAvailability(values.budgetCode, calculateTotalCost);
+    
+    if (!budgetCheck.available) {
+      Modal.error({
+        title: 'Insufficient Budget',
+        content: (
+          <div>
+            <p>The selected budget code does not have sufficient funds.</p>
+            <Divider />
+            <p><strong>Budget Code:</strong> {budgetCodeDetails?.code}</p>
+            <p><strong>Available:</strong> XAF {budgetCodeDetails?.available.toLocaleString()}</p>
+            <p><strong>Required:</strong> XAF {calculateTotalCost.toLocaleString()}</p>
+            <p><strong>Shortfall:</strong> XAF {(calculateTotalCost - budgetCodeDetails?.available).toLocaleString()}</p>
+            <Divider />
+            <p>Please select a different budget code or reduce items.</p>
+          </div>
+        ),
+        okText: 'Understood'
+      });
+      return;
+    }
+
+    Modal.confirm({
+      title: 'Confirm Submission',
+      content: (
+        <div>
+          <p><strong>Total Estimated Cost:</strong> XAF {calculateTotalCost.toLocaleString()}</p>
+          <p><strong>Budget Code:</strong> {budgetCodeDetails?.code}</p>
+          <p><strong>Available Budget:</strong> XAF {budgetCodeDetails?.available.toLocaleString()}</p>
+          <p><strong>Remaining After:</strong> XAF {(budgetCodeDetails?.available - calculateTotalCost).toLocaleString()}</p>
+          <Divider />
+          <p>Are you sure you want to submit this requisition?</p>
+        </div>
+      ),
+      onOk() {
+        console.log('Confirming submission with items:', itemsToSubmit);
+        submitRequisition(values, itemsToSubmit);
+      }
+    });
+  }, [calculateTotalCost, budgetCodeDetails, checkBudgetCodeAvailability]);
+
+  const submitRequisition = useCallback(async (values, itemsToSubmit) => {
+    setLoading(true);
+    try {
+      console.log('submitRequisition called with:');
+      console.log('  - values:', values);
+      console.log('  - itemsToSubmit:', itemsToSubmit);
+      console.log('  - itemsToSubmit length:', itemsToSubmit?.length);
+      
+      if (!itemsToSubmit || !Array.isArray(itemsToSubmit) || itemsToSubmit.length === 0) {
+        message.error('No items to submit. Please add at least one item to the requisition.');
+        setLoading(false);
+        return;
+      }
+
+      const formData = new FormData();
+
+      formData.append('requisitionNumber', values.requisitionNumber);
+      formData.append('title', values.title);
+      formData.append('itemCategory', values.itemCategory);
+      formData.append('budgetXAF', values.budgetXAF || calculateTotalCost);
+      formData.append('budgetCode', values.budgetCode);
+      
+      if (values.budgetHolder) {
+        formData.append('budgetHolder', values.budgetHolder);
+      }
+      
+      formData.append('urgency', values.urgency);
+      formData.append('deliveryLocation', values.deliveryLocation);
+      formData.append('expectedDate', values.expectedDate.format('YYYY-MM-DD'));
+      // ✅ UPDATED: Justification now captured at creation time
+      formData.append('justificationOfPurchase', values.justificationOfPurchase || '');
+      formData.append('justificationOfPreferredSupplier', values.justificationOfPreferredSupplier || '');
+      
+      if (supplierSelectionMode === 'database' && selectedSupplier) {
+        formData.append('supplierId', selectedSupplier);
+        const supplier = suppliers.find(s => s._id === selectedSupplier);
+        if (supplier) {
+          formData.append('preferredSupplier', supplier.supplierDetails?.companyName || supplier.fullName);
+        }
+      } else if (supplierSelectionMode === 'manual' && values.preferredSupplierName) {
+        formData.append('preferredSupplier', values.preferredSupplierName);
+      }
+      
+      if (selectedProject) {
+        formData.append('project', selectedProject);
+      }
+
+      const itemsJson = JSON.stringify(itemsToSubmit);
+      console.log('Items JSON being appended:', itemsJson);
+      console.log('Items JSON length:', itemsJson.length);
+      formData.append('items', itemsJson);
+
+      console.log('FormData contents:');
+      for (let pair of formData.entries()) {
+        console.log(pair[0] + ': ' + (pair[0] === 'items' ? pair[1] : pair[1].substring ? pair[1].substring(0, 50) : pair[1]));
+      }
+
+      const newAttachments = attachments.filter(att => !att.existing && att.originFileObj);
+      
+      console.log('📎 ATTACHMENT DEBUG:');
+      console.log('  - Total attachments in state:', attachments.length);
+      console.log('  - New attachments to upload:', newAttachments.length);
+      console.log('  - Attachments detail:', attachments.map(a => ({
+        name: a.name,
+        existing: a.existing,
+        hasOrigin: !!a.originFileObj,
+        status: a.status
+      })));
+      
+      if (attachments.length > 0 && newAttachments.length === 0) {
+        console.warn('⚠️  WARNING: You have attachments in state but none have originFileObj!');
+      }
+      
+      newAttachments.forEach((file, index) => {
+        console.log(`  📁 Adding file ${index + 1}:`, file.name, `(${(file.originFileObj.size / 1024).toFixed(1)} KB)`);
+        formData.append('attachments', file.originFileObj);
+      });
+
+      const existingAttachmentIds = attachments
+        .filter(att => att.existing)
+        .map(att => att._id || att.uid);
+      
+      if (existingAttachmentIds.length > 0) {
+        formData.append('existingAttachments', JSON.stringify(existingAttachmentIds));
+      }
+
+      console.log('Submitting requisition with', newAttachments.length, 'new files and', itemsToSubmit.length, 'items...');
+
+      const response = await purchaseRequisitionAPI.createRequisition(formData);
+
+      if (response.success) {
+        message.success('Purchase requisition submitted successfully!');
+        
+        if (response.attachments) {
+          const { uploaded, total } = response.attachments;
+          if (uploaded < total) {
+            message.warning(`${uploaded} out of ${total} attachments uploaded successfully`);
+          } else if (uploaded > 0) {
+            message.success(`All ${uploaded} attachments uploaded successfully`);
+          }
+        }
+        
+        if (onSubmit) {
+          onSubmit(response.data);
+        }
+      } else {
+        message.error(response.message || 'Failed to submit requisition');
+      }
+
+    } catch (error) {
+      console.error('Error submitting requisition:', error);
+      
+      if (error.response?.data?.message) {
+        message.error(error.response.data.message);
+      } else {
+        message.error('Failed to submit requisition. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [attachments, selectedProject, suppliers, selectedSupplier, supplierSelectionMode, calculateTotalCost, onSubmit]);
+
+  const handleSaveDraft = useCallback(async () => {
+    try {
+      const values = await form.getFieldsValue();
+      const draftData = {
+        ...values,
+        expectedDate: values.expectedDate ? values.expectedDate.format('YYYY-MM-DD') : moment().add(14, 'days').format('YYYY-MM-DD'),
+        items,
+        project: selectedProject,
+        budgetCode: selectedBudgetCode,
+        status: 'draft',
+        lastSaved: new Date(),
+        totalEstimatedCost: calculateTotalCost
+      };
+
+      const response = await purchaseRequisitionAPI.saveDraft(draftData);
+
+      if (response.success) {
+        message.success('Draft saved successfully!');
+        if (onSaveDraft) {
+          onSaveDraft(response.data);
+        }
+      } else {
+        message.error(response.message || 'Failed to save draft');
+      }
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      message.error('Failed to save draft');
+    }
+  }, [form, items, selectedProject, selectedBudgetCode, calculateTotalCost, onSaveDraft]);
+
   // Render functions
+  const renderBudgetCodeSelection = () => (
+    <Card 
+      size="small" 
+      title={
+        <Space>
+          <TagOutlined />
+          Budget Code Selection (Required)
+        </Space>
+      } 
+      style={{ marginBottom: '24px' }}
+    >
+      <Alert
+        message="Budget Code Required"
+        description="You must select a budget code before submitting. The system will verify that sufficient budget is available."
+        type="info"
+        showIcon
+        style={{ marginBottom: '16px' }}
+      />
+
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={16}>
+          <Form.Item
+            name="budgetCode"
+            label="Select Budget Code"
+            rules={[{ required: true, message: 'Budget code is required' }]}
+            help="Choose the budget code that will fund this purchase"
+          >
+            <Select
+              placeholder={
+                loadingBudgetCodes 
+                  ? "Loading budget codes..." 
+                  : budgetCodes.length === 0 
+                    ? "No budget codes available"
+                    : "Select a budget code"
+              }
+              loading={loadingBudgetCodes}
+              disabled={loadingBudgetCodes || budgetCodes.length === 0}
+              showSearch
+              allowClear
+              onChange={handleBudgetCodeChange}
+              value={selectedBudgetCode}
+              optionFilterProp="children"
+              filterOption={(input, option) => {
+                if (!input) return true;
+                const code = budgetCodes.find(bc => bc._id === option.value);
+                if (!code) return false;
+                const searchStr = `${code.code} ${code.name} ${code.department}`.toLowerCase();
+                return searchStr.includes(input.toLowerCase());
+              }}
+              notFoundContent={
+                loadingBudgetCodes ? (
+                  <div style={{ textAlign: 'center', padding: '20px' }}>
+                    <Spin size="small" />
+                    <div><Text type="secondary">Loading budget codes...</Text></div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '20px' }}>
+                    <Text type="secondary">No budget codes available</Text>
+                  </div>
+                )
+              }
+            >
+              {budgetCodes.map(code => {
+                const available = code.budget - code.used;
+                const utilizationRate = Math.round((code.used / code.budget) * 100);
+                const status = utilizationRate >= 90 ? 'critical' : 
+                             utilizationRate >= 75 ? 'high' : 
+                             utilizationRate >= 50 ? 'moderate' : 'low';
+                
+                return (
+                  <Option key={code._id} value={code._id}>
+                    <div style={{ padding: '4px 0' }}>
+                      <div>
+                        <Text strong>{code.code}</Text> - {code.name}
+                      </div>
+                      <div style={{ marginTop: '4px' }}>
+                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                          {code.department} | Available: XAF {available.toLocaleString()}
+                          {' '}
+                          <Tag 
+                            color={
+                              status === 'critical' ? 'red' :
+                              status === 'high' ? 'orange' :
+                              status === 'moderate' ? 'blue' : 'green'
+                            }
+                            style={{ marginLeft: '4px' }}
+                          >
+                            {utilizationRate}% used
+                          </Tag>
+                        </Text>
+                      </div>
+                    </div>
+                  </Option>
+                );
+              })}
+            </Select>
+          </Form.Item>
+        </Col>
+        
+        <Col xs={24} md={8}>
+          <Form.Item label=" ">
+            <Button 
+              icon={<ReloadOutlined />} 
+              onClick={fetchBudgetCodes}
+              loading={loadingBudgetCodes}
+              block
+            >
+              Refresh Codes
+            </Button>
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={8}>
+          <Form.Item
+            name="title"
+            label="Title"
+            rules={[{ required: true, message: 'Please enter requisition title' }]}
+          >
+            <Input placeholder="Purchase of IT accessories - Safety Stock" />
+          </Form.Item>
+        </Col>
+        <Col xs={24} md={8}>
+          <Form.Item
+            name="deliveryLocation"
+            label="Delivery Location"
+            rules={[{ required: true, message: 'Please enter delivery location' }]}
+          >
+            <Input placeholder="Office" />
+          </Form.Item>
+        </Col>
+        <Col xs={24} md={8}>
+          <Form.Item
+            name="expectedDate"
+            label="Expected Date"
+            rules={[{ required: true, message: 'Please select expected delivery date' }]}
+          >
+            <DatePicker 
+              style={{ width: '100%' }} 
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      {budgetCodeDetails && (
+        <Alert
+          message={
+            <Space>
+              <CheckCircleOutlined style={{ color: '#52c41a' }} />
+              <Text strong>Budget Code Selected: {budgetCodeDetails.code}</Text>
+            </Space>
+          }
+          description={
+            <div>
+              <Descriptions column={2} size="small" style={{ marginTop: '8px' }}>
+                <Descriptions.Item label="Code">
+                  <Text code strong>{budgetCodeDetails.code}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Name">
+                  {budgetCodeDetails.name}
+                </Descriptions.Item>
+                <Descriptions.Item label="Department">
+                  <Tag color="blue">{budgetCodeDetails.department}</Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="Total Budget">
+                  <Text strong>XAF {budgetCodeDetails.totalBudget.toLocaleString()}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Used">
+                  <Text>XAF {budgetCodeDetails.used.toLocaleString()}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Available">
+                  <Text strong style={{ color: '#52c41a' }}>
+                    XAF {budgetCodeDetails.available.toLocaleString()}
+                  </Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Utilization" span={2}>
+                  <Progress 
+                    percent={budgetCodeDetails.utilizationRate} 
+                    size="small"
+                    status={
+                      budgetCodeDetails.status === 'critical' ? 'exception' :
+                      budgetCodeDetails.status === 'high' ? 'normal' : 'success'
+                    }
+                  />
+                </Descriptions.Item>
+              </Descriptions>
+              
+              {calculateTotalCost > 0 && (
+                <div style={{ 
+                  marginTop: '12px', 
+                  padding: '12px', 
+                  backgroundColor: budgetCodeDetails.available >= calculateTotalCost ? '#f6ffed' : '#fff2e8', 
+                  borderRadius: '4px',
+                  border: `1px solid ${budgetCodeDetails.available >= calculateTotalCost ? '#b7eb8f' : '#ffbb96'}`
+                }}>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Text strong>Estimated Cost: </Text>
+                      <Text style={{ color: '#1890ff' }}>XAF {calculateTotalCost.toLocaleString()}</Text>
+                    </Col>
+                    <Col span={12}>
+                      <Text strong>Remaining After: </Text>
+                      <Text style={{ 
+                        color: budgetCodeDetails.available >= calculateTotalCost ? '#52c41a' : '#ff4d4f',
+                        fontWeight: 'bold'
+                      }}>
+                        XAF {(budgetCodeDetails.available - calculateTotalCost).toLocaleString()}
+                      </Text>
+                    </Col>
+                  </Row>
+                  
+                  {budgetCodeDetails.available < calculateTotalCost ? (
+                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #ffbb96' }}>
+                      <Space>
+                        <WarningOutlined style={{ color: '#ff4d4f' }} />
+                        <Text type="danger" strong>
+                          Insufficient budget! Please select a different budget code or reduce items.
+                        </Text>
+                      </Space>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #b7eb8f' }}>
+                      <Space>
+                        <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                        <Text style={{ color: '#52c41a' }} strong>
+                          Sufficient budget available for this requisition
+                        </Text>
+                      </Space>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          }
+          type={
+            calculateTotalCost > 0 && budgetCodeDetails.available < calculateTotalCost 
+              ? "warning" 
+              : "success"
+          }
+          showIcon
+          style={{ marginTop: '16px' }}
+        />
+      )}
+
+      {!loadingBudgetCodes && budgetCodes.length === 0 && (
+        <Alert
+          message="No Budget Codes Available"
+          description="There are no active budget codes available. Please contact the Finance team to create budget codes before submitting requisitions."
+          type="error"
+          showIcon
+          style={{ marginTop: '16px' }}
+        />
+      )}
+    </Card>
+  );
+
+  const renderRequisitionInfo = () => (
+    <Card size="small" title="Requisition Information" style={{ marginBottom: '24px' }}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={8}>
+          <Form.Item
+            name="requisitionNumber"
+            label="Requisition Number"
+          >
+            <Input disabled />
+          </Form.Item>
+        </Col>
+        <Col xs={24} md={8}>
+          <Form.Item
+            name="date"
+            label="Date"
+          >
+            <DatePicker
+              disabled
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+        </Col>
+        <Col xs={24} md={8}>
+          <Form.Item
+            name="urgency"
+            label="Urgency"
+            rules={[{ required: true, message: 'Please select urgency level' }]}
+          >
+            <Select>
+              {URGENCY_OPTIONS.map(option => (
+                <Option key={option.value} value={option.value}>
+                  <Tag color={option.color}>{option.value}</Tag>
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Col>
+      </Row>
+    </Card>
+  );
+
+  const renderRequesterDetails = () => (
+    <Card size="small" title="Requester Details" style={{ marginBottom: '24px' }}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={8}>
+          <Form.Item
+            name="requesterName"
+            label="Requester Name"
+          >
+            <Input disabled />
+          </Form.Item>
+        </Col>
+        <Col xs={24} md={8}>
+          <Form.Item
+            name="department"
+            label="Department"
+          >
+            <Input disabled />
+          </Form.Item>
+        </Col>
+        <Col xs={24} md={8}>
+          <Form.Item
+            name="itemCategory"
+            label="Primary Item Category"
+            rules={[{ required: true, message: 'Please select primary category' }]}
+          >
+            <Select 
+              placeholder="Select primary category"
+              onChange={(value) => {
+                console.log('Category selected:', value);
+                if (value && value !== 'all') {
+                  fetchDatabaseItems(value);
+                } else {
+                  fetchDatabaseItems();
+                }
+              }}
+            >
+              <Option value="all">All Categories</Option>
+              {ITEM_CATEGORIES.map(category => (
+                <Option key={category} value={category}>
+                  {category}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Col>
+      </Row>
+    </Card>
+  );
+
+  const renderBudgetInfo = () => {
+    const itemsTotal = items.reduce((sum, item) => sum + (item.estimatedPrice * item.quantity || 0), 0);
+    const isManualBudget = manualBudget !== null && manualBudget > 0;
+    
+    return (
+      <Card size="small" title="Budget Information" style={{ marginBottom: '24px' }}>
+        <Row gutter={[16, 16]} align="middle">
+          <Col xs={24} md={12}>
+            <Form.Item
+              name="budgetXAF"
+              label="Budget (XAF)"
+              help="Enter estimated budget in Central African Francs (overrides calculated total)"
+            >
+              <InputNumber
+                style={{ width: '100%' }}
+                formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={value => value.replace(/\$\s?|(,)/g, '')}
+                placeholder="Enter budget amount"
+                addonBefore={<DollarOutlined />}
+                onChange={(value) => {
+                  setManualBudget(value);
+                  if (selectedBudgetCode && value) {
+                    handleBudgetCodeChange(selectedBudgetCode);
+                  }
+                }}
+              />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Alert
+              message={
+                <div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <Text strong>Total Estimated Cost: </Text>
+                    <Text style={{ fontSize: '18px', color: '#1890ff' }}>
+                      {calculateTotalCost.toLocaleString()} XAF
+                    </Text>
+                  </div>
+                  {isManualBudget && itemsTotal > 0 && (
+                    <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
+                      (Items total: {itemsTotal.toLocaleString()} XAF - Manual override applied)
+                    </div>
+                  )}
+                </div>
+              }
+              description={
+                isManualBudget 
+                  ? "Using manually entered budget amount"
+                  : calculateTotalCost > 0 
+                    ? `Based on ${items.length} selected items with known prices` 
+                    : "Add items or enter budget amount manually"
+              }
+              type={isManualBudget ? "warning" : "info"}
+              showIcon
+            />
+          </Col>
+        </Row>
+      </Card>
+    );
+  };
+
   const renderProjectAndSupplierSelection = useCallback(() => (
     <Card 
       size="small" 
@@ -747,7 +1440,6 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
       } 
       style={{ marginBottom: '24px' }}
     >
-      {/* First Row: Project and Supplier Selection Mode */}
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12}>
           <Form.Item
@@ -817,7 +1509,6 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
         </Col>
       </Row>
 
-      {/* Supplier Error Alert */}
       {supplierError && (
         <Alert
           message="Supplier Loading Error"
@@ -835,7 +1526,6 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
         />
       )}
 
-      {/* Second Row: Supplier Selection Based on Mode */}
       <Row gutter={[16, 16]}>
         {supplierSelectionMode === 'database' ? (
           <>
@@ -951,7 +1641,6 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
         )}
       </Row>
 
-      {/* Project Budget Information */}
       {projectBudgetInfo && (
         <Alert
           message="Project Budget Information"
@@ -1006,7 +1695,6 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
         />
       )}
 
-      {/* Selected Supplier Details */}
       {selectedSupplier && supplierSelectionMode === 'database' && (
         <Alert
           message="Selected Supplier Details"
@@ -1049,7 +1737,6 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
         />
       )}
 
-      {/* Loading/Empty States */}
       {loadingProjects && !selectedProject && (
         <Alert
           message="Loading Projects"
@@ -1085,7 +1772,36 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
   ]);
 
   const renderAttachments = () => (
-    <Card size="small" title="Attachments (Optional)" style={{ marginBottom: '24px' }}>
+    <Card 
+      size="small" 
+      title={
+        <Space>
+          <FileOutlined />
+          Attachments (Optional)
+          {attachments.length > 0 && (
+            <Tag color="green">{attachments.length} file(s) attached</Tag>
+          )}
+        </Space>
+      } 
+      style={{ marginBottom: '24px' }}
+    >
+      {attachments.length > 0 && (
+        <Alert
+          type="success"
+          message={`${attachments.length} file(s) ready to upload`}
+          description={
+            <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+              {attachments.map((file, idx) => (
+                <li key={idx}>
+                  {file.name} ({file.size ? `${(file.size / 1024).toFixed(1)} KB` : 'Unknown size'})
+                </li>
+              ))}
+            </ul>
+          }
+          showIcon
+          style={{ marginBottom: '16px' }}
+        />
+      )}
       <Form.Item
         name="attachments"
         label="Upload Supporting Documents"
@@ -1334,160 +2050,6 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
     />
   );
 
-  const renderRequisitionInfo = () => (
-    <Card size="small" title="Requisition Information" style={{ marginBottom: '24px' }}>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={8}>
-          <Form.Item
-            name="requisitionNumber"
-            label="Requisition Number"
-          >
-            <Input disabled />
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={8}>
-          <Form.Item
-            name="date"
-            label="Date"
-          >
-            <DatePicker
-              disabled
-              style={{ width: '100%' }}
-            />
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={8}>
-          <Form.Item
-            name="urgency"
-            label="Urgency"
-            rules={[{ required: true, message: 'Please select urgency level' }]}
-          >
-            <Select>
-              {URGENCY_OPTIONS.map(option => (
-                <Option key={option.value} value={option.value}>
-                  <Tag color={option.color}>{option.value}</Tag>
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={8}>
-          <Form.Item
-            name="title"
-            label="Title"
-            rules={[{ required: true, message: 'Please enter requisition title' }]}
-          >
-            <Input placeholder="Purchase of IT accessories - Safety Stock" />
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={8}>
-          <Form.Item
-            name="deliveryLocation"
-            label="Delivery Location"
-            rules={[{ required: true, message: 'Please enter delivery location' }]}
-          >
-            <Input placeholder="Office" />
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={8}>
-          <Form.Item
-            name="expectedDate"
-            label="Expected Date"
-            rules={[{ required: true, message: 'Please select expected delivery date' }]}
-          >
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-        </Col>
-      </Row>
-    </Card>
-  );
-
-  const renderRequesterDetails = () => (
-    <Card size="small" title="Requester Details" style={{ marginBottom: '24px' }}>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={8}>
-          <Form.Item
-            name="requesterName"
-            label="Requester Name"
-          >
-            <Input disabled />
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={8}>
-          <Form.Item
-            name="department"
-            label="Department"
-          >
-            <Input disabled />
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={8}>
-          <Form.Item
-            name="itemCategory"
-            label="Primary Item Category"
-            rules={[{ required: true, message: 'Please select primary category' }]}
-          >
-            <Select 
-              placeholder="Select primary category"
-              onChange={(value) => {
-                console.log('Category selected:', value);
-                if (value && value !== 'all') {
-                  fetchDatabaseItems(value);
-                } else {
-                  fetchDatabaseItems();
-                }
-              }}
-            >
-              <Option value="all">All Categories</Option>
-              {ITEM_CATEGORIES.map(category => (
-                <Option key={category} value={category}>
-                  {category}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-        </Col>
-      </Row>
-    </Card>
-  );
-
-  const renderBudgetInfo = () => (
-    <Card size="small" title="Budget Information" style={{ marginBottom: '24px' }}>
-      <Row gutter={[16, 16]} align="middle">
-        <Col xs={24} md={12}>
-          <Form.Item
-            name="budgetXAF"
-            label="Budget (XAF)"
-            help="Enter estimated budget in Central African Francs"
-          >
-            <InputNumber
-              style={{ width: '100%' }}
-              formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-              parser={value => value.replace(/\$\s?|(,)/g, '')}
-              placeholder="Enter budget amount"
-              addonBefore={<DollarOutlined />}
-            />
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={12}>
-          <Alert
-            message={`Estimated Total: ${calculateTotalCost.toLocaleString()} XAF`}
-            description={
-              calculateTotalCost > 0 
-                ? `Based on ${items.length} selected items with known prices` 
-                : "Add items to see estimated cost"
-            }
-            type="info"
-            showIcon
-          />
-        </Col>
-      </Row>
-    </Card>
-  );
-
   const renderItemsSection = () => (
     <Card 
       size="small" 
@@ -1596,37 +2158,39 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
     </Card>
   );
 
+  // ✅ UPDATED: Justification is captured at requisition creation
   const renderJustifications = () => (
-    <Card size="small" title="Justifications" style={{ marginBottom: '24px' }}>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={12}>
-          <Form.Item
-            name="justificationOfPurchase"
-            label="Justification for Purchase"
-            rules={[{ required: true, message: 'Please provide justification' }]}
-          >
-            <TextArea
-              rows={4}
-              placeholder="Explain why these items are needed..."
-              showCount
-              maxLength={500}
-            />
-          </Form.Item>
-        </Col>
-        <Col xs={24} md={12}>
-          <Form.Item
-            name="justificationOfPreferredSupplier"
-            label="Justification of Preferred Supplier (Optional)"
-          >
-            <TextArea
-              rows={4}
-              placeholder="Explain why you prefer a specific supplier (if any)"
-              showCount
-              maxLength={500}
-            />
-          </Form.Item>
-        </Col>
-      </Row>
+    <Card size="small" title="📝 Justification" style={{ marginBottom: '24px' }}>
+      <Form.Item
+        name="justificationOfPurchase"
+        label="Justification of Purchase"
+        rules={[
+          { required: true, message: 'Please provide justification for this purchase' },
+          { min: 20, message: 'Justification must be at least 20 characters long' }
+        ]}
+      >
+        <TextArea
+          rows={4}
+          placeholder="Explain why this purchase is necessary and how it will benefit the organization..."
+          maxLength={1000}
+          showCount
+        />
+      </Form.Item>
+
+      <Form.Item
+        name="justificationOfPreferredSupplier"
+        label="Justification of Preferred Supplier (Optional)"
+        rules={[
+          { min: 10, message: 'If provided, supplier justification must be at least 10 characters long' }
+        ]}
+      >
+        <TextArea
+          rows={3}
+          placeholder="If you have a preferred supplier, explain why they were selected..."
+          maxLength={500}
+          showCount
+        />
+      </Form.Item>
     </Card>
   );
 
@@ -1647,7 +2211,7 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
           htmlType="submit" 
           loading={loading}
           icon={<SendOutlined />}
-          disabled={items.length === 0}
+          disabled={items.length === 0 || !selectedBudgetCode}
         >
           {editData ? 'Update Requisition' : 'Submit Requisition'}
         </Button>
@@ -1807,7 +2371,9 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
               label="Category"
               rules={[{ required: true, message: 'Please select category' }]}
             >
-              <Select placeholder="Select category">
+              <Select 
+                placeholder="Select category"
+              >
                 {ITEM_CATEGORIES.map(category => (
                   <Option key={category} value={category}>
                     {category}
@@ -1822,7 +2388,9 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
               label="Unit of Measure"
               rules={[{ required: true, message: 'Please specify unit' }]}
             >
-              <Select placeholder="Select unit">
+              <Select 
+                placeholder="Select unit"
+              >
                 {UNITS_OF_MEASURE.map(unit => (
                   <Option key={unit} value={unit}>
                     {unit}
@@ -1878,26 +2446,117 @@ const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, edit
   );
 
   return (
-    <div>
-      <Card>
-        {renderHeader()}
-        {renderDatabaseAlert()}
+    <>
+      <style>
+        {`
+          /* Optimize scrolling performance with hardware acceleration */
+          .ant-card-body,
+          .ant-modal-body,
+          .ant-table-body,
+          .ant-form {
+            -webkit-overflow-scrolling: touch;
+            transform: translateZ(0);
+            will-change: transform;
+          }
+          
+          /* Remove smooth scroll behavior for better performance */
+          * {
+            scroll-behavior: auto !important;
+          }
+          
+          /* Optimize rendering with CSS containment - exclude interactive elements */
+          .ant-table-tbody > tr {
+            contain: layout style;
+          }
+          
+          /* Custom scrollbar styling */
+          ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+          }
+          
+          ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+          }
+          
+          ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+          }
+          
+          ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+          }
+          
+          /* Optimize table scrolling */
+          .ant-table-body {
+            overflow-y: auto !important;
+            transform: translateZ(0);
+            -webkit-overflow-scrolling: touch;
+          }
+          
+          /* Ensure dropdowns render correctly above all content */
+          .ant-select-dropdown,
+          .ant-picker-dropdown,
+          .ant-dropdown,
+          .ant-popover,
+          .ant-tooltip {
+            transform: none !important;
+            will-change: auto !important;
+            contain: none !important;
+            z-index: 9999 !important;
+          }
+          
+          /* Ensure modal content allows dropdowns to show */
+          .ant-modal-body,
+          .ant-modal-content {
+            overflow: visible !important;
+          }
+          
+          /* Ensure form items don't hide dropdowns */
+          .ant-form-item {
+            position: relative;
+            z-index: auto;
+          }
+          
+          /* Reduce animations for better scroll performance */
+          .ant-input,
+          .ant-select,
+          .ant-input-number,
+          .ant-picker {
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          }
+          
+          /* Fast modal transitions */
+          .ant-modal {
+            transition: opacity 0.2s ease;
+          }
+        `}
+      </style>
+      
+      <div>
+        <Card>
+          {renderHeader()}
+          {renderDatabaseAlert()}
 
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
-          {renderRequisitionInfo()}
-          {renderRequesterDetails()}
-          {renderProjectAndSupplierSelection()}
-          {renderBudgetInfo()}
-          {renderItemsSection()}
-          {renderAttachments()}
-          {renderJustifications()}
-          {renderActionButtons()}
-        </Form>
-      </Card>
+          <Form form={form} layout="vertical" onFinish={handleSubmit}>
+            {renderRequisitionInfo()}
+            {renderRequesterDetails()}
+            {renderBudgetCodeSelection()}
+            {renderProjectAndSupplierSelection()}
+            {renderBudgetInfo()}
+            {renderItemsSection()}
+            {renderAttachments()}
+            {renderJustifications()}
+            {renderActionButtons()}
+          </Form>
+        </Card>
 
-      {renderAddItemModal()}
-      {renderRequestNewItemModal()}
-    </div>
+        {renderAddItemModal()}
+        {renderRequestNewItemModal()}
+      </div>
+    </>
   );
 };
 
@@ -1957,7 +2616,10 @@ export default EnhancedPurchaseRequisitionForm;
 //   EyeOutlined,
 //   DownloadOutlined,
 //   InboxOutlined,
-//   ShopOutlined
+//   ShopOutlined,
+//   TagOutlined,
+//   WarningOutlined,
+//   CheckCircleOutlined
 // } from '@ant-design/icons';
 // import { purchaseRequisitionAPI } from '../../services/purchaseRequisitionAPI';
 // import { projectAPI } from '../../services/projectAPI';
@@ -2004,39 +2666,38 @@ export default EnhancedPurchaseRequisitionForm;
 // const MAX_FILES = 5;
 
 // const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, editData }) => {
-//   // Redux state
 //   const { user } = useSelector((state) => state.auth);
-
-//   // Form instances
 //   const [form] = Form.useForm();
 //   const [itemForm] = Form.useForm();
 //   const [requestForm] = Form.useForm();
 
 //   // State management
-//   const [state, setState] = useState({
-//     loading: false,
-//     loadingItems: true,
-//     loadingProjects: false,
-//     loadingSuppliers: false,
-//     fetchError: null,
-//     showItemModal: false,
-//     showRequestModal: false,
-//     editingItem: null
-//   });
+//   const [loading, setLoading] = useState(false);
+//   const [loadingItems, setLoadingItems] = useState(true);
+//   const [loadingProjects, setLoadingProjects] = useState(false);
+//   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+//   const [loadingBudgetCodes, setLoadingBudgetCodes] = useState(false);
+//   const [fetchError, setFetchError] = useState(null);
+//   const [supplierError, setSupplierError] = useState(null);
+//   const [showItemModal, setShowItemModal] = useState(false);
+//   const [showRequestModal, setShowRequestModal] = useState(false);
+//   const [editingItem, setEditingItem] = useState(null);
 
 //   const [items, setItems] = useState([]);
 //   const [attachments, setAttachments] = useState([]);
 //   const [databaseItems, setDatabaseItems] = useState([]);
 //   const [projects, setProjects] = useState([]);
+//   const [suppliers, setSuppliers] = useState([]);
+//   const [budgetCodes, setBudgetCodes] = useState([]);
 //   const [selectedProject, setSelectedProject] = useState(null);
 //   const [projectBudgetInfo, setProjectBudgetInfo] = useState(null);
+//   const [selectedBudgetCode, setSelectedBudgetCode] = useState(null);
+//   const [budgetCodeDetails, setBudgetCodeDetails] = useState(null);
+//   const [manualBudget, setManualBudget] = useState(null);
   
-//   // NEW: Supplier selection state
-//   const [suppliers, setSuppliers] = useState([]);
-//   const [supplierSelectionMode, setSupplierSelectionMode] = useState('database'); // 'database' or 'manual'
+//   const [supplierSelectionMode, setSupplierSelectionMode] = useState('database');
 //   const [selectedSupplier, setSelectedSupplier] = useState(null);
 
-//   // Utility functions
 //   const generateRequisitionNumber = useCallback(() => {
 //     const now = new Date();
 //     const year = now.getFullYear();
@@ -2046,14 +2707,19 @@ export default EnhancedPurchaseRequisitionForm;
 //     return `REQ${year}${month}${day}${random}`;
 //   }, []);
 
-//   const calculateTotalCost = useMemo(() => {
-//     return items.reduce((sum, item) => sum + (item.estimatedPrice * item.quantity || 0), 0);
-//   }, [items]);
+//   // const calculateTotalCost = useMemo(() => {
+//   //   return items.reduce((sum, item) => sum + (item.estimatedPrice * item.quantity || 0), 0);
+//   // }, [items]);
 
-//   // State update helper
-//   const updateState = useCallback((updates) => {
-//     setState(prev => ({ ...prev, ...updates }));
-//   }, []);
+//   const calculateTotalCost = useMemo(() => {
+//     // If manual budget is entered, use that instead of calculated total
+//     if (manualBudget !== null && manualBudget > 0) {
+//       return manualBudget;
+//     }
+//     // Otherwise, calculate from items
+//     return items.reduce((sum, item) => sum + (item.estimatedPrice * item.quantity || 0), 0);
+//   }, [items, manualBudget]);
+
 
 //   const validateFile = useCallback((file) => {
 //     const fileName = file.name || file.originalname || '';
@@ -2078,41 +2744,120 @@ export default EnhancedPurchaseRequisitionForm;
 //     return { valid: true };
 //   }, []);
 
-//   // NEW: Fetch suppliers from database
-//   const fetchSuppliers = useCallback(async () => {
+//   // Fetch budget codes
+//   const fetchBudgetCodes = useCallback(async () => {
 //     try {
-//       updateState({ loadingSuppliers: true });
-//       console.log('Fetching suppliers...');
+//       setLoadingBudgetCodes(true);
+//       console.log('🔍 Fetching budget codes...');
       
-//       const response = await supplierApiService.getAllSuppliers({ 
-//         status: 'active',
-//         limit: 100 
-//       });
+//       const response = await purchaseRequisitionAPI.getActiveBudgetCodes();
+//       console.log('📦 Budget codes response:', response);
       
 //       if (response.success && Array.isArray(response.data)) {
-//         setSuppliers(response.data);
-//         console.log(`Successfully loaded ${response.data.length} suppliers`);
+//         setBudgetCodes(response.data);
+//         console.log(`✅ Loaded ${response.data.length} active budget codes`);
         
 //         if (response.data.length > 0) {
-//           message.success(`Loaded ${response.data.length} suppliers from database`);
+//           message.success(`Loaded ${response.data.length} active budget codes`);
+//         } else {
+//           message.info('No active budget codes available');
 //         }
 //       } else {
-//         console.error('Failed to fetch suppliers:', response.message);
-//         setSuppliers([]);
+//         console.error('❌ Invalid response structure:', response);
+//         setBudgetCodes([]);
+//         message.warning('No budget codes available');
 //       }
 //     } catch (error) {
-//       console.error('Error fetching suppliers:', error);
-//       message.error('Failed to load suppliers database');
-//       setSuppliers([]);
+//       console.error('❌ Error fetching budget codes:', error);
+//       message.error('Failed to load budget codes');
+//       setBudgetCodes([]);
 //     } finally {
-//       updateState({ loadingSuppliers: false });
+//       setLoadingBudgetCodes(false);
 //     }
-//   }, [updateState]);
+//   }, []);
 
-//   // API functions
+//   // Check budget code availability
+//   const checkBudgetCodeAvailability = useCallback(async (budgetCodeId, requiredAmount) => {
+//     try {
+//       const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
+//       if (!budgetCode) return { available: false, message: 'Budget code not found' };
+
+//       const available = budgetCode.budget - budgetCode.used;
+      
+//       if (available < requiredAmount) {
+//         return {
+//           available: false,
+//           message: `Insufficient budget. Available: XAF ${available.toLocaleString()}, Required: XAF ${requiredAmount.toLocaleString()}`
+//         };
+//       }
+
+//       return {
+//         available: true,
+//         budgetCode: budgetCode,
+//         availableAmount: available
+//       };
+//     } catch (error) {
+//       console.error('Error checking budget availability:', error);
+//       return { available: false, message: 'Failed to check budget availability' };
+//     }
+//   }, [budgetCodes]);
+
+//   // Handle budget code selection
+//   const handleBudgetCodeChange = useCallback((budgetCodeId) => {
+//     console.log('Budget code selected:', budgetCodeId);
+//     setSelectedBudgetCode(budgetCodeId);
+    
+//     if (!budgetCodeId) {
+//       setBudgetCodeDetails(null);
+//       return;
+//     }
+
+
+
+//     const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
+//     if (budgetCode) {
+//       console.log('Budget code details:', budgetCode);
+      
+//       const available = budgetCode.budget - budgetCode.used;
+//       const utilizationRate = Math.round((budgetCode.used / budgetCode.budget) * 100);
+//       const status = utilizationRate >= 90 ? 'critical' : 
+//                     utilizationRate >= 75 ? 'high' : 
+//                     utilizationRate >= 50 ? 'moderate' : 'low';
+      
+//       setBudgetCodeDetails({
+//         code: budgetCode.code,
+//         name: budgetCode.name,
+//         department: budgetCode.department,
+//         totalBudget: budgetCode.budget,
+//         used: budgetCode.used,
+//         available: available,
+//         utilizationRate: utilizationRate,
+//         status: status
+//       });
+
+//       if (budgetCode.budgetHolder) {
+//         form.setFieldsValue({ budgetHolder: budgetCode.budgetHolder });
+//       }
+
+//       if (calculateTotalCost > 0 && calculateTotalCost > available) {
+//         message.warning({
+//           content: `Total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds available budget (XAF ${available.toLocaleString()})`,
+//           duration: 5
+//         });
+//       } else if (calculateTotalCost > 0) {
+//         message.success({
+//           content: `Budget sufficient. Remaining after: XAF ${(available - calculateTotalCost).toLocaleString()}`,
+//           duration: 3
+//         });
+//       }
+//     }
+//   }, [budgetCodes, calculateTotalCost, form]);
+
+//   // Fetch database items
 //   const fetchDatabaseItems = useCallback(async (categoryFilter = null) => {
 //     try {
-//       updateState({ loadingItems: true, fetchError: null });
+//       setLoadingItems(true);
+//       setFetchError(null);
       
 //       console.log('Fetching database items...', categoryFilter ? `for category: ${categoryFilter}` : 'all items');
       
@@ -2130,20 +2875,21 @@ export default EnhancedPurchaseRequisitionForm;
 //       } else {
 //         console.error('API returned invalid data:', response);
 //         setDatabaseItems([]);
-//         updateState({ fetchError: response.message || 'Failed to load item database' });
+//         setFetchError(response.message || 'Failed to load item database');
 //       }
 //     } catch (error) {
 //       console.error('Error fetching database items:', error);
 //       setDatabaseItems([]);
-//       updateState({ fetchError: error.message || 'Failed to connect to item database' });
+//       setFetchError(error.message || 'Failed to connect to item database');
 //     } finally {
-//       updateState({ loadingItems: false });
+//       setLoadingItems(false);
 //     }
-//   }, [updateState]);
+//   }, []);
 
+//   // Fetch projects
 //   const fetchProjects = useCallback(async () => {
 //     try {
-//       updateState({ loadingProjects: true });
+//       setLoadingProjects(true);
 //       const response = await projectAPI.getActiveProjects();
       
 //       if (response.success) {
@@ -2157,10 +2903,11 @@ export default EnhancedPurchaseRequisitionForm;
 //       console.error('Error fetching projects:', error);
 //       setProjects([]);
 //     } finally {
-//       updateState({ loadingProjects: false });
+//       setLoadingProjects(false);
 //     }
-//   }, [updateState]);
+//   }, []);
 
+//   // Fetch project budget info
 //   const fetchProjectBudgetInfo = useCallback(async (projectId) => {
 //     try {
 //       const response = await projectAPI.getProjectById(projectId);
@@ -2191,17 +2938,65 @@ export default EnhancedPurchaseRequisitionForm;
 //     }
 //   }, []);
 
-//   // Form initialization
-//   const initializeForm = useCallback(() => {
-//     if (editData) {
+//   // Fetch suppliers
+//   const fetchSuppliers = useCallback(async () => {
+//     setLoadingSuppliers(true);
+//     setSupplierError(null);
+    
+//     try {
+//       console.log('🔍 Starting supplier fetch...');
+      
+//       const token = localStorage.getItem('token');
+//       if (!token) {
+//         throw new Error('Please login to continue');
+//       }
+      
+//       const response = await supplierApiService.getAllSuppliers({ 
+//         status: 'active',
+//         limit: 100 
+//       });
+      
+//       console.log('📦 Fetch response:', response);
+      
+//       if (response.success && Array.isArray(response.data)) {
+//         setSuppliers(response.data);
+//         console.log(`✅ Successfully loaded ${response.data.length} suppliers`);
+        
+//         if (response.data.length > 0) {
+//           message.success(`Loaded ${response.data.length} active suppliers`);
+//         } else {
+//           message.info('No active suppliers found');
+//         }
+//       } else {
+//         const errorMsg = response.message || 'Failed to load suppliers';
+//         console.error('❌ Fetch failed:', errorMsg);
+//         setSupplierError(errorMsg);
+//         message.error(errorMsg);
+//         setSuppliers([]);
+//       }
+      
+//     } catch (error) {
+//       console.error('💥 Error fetching suppliers:', error);
+//       const errorMessage = error.message || 'Failed to load suppliers';
+//       setSupplierError(errorMessage);
+//       message.error(errorMessage);
+//       setSuppliers([]);
+//     } finally {
+//       setLoadingSuppliers(false);
+//     }
+//   }, []);
+
+//   // Form initialization - use useCallback with proper dependencies
+//   const initializeForm = useCallback((isEditMode) => {
+//     if (isEditMode && editData) {
 //       const formData = {
 //         ...editData,
 //         expectedDate: editData.expectedDate ? moment(editData.expectedDate) : moment().add(14, 'days'),
 //         date: editData.createdAt ? moment(editData.createdAt) : moment(),
-//         project: editData.project
+//         project: editData.project,
+//         budgetCode: editData.budgetCode
 //       };
       
-//       // Initialize supplier selection
 //       if (editData.preferredSupplier) {
 //         if (editData.supplierId) {
 //           setSupplierSelectionMode('database');
@@ -2217,6 +3012,29 @@ export default EnhancedPurchaseRequisitionForm;
 //       setItems(editData.items || []);
 //       setSelectedProject(editData.project);
       
+//       if (editData.budgetCode) {
+//         const budgetCodeId = editData.budgetCode;
+//         const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
+//         if (budgetCode) {
+//           const available = budgetCode.budget - budgetCode.used;
+//           const utilizationRate = Math.round((budgetCode.used / budgetCode.budget) * 100);
+//           const status = utilizationRate >= 90 ? 'critical' : 
+//                         utilizationRate >= 75 ? 'high' : 
+//                         utilizationRate >= 50 ? 'moderate' : 'low';
+          
+//           setBudgetCodeDetails({
+//             code: budgetCode.code,
+//             name: budgetCode.name,
+//             department: budgetCode.department,
+//             totalBudget: budgetCode.budget,
+//             used: budgetCode.used,
+//             available: available,
+//             utilizationRate: utilizationRate,
+//             status: status
+//           });
+//         }
+//       }
+      
 //       if (editData.attachments && editData.attachments.length > 0) {
 //         const existingAttachments = editData.attachments.map((att, index) => ({
 //           uid: att._id || `existing-${index}`,
@@ -2225,7 +3043,7 @@ export default EnhancedPurchaseRequisitionForm;
 //           url: att.url || att.downloadUrl,
 //           size: att.size || 0,
 //           type: att.mimetype || 'application/octet-stream',
-//           existing: true, 
+//           existing: true,
 //           publicId: att.publicId
 //         }));
 //         setAttachments(existingAttachments);
@@ -2241,15 +3059,35 @@ export default EnhancedPurchaseRequisitionForm;
 //         urgency: 'Medium'
 //       });
 //     }
-//   }, [editData, form, generateRequisitionNumber, user]);
+//   }, [editData, form, generateRequisitionNumber, user, budgetCodes]);
 
-//   // Component initialization
+//   // Component initialization - FIXED: Remove initializeForm from dependencies
 //   useEffect(() => {
-//     fetchProjects();
-//     fetchDatabaseItems();
-//     fetchSuppliers(); // NEW: Load suppliers
-//     initializeForm();
-//   }, [fetchProjects, fetchDatabaseItems, fetchSuppliers, initializeForm]);
+//     console.log('Component mounted, fetching data...');
+    
+//     const initData = async () => {
+//       try {
+//         await Promise.all([
+//           fetchProjects(),
+//           fetchDatabaseItems(),
+//           fetchSuppliers(),
+//           fetchBudgetCodes()
+//         ]);
+        
+//         // Initialize form after data is fetched
+//         initializeForm(!!editData);
+//       } catch (error) {
+//         console.error('Error initializing component:', error);
+//       }
+//     };
+    
+//     initData();
+    
+//     // Cleanup function
+//     return () => {
+//       console.log('Component unmounting...');
+//     };
+//   }, []); // Empty dependency array - only run on mount
 
 //   // Project selection effect
 //   useEffect(() => {
@@ -2258,17 +3096,17 @@ export default EnhancedPurchaseRequisitionForm;
 //     } else {
 //       setProjectBudgetInfo(null);
 //     }
-//   }, [selectedProject, fetchProjectBudgetInfo]);
+//   }, [selectedProject]);
 
-//   // Item management functions (keeping existing code)
+//   // Item management functions
 //   const handleAddItem = useCallback(() => {
-//     if (state.loadingItems) {
+//     if (loadingItems) {
 //       message.warning('Please wait while items are loading...');
 //       return;
 //     }
     
-//     if (state.fetchError) {
-//       message.error('Cannot add items: ' + state.fetchError);
+//     if (fetchError) {
+//       message.error('Cannot add items: ' + fetchError);
 //       return;
 //     }
     
@@ -2277,18 +3115,20 @@ export default EnhancedPurchaseRequisitionForm;
 //       return;
 //     }
     
-//     updateState({ editingItem: null, showItemModal: true });
+//     setEditingItem(null);
+//     setShowItemModal(true);
 //     itemForm.resetFields();
-//   }, [state.loadingItems, state.fetchError, databaseItems, itemForm, updateState]);
+//   }, [loadingItems, fetchError, databaseItems, itemForm]);
 
 //   const handleEditItem = useCallback((item, index) => {
-//     updateState({ editingItem: index, showItemModal: true });
+//     setEditingItem(index);
+//     setShowItemModal(true);
 //     itemForm.setFieldsValue({
 //       itemId: item.itemId,
 //       quantity: item.quantity,
 //       projectName: item.projectName
 //     });
-//   }, [itemForm, updateState]);
+//   }, [itemForm]);
 
 //   const handleDeleteItem = useCallback((index) => {
 //     const newItems = items.filter((_, i) => i !== index);
@@ -2296,67 +3136,226 @@ export default EnhancedPurchaseRequisitionForm;
 //     message.success('Item removed successfully');
 //   }, [items]);
 
+//   // const handleItemModalOk = useCallback(async () => {
+//   //   try {
+//   //     const values = await itemForm.validateFields();
+//   //     const selectedItem = databaseItems.find(item => 
+//   //       (item._id || item.id) === values.itemId
+//   //     );
+
+//   //     if (!selectedItem) {
+//   //       message.error('Please select a valid item from the database');
+//   //       return;
+//   //     }
+
+//   //     const existingItemIndex = items.findIndex(item => 
+//   //       item.itemId === (selectedItem._id || selectedItem.id)
+//   //     );
+
+//   //     const itemData = {
+//   //       itemId: selectedItem._id || selectedItem.id,
+//   //       code: selectedItem.code,
+//   //       description: selectedItem.description,
+//   //       category: selectedItem.category,
+//   //       subcategory: selectedItem.subcategory,
+//   //       quantity: values.quantity,
+//   //       measuringUnit: selectedItem.unitOfMeasure || 'Pieces',
+//   //       projectName: values.projectName || '',
+//   //       estimatedPrice: selectedItem.standardPrice || 0
+//   //     };
+
+//   //     if (editingItem !== null) {
+//   //       const newItems = [...items];
+//   //       newItems[editingItem] = itemData;
+//   //       setItems(newItems);
+//   //       message.success('Item updated successfully');
+//   //     } else if (existingItemIndex !== -1) {
+//   //       Modal.confirm({
+//   //         title: 'Item Already Added',
+//   //         content: `"${selectedItem.description}" is already in your list. Do you want to add to the existing quantity?`,
+//   //         onOk() {
+//   //           const newItems = [...items];
+//   //           newItems[existingItemIndex].quantity += values.quantity;
+//   //           setItems(newItems);
+//   //           message.success('Quantity updated successfully');
+//   //         }
+//   //       });
+//   //     } else {
+//   //       setItems(prev => [...prev, itemData]);
+//   //       message.success('Item added successfully');
+//   //     }
+
+//   //     setShowItemModal(false);
+//   //     itemForm.resetFields();
+//   //   } catch (error) {
+//   //     console.error('Validation failed:', error);
+//   //     message.error('Failed to add item. Please try again.');
+//   //   }
+//   // }, [itemForm, databaseItems, items, editingItem]);
+
+
+// //   const handleItemModalOk = useCallback(async () => {
+// //   try {
+// //     const values = await itemForm.validateFields();
+// //     console.log('Item form values:', values); // Debug log
+    
+// //     const selectedItem = databaseItems.find(item => 
+// //       (item._id || item.id) === values.itemId
+// //     );
+
+// //     console.log('Selected item from database:', selectedItem); // Debug log
+
+// //     if (!selectedItem) {
+// //       message.error('Please select a valid item from the database');
+// //       return;
+// //     }
+
+// //     const existingItemIndex = items.findIndex(item => 
+// //       item.itemId === (selectedItem._id || selectedItem.id)
+// //     );
+
+// //     const itemData = {
+// //       itemId: selectedItem._id || selectedItem.id,
+// //       code: selectedItem.code,
+// //       description: selectedItem.description,
+// //       category: selectedItem.category,
+// //       subcategory: selectedItem.subcategory,
+// //       quantity: values.quantity,
+// //       measuringUnit: selectedItem.unitOfMeasure || 'Pieces',
+// //       projectName: values.projectName || '',
+// //       estimatedPrice: selectedItem.standardPrice || 0
+// //     };
+
+// //     console.log('Item data to add:', itemData); // Debug log
+
+// //     if (editingItem !== null) {
+// //       const newItems = [...items];
+// //       newItems[editingItem] = itemData;
+// //       setItems(newItems);
+// //       console.log('Items after editing:', newItems); // Debug log
+// //       message.success('Item updated successfully');
+// //     } else if (existingItemIndex !== -1) {
+// //       Modal.confirm({
+// //         title: 'Item Already Added',
+// //         content: `"${selectedItem.description}" is already in your list. Do you want to add to the existing quantity?`,
+// //         onOk() {
+// //           const newItems = [...items];
+// //           newItems[existingItemIndex].quantity += values.quantity;
+// //           setItems(newItems);
+// //           console.log('Items after quantity update:', newItems); // Debug log
+// //           message.success('Quantity updated successfully');
+// //         }
+// //       });
+// //     } else {
+// //       setItems(prev => {
+// //         const updated = [...prev, itemData];
+// //         console.log('Items after adding new item:', updated); // Debug log
+// //         console.log('Updated items length:', updated.length); // Debug log
+// //         return updated;
+// //       });
+// //       message.success('Item added successfully');
+// //     }
+
+// //     setShowItemModal(false);
+// //     itemForm.resetFields();
+// //     setEditingItem(null);
+// //   } catch (error) {
+// //     console.error('Validation failed:', error);
+// //     message.error('Failed to add item. Please try again.');
+// //   }
+// // }, [itemForm, databaseItems, items, editingItem]);
+
 //   const handleItemModalOk = useCallback(async () => {
-//     try {
-//       const values = await itemForm.validateFields();
-//       const selectedItem = databaseItems.find(item => 
-//         (item._id || item.id) === values.itemId
-//       );
+//   try {
+//     const values = await itemForm.validateFields();
+//     console.log('Item form values:', values);
+    
+//     const selectedItem = databaseItems.find(item => 
+//       (item._id || item.id) === values.itemId
+//     );
 
-//       if (!selectedItem) {
-//         message.error('Please select a valid item from the database');
-//         return;
-//       }
+//     console.log('Selected item from database:', selectedItem);
 
-//       const existingItemIndex = items.findIndex(item => 
-//         item.itemId === (selectedItem._id || selectedItem.id)
-//       );
-
-//       const itemData = {
-//         itemId: selectedItem._id || selectedItem.id,
-//         code: selectedItem.code,
-//         description: selectedItem.description,
-//         category: selectedItem.category,
-//         subcategory: selectedItem.subcategory,
-//         quantity: values.quantity,
-//         measuringUnit: selectedItem.unitOfMeasure || 'Pieces',
-//         projectName: values.projectName || '',
-//         estimatedPrice: selectedItem.standardPrice || 0
-//       };
-
-//       if (state.editingItem !== null) {
-//         const newItems = [...items];
-//         newItems[state.editingItem] = itemData;
-//         setItems(newItems);
-//         message.success('Item updated successfully');
-//       } else if (existingItemIndex !== -1) {
-//         Modal.confirm({
-//           title: 'Item Already Added',
-//           content: `"${selectedItem.description}" is already in your list. Do you want to add to the existing quantity?`,
-//           onOk() {
-//             const newItems = [...items];
-//             newItems[existingItemIndex].quantity += values.quantity;
-//             setItems(newItems);
-//             message.success('Quantity updated successfully');
-//           }
-//         });
-//       } else {
-//         setItems(prev => [...prev, itemData]);
-//         message.success('Item added successfully');
-//       }
-
-//       updateState({ showItemModal: false });
-//       itemForm.resetFields();
-//     } catch (error) {
-//       console.error('Validation failed:', error);
-//       message.error('Failed to add item. Please try again.');
+//     if (!selectedItem) {
+//       message.error('Please select a valid item from the database');
+//       return;
 //     }
-//   }, [itemForm, databaseItems, items, state.editingItem, updateState]);
+
+//     const existingItemIndex = items.findIndex(item => 
+//       item.itemId === (selectedItem._id || selectedItem.id)
+//     );
+
+//     const itemData = {
+//       itemId: selectedItem._id || selectedItem.id,
+//       code: selectedItem.code,
+//       description: selectedItem.description,
+//       category: selectedItem.category,
+//       subcategory: selectedItem.subcategory,
+//       quantity: values.quantity,
+//       measuringUnit: selectedItem.unitOfMeasure || 'Pieces',
+//       projectName: values.projectName || '',
+//       estimatedPrice: selectedItem.standardPrice || 0
+//     };
+
+//     console.log('Item data to add:', itemData);
+
+//     if (editingItem !== null) {
+//       const newItems = [...items];
+//       newItems[editingItem] = itemData;
+//       setItems(newItems);
+//       console.log('Items after editing:', newItems);
+//       message.success('Item updated successfully');
+//       setShowItemModal(false);
+//       itemForm.resetFields();
+//       setEditingItem(null);
+//     } else if (existingItemIndex !== -1) {
+//       Modal.confirm({
+//         title: 'Item Already Added',
+//         content: `"${selectedItem.description}" is already in your list. Do you want to add to the existing quantity?`,
+//         onOk() {
+//           const newItems = [...items];
+//           newItems[existingItemIndex].quantity += values.quantity;
+//           setItems(newItems);
+//           console.log('Items after quantity update:', newItems);
+//           message.success('Quantity updated successfully');
+//           setShowItemModal(false);
+//           itemForm.resetFields();
+//           setEditingItem(null);
+//         },
+//         onCancel() {
+//           // Keep modal open if user cancels
+//         }
+//       });
+//     } else {
+//       // FIXED: Add new item and wait for state to update
+//       setItems(prevItems => {
+//         const updatedItems = [...prevItems, itemData];
+//         console.log('Items after adding new item:', updatedItems);
+//         console.log('Updated items length:', updatedItems.length);
+        
+//         // Close modal after state update in next tick
+//         setTimeout(() => {
+//           setShowItemModal(false);
+//           itemForm.resetFields();
+//           setEditingItem(null);
+//         }, 0);
+        
+//         return updatedItems;
+//       });
+      
+//       message.success('Item added successfully');
+//     }
+//   } catch (error) {
+//     console.error('Validation failed:', error);
+//     message.error('Failed to add item. Please try again.');
+//   }
+// }, [itemForm, databaseItems, items, editingItem]);
+
 
 //   const handleRequestNewItem = useCallback(() => {
-//     updateState({ showRequestModal: true });
+//     setShowRequestModal(true);
 //     requestForm.resetFields();
-//   }, [requestForm, updateState]);
+//   }, [requestForm]);
 
 //   const handleRequestModalOk = useCallback(async () => {
 //     try {
@@ -2373,7 +3372,7 @@ export default EnhancedPurchaseRequisitionForm;
 
 //       if (response.success) {
 //         message.success('Item request submitted to Supply Chain team. You will be notified when the item is available.');
-//         updateState({ showRequestModal: false });
+//         setShowRequestModal(false);
 //         requestForm.resetFields();
 //       } else {
 //         message.error(response.message || 'Failed to submit item request');
@@ -2382,194 +3381,75 @@ export default EnhancedPurchaseRequisitionForm;
 //       console.error('Request failed:', error);
 //       message.error('Failed to submit item request');
 //     }
-//   }, [requestForm, user, form, updateState]);
+//   }, [requestForm, user, form]);
 
 //   // File upload handling
 //   const handleAttachmentChange = useCallback(({ fileList }) => {
-//     console.log('Attachment change:', fileList);
+//   console.log('Attachment change:', fileList);
+  
+//   const processedFiles = fileList.map(file => {
+//     if (file.existing) {
+//       return file;
+//     }
     
-//     const processedFiles = fileList.map(file => {
-//       if (file.existing) {
-//         return file;
-//       }
+//     if (file.originFileObj && file.status !== 'removed') {
+//       const validation = validateFile(file.originFileObj);
       
-//       if (file.originFileObj && file.status !== 'removed') {
-//         const validation = validateFile(file.originFileObj);
-        
-//         if (!validation.valid) {
-//           message.error(validation.error);
-//           return {
-//             ...file,
-//             status: 'error',
-//             error: validation.error
-//           };
-//         }
-        
+//       if (!validation.valid) {
+//         message.error(validation.error);
 //         return {
 //           ...file,
-//           status: file.status || 'done'
+//           status: 'error',
+//           error: validation.error
 //         };
 //       }
       
-//       return file;
-//     });
-
-//     const validFiles = processedFiles.filter(file => 
-//       file.status !== 'error' && file.status !== 'removed'
-//     );
-    
-//     if (validFiles.length > MAX_FILES) {
-//       message.error(`Maximum ${MAX_FILES} files allowed`);
-//       return;
+//       // Store file reference immediately to prevent file system issues
+//       return {
+//         ...file,
+//         status: file.status || 'done',
+//         // Keep original file object reference
+//         originFileObj: file.originFileObj
+//       };
 //     }
+    
+//     return file;
+//   });
 
-//     setAttachments(validFiles);
-//   }, [validateFile]);
+//   const validFiles = processedFiles.filter(file => 
+//     file.status !== 'error' && file.status !== 'removed'
+//   );
+  
+//   if (validFiles.length > MAX_FILES) {
+//     message.error(`Maximum ${MAX_FILES} files allowed`);
+//     return;
+//   }
+
+//   setAttachments(validFiles);
+// }, [validateFile]);
+
+
+//   // const customUploadRequest = useCallback(({ file, onSuccess, onError }) => {
+//   //   setTimeout(() => {
+//   //     onSuccess("ok");
+//   //   }, 0);
+//   // }, []);
 
 //   const customUploadRequest = useCallback(({ file, onSuccess, onError }) => {
+//     // Store file immediately to prevent ERR_UPLOAD_FILE_CHANGED
+//     const fileData = {
+//       uid: file.uid,
+//       name: file.name,
+//       status: 'done',
+//       originFileObj: file,
+//       type: file.type,
+//       size: file.size
+//     };
+    
 //     setTimeout(() => {
-//       onSuccess("ok");
+//       onSuccess("ok", fileData);
 //     }, 0);
 //   }, []);
-
-//   // Form submission
-//   const handleSubmit = useCallback(async (values) => {
-//     if (items.length === 0) {
-//       message.error('Please add at least one item to the requisition');
-//       return;
-//     }
-
-//     // Validate project budget if project is selected
-//     if (selectedProject && projectBudgetInfo) {
-//       if (calculateTotalCost > projectBudgetInfo.budgetRemaining) {
-//         Modal.confirm({
-//           title: 'Budget Warning',
-//           content: `The total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds the remaining project budget (XAF ${projectBudgetInfo.budgetRemaining.toLocaleString()}). Do you want to continue?`,
-//           onOk() {
-//             submitRequisition(values);
-//           }
-//         });
-//         return;
-//       }
-//     }
-
-//     submitRequisition(values);
-//   }, [items, selectedProject, projectBudgetInfo, calculateTotalCost]);
-
-//   const submitRequisition = useCallback(async (values) => {
-//     updateState({ loading: true });
-//     try {
-//       const formData = new FormData();
-
-//       // Add all form fields
-//       formData.append('requisitionNumber', values.requisitionNumber);
-//       formData.append('title', values.title);
-//       formData.append('itemCategory', values.itemCategory);
-//       formData.append('budgetXAF', values.budgetXAF || '');
-//       formData.append('budgetHolder', values.budgetHolder);
-//       formData.append('urgency', values.urgency);
-//       formData.append('deliveryLocation', values.deliveryLocation);
-//       formData.append('expectedDate', values.expectedDate.format('YYYY-MM-DD'));
-//       formData.append('justificationOfPurchase', values.justificationOfPurchase);
-//       formData.append('justificationOfPreferredSupplier', values.justificationOfPreferredSupplier || '');
-      
-//       // NEW: Add supplier information
-//       if (supplierSelectionMode === 'database' && selectedSupplier) {
-//         formData.append('supplierId', selectedSupplier);
-//         const supplier = suppliers.find(s => s._id === selectedSupplier);
-//         if (supplier) {
-//           formData.append('preferredSupplier', supplier.supplierDetails?.companyName || supplier.fullName);
-//         }
-//       } else if (supplierSelectionMode === 'manual' && values.preferredSupplierName) {
-//         formData.append('preferredSupplier', values.preferredSupplierName);
-//       }
-      
-//       if (selectedProject) {
-//         formData.append('project', selectedProject);
-//       }
-
-//       formData.append('items', JSON.stringify(items));
-
-//       // Handle file attachments
-//       const newAttachments = attachments.filter(att => !att.existing && att.originFileObj);
-      
-//       newAttachments.forEach((file, index) => {
-//         console.log(`Adding file ${index + 1}:`, file.name);
-//         formData.append('attachments', file.originFileObj, file.name);
-//       });
-
-//       const existingAttachmentIds = attachments
-//         .filter(att => att.existing)
-//         .map(att => att._id || att.uid);
-      
-//       if (existingAttachmentIds.length > 0) {
-//         formData.append('existingAttachments', JSON.stringify(existingAttachmentIds));
-//       }
-
-//       console.log('Submitting requisition with', newAttachments.length, 'new files...');
-
-//       const response = await purchaseRequisitionAPI.createRequisition(formData);
-
-//       if (response.success) {
-//         message.success('Purchase requisition submitted successfully!');
-        
-//         if (response.attachments) {
-//           const { uploaded, total } = response.attachments;
-//           if (uploaded < total) {
-//             message.warning(`${uploaded} out of ${total} attachments uploaded successfully`);
-//           } else if (uploaded > 0) {
-//             message.success(`All ${uploaded} attachments uploaded successfully`);
-//           }
-//         }
-        
-//         if (onSubmit) {
-//           onSubmit(response.data);
-//         }
-//       } else {
-//         message.error(response.message || 'Failed to submit requisition');
-//       }
-
-//     } catch (error) {
-//       console.error('Error submitting requisition:', error);
-      
-//       if (error.response?.data?.message) {
-//         message.error(error.response.data.message);
-//       } else {
-//         message.error('Failed to submit requisition. Please try again.');
-//       }
-//     } finally {
-//       updateState({ loading: false });
-//     }
-//   }, [items, attachments, selectedProject, suppliers, selectedSupplier, supplierSelectionMode, onSubmit, updateState]);
-
-//   const handleSaveDraft = useCallback(async () => {
-//     try {
-//       const values = await form.getFieldsValue();
-//       const draftData = {
-//         ...values,
-//         expectedDate: values.expectedDate ? values.expectedDate.format('YYYY-MM-DD') : moment().add(14, 'days').format('YYYY-MM-DD'),
-//         items,
-//         project: selectedProject,
-//         status: 'draft',
-//         lastSaved: new Date(),
-//         totalEstimatedCost: calculateTotalCost
-//       };
-
-//       const response = await purchaseRequisitionAPI.saveDraft(draftData);
-
-//       if (response.success) {
-//         message.success('Draft saved successfully!');
-//         if (onSaveDraft) {
-//           onSaveDraft(response.data);
-//         }
-//       } else {
-//         message.error(response.message || 'Failed to save draft');
-//       }
-//     } catch (error) {
-//       console.error('Error saving draft:', error);
-//       message.error('Failed to save draft');
-//     }
-//   }, [form, items, selectedProject, calculateTotalCost, onSaveDraft]);
 
 //   const handleDownloadAttachment = useCallback(async (attachment) => {
 //     try {
@@ -2632,7 +3512,715 @@ export default EnhancedPurchaseRequisitionForm;
 //     }
 //   }, []);
 
-//   // Combined Project Assignment and Supplier Selection
+//   // // Form submission
+//   // const handleSubmit = useCallback(async (values) => {
+//   //   if (items.length === 0) {
+//   //     message.error('Please add at least one item to the requisition');
+//   //     return;
+//   //   }
+
+//   //   if (!values.budgetCode || !selectedBudgetCode) {
+//   //     message.error('Please select a budget code');
+//   //     return;
+//   //   }
+//   // const handleSubmit = useCallback(async (values) => {
+//   //   console.log('Form submitted with items:', items); // Debug log
+//   //   console.log('Items length:', items.length); // Debug log
+    
+//   //   if (!items || items.length === 0) {
+//   //     message.error('Please add at least one item to the requisition');
+//   //     return;
+//   //   }
+
+//   //   if (!values.budgetCode || !selectedBudgetCode) {
+//   //     message.error('Please select a budget code');
+//   //     return;
+//   //   }
+
+//   //   if (selectedProject && projectBudgetInfo) {
+//   //     if (calculateTotalCost > projectBudgetInfo.budgetRemaining) {
+//   //       Modal.confirm({
+//   //         title: 'Budget Warning',
+//   //         content: `The total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds the remaining project budget (XAF ${projectBudgetInfo.budgetRemaining.toLocaleString()}). Do you want to continue?`,
+//   //         onOk() {
+//   //           checkBudgetAndSubmit(values);
+//   //         }
+//   //       });
+//   //       return;
+//   //     }
+//   //   }
+
+//   //   checkBudgetAndSubmit(values);
+//   // }, [items, selectedProject, projectBudgetInfo, calculateTotalCost, selectedBudgetCode]);
+
+
+//   const handleSubmit = useCallback(async (values) => {
+//     console.log('Form submitted with items:', items);
+//     console.log('Items length:', items.length);
+    
+//     if (!items || items.length === 0) {
+//       message.error('Please add at least one item to the requisition');
+//       return;
+//     }
+
+//     if (!values.budgetCode || !selectedBudgetCode) {
+//       message.error('Please select a budget code');
+//       return;
+//     }
+
+//     if (selectedProject && projectBudgetInfo) {
+//       if (calculateTotalCost > projectBudgetInfo.budgetRemaining) {
+//         Modal.confirm({
+//           title: 'Budget Warning',
+//           content: `The total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds the remaining project budget (XAF ${projectBudgetInfo.budgetRemaining.toLocaleString()}). Do you want to continue?`,
+//           onOk() {
+//             // FIXED: Pass items explicitly here
+//             checkBudgetAndSubmit(values, items);
+//           }
+//         });
+//         return;
+//       }
+//     }
+
+//     // FIXED: Pass items explicitly here too
+//     checkBudgetAndSubmit(values, items);
+//   }, [items, selectedProject, projectBudgetInfo, calculateTotalCost, selectedBudgetCode]);
+
+
+// const checkBudgetAndSubmit = useCallback(async (values, itemsToSubmit) => {
+//   console.log('checkBudgetAndSubmit received items:', itemsToSubmit);
+//   console.log('Items count:', itemsToSubmit?.length);
+  
+//   const budgetCheck = await checkBudgetCodeAvailability(values.budgetCode, calculateTotalCost);
+  
+//   if (!budgetCheck.available) {
+//     Modal.error({
+//       title: 'Insufficient Budget',
+//       content: (
+//         <div>
+//           <p>The selected budget code does not have sufficient funds.</p>
+//           <Divider />
+//           <p><strong>Budget Code:</strong> {budgetCodeDetails?.code}</p>
+//           <p><strong>Available:</strong> XAF {budgetCodeDetails?.available.toLocaleString()}</p>
+//           <p><strong>Required:</strong> XAF {calculateTotalCost.toLocaleString()}</p>
+//           <p><strong>Shortfall:</strong> XAF {(calculateTotalCost - budgetCodeDetails?.available).toLocaleString()}</p>
+//           <Divider />
+//           <p>Please select a different budget code or reduce items.</p>
+//         </div>
+//       ),
+//       okText: 'Understood'
+//     });
+//     return;
+//   }
+
+//   Modal.confirm({
+//     title: 'Confirm Submission',
+//     content: (
+//       <div>
+//         <p><strong>Total Estimated Cost:</strong> XAF {calculateTotalCost.toLocaleString()}</p>
+//         <p><strong>Budget Code:</strong> {budgetCodeDetails?.code}</p>
+//         <p><strong>Available Budget:</strong> XAF {budgetCodeDetails?.available.toLocaleString()}</p>
+//         <p><strong>Remaining After:</strong> XAF {(budgetCodeDetails?.available - calculateTotalCost).toLocaleString()}</p>
+//         <Divider />
+//         <p>Are you sure you want to submit this requisition?</p>
+//       </div>
+//     ),
+//     onOk() {
+//       // Pass the itemsToSubmit parameter through to submitRequisition
+//       console.log('Confirming submission with items:', itemsToSubmit);
+//       submitRequisition(values, itemsToSubmit);
+//     }
+//   });
+// }, [calculateTotalCost, budgetCodeDetails, checkBudgetCodeAvailability]);
+
+//   // const submitRequisition = useCallback(async (values, itemsToSubmit) => {
+
+
+//   const submitRequisition = useCallback(async (values, itemsToSubmit) => {
+//   setLoading(true);
+//   try {
+//     // FIXED: Add explicit validation and logging
+//     console.log('submitRequisition called with:');
+//     console.log('  - values:', values);
+//     console.log('  - itemsToSubmit:', itemsToSubmit);
+//     console.log('  - itemsToSubmit length:', itemsToSubmit?.length);
+    
+//     // CRITICAL: Validate items before creating FormData
+//     if (!itemsToSubmit || !Array.isArray(itemsToSubmit) || itemsToSubmit.length === 0) {
+//       message.error('No items to submit. Please add at least one item to the requisition.');
+//       setLoading(false);
+//       return;
+//     }
+
+//     const formData = new FormData();
+
+//     formData.append('requisitionNumber', values.requisitionNumber);
+//     formData.append('title', values.title);
+//     formData.append('itemCategory', values.itemCategory);
+//     formData.append('budgetXAF', values.budgetXAF || calculateTotalCost);
+//     formData.append('budgetCode', values.budgetCode);
+    
+//     if (values.budgetHolder) {
+//       formData.append('budgetHolder', values.budgetHolder);
+//     }
+    
+//     formData.append('urgency', values.urgency);
+//     formData.append('deliveryLocation', values.deliveryLocation);
+//     formData.append('expectedDate', values.expectedDate.format('YYYY-MM-DD'));
+//     formData.append('justificationOfPurchase', values.justificationOfPurchase);
+//     formData.append('justificationOfPreferredSupplier', values.justificationOfPreferredSupplier || '');
+    
+//     if (supplierSelectionMode === 'database' && selectedSupplier) {
+//       formData.append('supplierId', selectedSupplier);
+//       const supplier = suppliers.find(s => s._id === selectedSupplier);
+//       if (supplier) {
+//         formData.append('preferredSupplier', supplier.supplierDetails?.companyName || supplier.fullName);
+//       }
+//     } else if (supplierSelectionMode === 'manual' && values.preferredSupplierName) {
+//       formData.append('preferredSupplier', values.preferredSupplierName);
+//     }
+    
+//     if (selectedProject) {
+//       formData.append('project', selectedProject);
+//     }
+
+//     // FIXED: Ensure items are stringified correctly
+//     const itemsJson = JSON.stringify(itemsToSubmit);
+//     console.log('Items JSON being appended:', itemsJson);
+//     console.log('Items JSON length:', itemsJson.length);
+//     formData.append('items', itemsJson);
+
+//     // FIXED: Log FormData contents for debugging
+//     console.log('FormData contents:');
+//     for (let pair of formData.entries()) {
+//       console.log(pair[0] + ': ' + (pair[0] === 'items' ? pair[1] : pair[1].substring ? pair[1].substring(0, 50) : pair[1]));
+//     }
+
+//     const newAttachments = attachments.filter(att => !att.existing && att.originFileObj);
+    
+//     newAttachments.forEach((file, index) => {
+//       console.log(`Adding file ${index + 1}:`, file.name);
+//       formData.append('attachments', file.originFileObj);
+//     });
+
+//     const existingAttachmentIds = attachments
+//       .filter(att => att.existing)
+//       .map(att => att._id || att.uid);
+    
+//     if (existingAttachmentIds.length > 0) {
+//       formData.append('existingAttachments', JSON.stringify(existingAttachmentIds));
+//     }
+
+//     console.log('Submitting requisition with', newAttachments.length, 'new files and', itemsToSubmit.length, 'items...');
+
+//     const response = await purchaseRequisitionAPI.createRequisition(formData);
+
+//     if (response.success) {
+//       message.success('Purchase requisition submitted successfully!');
+      
+//       if (response.attachments) {
+//         const { uploaded, total } = response.attachments;
+//         if (uploaded < total) {
+//           message.warning(`${uploaded} out of ${total} attachments uploaded successfully`);
+//         } else if (uploaded > 0) {
+//           message.success(`All ${uploaded} attachments uploaded successfully`);
+//         }
+//       }
+      
+//       if (onSubmit) {
+//         onSubmit(response.data);
+//       }
+//     } else {
+//       message.error(response.message || 'Failed to submit requisition');
+//     }
+
+//   } catch (error) {
+//     console.error('Error submitting requisition:', error);
+    
+//     if (error.response?.data?.message) {
+//       message.error(error.response.data.message);
+//     } else {
+//       message.error('Failed to submit requisition. Please try again.');
+//     }
+//   } finally {
+//     setLoading(false);
+//   }
+// }, [attachments, selectedProject, suppliers, selectedSupplier, supplierSelectionMode, calculateTotalCost, onSubmit]);
+
+
+//   const handleSaveDraft = useCallback(async () => {
+//     try {
+//       const values = await form.getFieldsValue();
+//       const draftData = {
+//         ...values,
+//         expectedDate: values.expectedDate ? values.expectedDate.format('YYYY-MM-DD') : moment().add(14, 'days').format('YYYY-MM-DD'),
+//         items,
+//         project: selectedProject,
+//         budgetCode: selectedBudgetCode,
+//         status: 'draft',
+//         lastSaved: new Date(),
+//         totalEstimatedCost: calculateTotalCost
+//       };
+
+//       const response = await purchaseRequisitionAPI.saveDraft(draftData);
+
+//       if (response.success) {
+//         message.success('Draft saved successfully!');
+//         if (onSaveDraft) {
+//           onSaveDraft(response.data);
+//         }
+//       } else {
+//         message.error(response.message || 'Failed to save draft');
+//       }
+//     } catch (error) {
+//       console.error('Error saving draft:', error);
+//       message.error('Failed to save draft');
+//     }
+//   }, [form, items, selectedProject, selectedBudgetCode, calculateTotalCost, onSaveDraft]);
+
+//   // Render functions
+//   const renderBudgetCodeSelection = () => (
+//     <Card 
+//       size="small" 
+//       title={
+//         <Space>
+//           <TagOutlined />
+//           Budget Code Selection (Required)
+//         </Space>
+//       } 
+//       style={{ marginBottom: '24px' }}
+//     >
+//       <Alert
+//         message="Budget Code Required"
+//         description="You must select a budget code before submitting. The system will verify that sufficient budget is available."
+//         type="info"
+//         showIcon
+//         style={{ marginBottom: '16px' }}
+//       />
+
+//       <Row gutter={[16, 16]}>
+//         <Col xs={24} md={16}>
+//           <Form.Item
+//             name="budgetCode"
+//             label="Select Budget Code"
+//             rules={[{ required: true, message: 'Budget code is required' }]}
+//             help="Choose the budget code that will fund this purchase"
+//           >
+//             <Select
+//               placeholder={
+//                 loadingBudgetCodes 
+//                   ? "Loading budget codes..." 
+//                   : budgetCodes.length === 0 
+//                     ? "No budget codes available"
+//                     : "Select a budget code"
+//               }
+//               loading={loadingBudgetCodes}
+//               disabled={loadingBudgetCodes || budgetCodes.length === 0}
+//               showSearch
+//               allowClear
+//               onChange={handleBudgetCodeChange}
+//               value={selectedBudgetCode}
+//               optionFilterProp="children"
+//               filterOption={(input, option) => {
+//                 if (!input) return true;
+//                 const code = budgetCodes.find(bc => bc._id === option.value);
+//                 if (!code) return false;
+//                 const searchStr = `${code.code} ${code.name} ${code.department}`.toLowerCase();
+//                 return searchStr.includes(input.toLowerCase());
+//               }}
+//               notFoundContent={
+//                 loadingBudgetCodes ? (
+//                   <div style={{ textAlign: 'center', padding: '20px' }}>
+//                     <Spin size="small" />
+//                     <div><Text type="secondary">Loading budget codes...</Text></div>
+//                   </div>
+//                 ) : (
+//                   <div style={{ textAlign: 'center', padding: '20px' }}>
+//                     <Text type="secondary">No budget codes available</Text>
+//                   </div>
+//                 )
+//               }
+//             >
+//               {budgetCodes.map(code => {
+//                 const available = code.budget - code.used;
+//                 const utilizationRate = Math.round((code.used / code.budget) * 100);
+//                 const status = utilizationRate >= 90 ? 'critical' : 
+//                              utilizationRate >= 75 ? 'high' : 
+//                              utilizationRate >= 50 ? 'moderate' : 'low';
+                
+//                 return (
+//                   <Option key={code._id} value={code._id}>
+//                     <div style={{ padding: '4px 0' }}>
+//                       <div>
+//                         <Text strong>{code.code}</Text> - {code.name}
+//                       </div>
+//                       <div style={{ marginTop: '4px' }}>
+//                         <Text type="secondary" style={{ fontSize: '12px' }}>
+//                           {code.department} | Available: XAF {available.toLocaleString()}
+//                           {' '}
+//                           <Tag 
+//                             color={
+//                               status === 'critical' ? 'red' :
+//                               status === 'high' ? 'orange' :
+//                               status === 'moderate' ? 'blue' : 'green'
+//                             }
+//                             style={{ marginLeft: '4px' }}
+//                           >
+//                             {utilizationRate}% used
+//                           </Tag>
+//                         </Text>
+//                       </div>
+//                     </div>
+//                   </Option>
+//                 );
+//               })}
+//             </Select>
+//           </Form.Item>
+//         </Col>
+        
+//         <Col xs={24} md={8}>
+//           <Form.Item label=" ">
+//             <Button 
+//               icon={<ReloadOutlined />} 
+//               onClick={fetchBudgetCodes}
+//               loading={loadingBudgetCodes}
+//               block
+//             >
+//               Refresh Codes
+//             </Button>
+//           </Form.Item>
+//         </Col>
+//       </Row>
+
+//       <Row gutter={[16, 16]}>
+//         <Col xs={24} md={8}>
+//           <Form.Item
+//             name="title"
+//             label="Title"
+//             rules={[{ required: true, message: 'Please enter requisition title' }]}
+//           >
+//             <Input placeholder="Purchase of IT accessories - Safety Stock" />
+//           </Form.Item>
+//         </Col>
+//         <Col xs={24} md={8}>
+//           <Form.Item
+//             name="deliveryLocation"
+//             label="Delivery Location"
+//             rules={[{ required: true, message: 'Please enter delivery location' }]}
+//           >
+//             <Input placeholder="Office" />
+//           </Form.Item>
+//         </Col>
+//         <Col xs={24} md={8}>
+//           <Form.Item
+//             name="expectedDate"
+//             label="Expected Date"
+//             rules={[{ required: true, message: 'Please select expected delivery date' }]}
+//           >
+//             <DatePicker style={{ width: '100%' }} />
+//           </Form.Item>
+//         </Col>
+//       </Row>
+
+//       {budgetCodeDetails && (
+//         <Alert
+//           message={
+//             <Space>
+//               <CheckCircleOutlined style={{ color: '#52c41a' }} />
+//               <Text strong>Budget Code Selected: {budgetCodeDetails.code}</Text>
+//             </Space>
+//           }
+//           description={
+//             <div>
+//               <Descriptions column={2} size="small" style={{ marginTop: '8px' }}>
+//                 <Descriptions.Item label="Code">
+//                   <Text code strong>{budgetCodeDetails.code}</Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Name">
+//                   {budgetCodeDetails.name}
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Department">
+//                   <Tag color="blue">{budgetCodeDetails.department}</Tag>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Total Budget">
+//                   <Text strong>XAF {budgetCodeDetails.totalBudget.toLocaleString()}</Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Used">
+//                   <Text>XAF {budgetCodeDetails.used.toLocaleString()}</Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Available">
+//                   <Text strong style={{ color: '#52c41a' }}>
+//                     XAF {budgetCodeDetails.available.toLocaleString()}
+//                   </Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Utilization" span={2}>
+//                   <Progress 
+//                     percent={budgetCodeDetails.utilizationRate} 
+//                     size="small"
+//                     status={
+//                       budgetCodeDetails.status === 'critical' ? 'exception' :
+//                       budgetCodeDetails.status === 'high' ? 'normal' : 'success'
+//                     }
+//                   />
+//                 </Descriptions.Item>
+//               </Descriptions>
+              
+//               {calculateTotalCost > 0 && (
+//                 <div style={{ 
+//                   marginTop: '12px', 
+//                   padding: '12px', 
+//                   backgroundColor: budgetCodeDetails.available >= calculateTotalCost ? '#f6ffed' : '#fff2e8', 
+//                   borderRadius: '4px',
+//                   border: `1px solid ${budgetCodeDetails.available >= calculateTotalCost ? '#b7eb8f' : '#ffbb96'}`
+//                 }}>
+//                   <Row gutter={16}>
+//                     <Col span={12}>
+//                       <Text strong>Estimated Cost: </Text>
+//                       <Text style={{ color: '#1890ff' }}>XAF {calculateTotalCost.toLocaleString()}</Text>
+//                     </Col>
+//                     <Col span={12}>
+//                       <Text strong>Remaining After: </Text>
+//                       <Text style={{ 
+//                         color: budgetCodeDetails.available >= calculateTotalCost ? '#52c41a' : '#ff4d4f',
+//                         fontWeight: 'bold'
+//                       }}>
+//                         XAF {(budgetCodeDetails.available - calculateTotalCost).toLocaleString()}
+//                       </Text>
+//                     </Col>
+//                   </Row>
+                  
+//                   {budgetCodeDetails.available < calculateTotalCost ? (
+//                     <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #ffbb96' }}>
+//                       <Space>
+//                         <WarningOutlined style={{ color: '#ff4d4f' }} />
+//                         <Text type="danger" strong>
+//                           Insufficient budget! Please select a different budget code or reduce items.
+//                         </Text>
+//                       </Space>
+//                     </div>
+//                   ) : (
+//                     <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #b7eb8f' }}>
+//                       <Space>
+//                         <CheckCircleOutlined style={{ color: '#52c41a' }} />
+//                         <Text style={{ color: '#52c41a' }} strong>
+//                           Sufficient budget available for this requisition
+//                         </Text>
+//                       </Space>
+//                     </div>
+//                   )}
+//                 </div>
+//               )}
+//             </div>
+//           }
+//           type={
+//             calculateTotalCost > 0 && budgetCodeDetails.available < calculateTotalCost 
+//               ? "warning" 
+//               : "success"
+//           }
+//           showIcon
+//           style={{ marginTop: '16px' }}
+//         />
+//       )}
+
+//       {!loadingBudgetCodes && budgetCodes.length === 0 && (
+//         <Alert
+//           message="No Budget Codes Available"
+//           description="There are no active budget codes available. Please contact the Finance team to create budget codes before submitting requisitions."
+//           type="error"
+//           showIcon
+//           style={{ marginTop: '16px' }}
+//         />
+//       )}
+//     </Card>
+//   );
+
+//   const renderRequisitionInfo = () => (
+//     <Card size="small" title="Requisition Information" style={{ marginBottom: '24px' }}>
+//       <Row gutter={[16, 16]}>
+//         <Col xs={24} md={8}>
+//           <Form.Item
+//             name="requisitionNumber"
+//             label="Requisition Number"
+//           >
+//             <Input disabled />
+//           </Form.Item>
+//         </Col>
+//         <Col xs={24} md={8}>
+//           <Form.Item
+//             name="date"
+//             label="Date"
+//           >
+//             <DatePicker
+//               disabled
+//               style={{ width: '100%' }}
+//             />
+//           </Form.Item>
+//         </Col>
+//         <Col xs={24} md={8}>
+//           <Form.Item
+//             name="urgency"
+//             label="Urgency"
+//             rules={[{ required: true, message: 'Please select urgency level' }]}
+//           >
+//             <Select>
+//               {URGENCY_OPTIONS.map(option => (
+//                 <Option key={option.value} value={option.value}>
+//                   <Tag color={option.color}>{option.value}</Tag>
+//                 </Option>
+//               ))}
+//             </Select>
+//           </Form.Item>
+//         </Col>
+//       </Row>
+//     </Card>
+//   );
+
+//   const renderRequesterDetails = () => (
+//     <Card size="small" title="Requester Details" style={{ marginBottom: '24px' }}>
+//       <Row gutter={[16, 16]}>
+//         <Col xs={24} md={8}>
+//           <Form.Item
+//             name="requesterName"
+//             label="Requester Name"
+//           >
+//             <Input disabled />
+//           </Form.Item>
+//         </Col>
+//         <Col xs={24} md={8}>
+//           <Form.Item
+//             name="department"
+//             label="Department"
+//           >
+//             <Input disabled />
+//           </Form.Item>
+//         </Col>
+//         <Col xs={24} md={8}>
+//           <Form.Item
+//             name="itemCategory"
+//             label="Primary Item Category"
+//             rules={[{ required: true, message: 'Please select primary category' }]}
+//           >
+//             <Select 
+//               placeholder="Select primary category"
+//               onChange={(value) => {
+//                 console.log('Category selected:', value);
+//                 if (value && value !== 'all') {
+//                   fetchDatabaseItems(value);
+//                 } else {
+//                   fetchDatabaseItems();
+//                 }
+//               }}
+//             >
+//               <Option value="all">All Categories</Option>
+//               {ITEM_CATEGORIES.map(category => (
+//                 <Option key={category} value={category}>
+//                   {category}
+//                 </Option>
+//               ))}
+//             </Select>
+//           </Form.Item>
+//         </Col>
+//       </Row>
+//     </Card>
+//   );
+
+//   // const renderBudgetInfo = () => (
+//   //   <Card size="small" title="Budget Information" style={{ marginBottom: '24px' }}>
+//   //     <Row gutter={[16, 16]} align="middle">
+//   //       <Col xs={24} md={12}>
+//   //         <Form.Item
+//   //           name="budgetXAF"
+//   //           label="Budget (XAF)"
+//   //           help="Enter estimated budget in Central African Francs"
+//   //         >
+//   //           <InputNumber
+//   //             style={{ width: '100%' }}
+//   //             formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+//   //             parser={value => value.replace(/\$\s?|(,)/g, '')}
+//   //             placeholder="Enter budget amount"
+//   //             addonBefore={<DollarOutlined />}
+//   //           />
+//   //         </Form.Item>
+//   //       </Col>
+//   //       <Col xs={24} md={12}>
+//   //         <Alert
+//   //           message={`Estimated Total: ${calculateTotalCost.toLocaleString()} XAF`}
+//   //           description={
+//   //             calculateTotalCost > 0 
+//   //               ? `Based on ${items.length} selected items with known prices` 
+//   //               : "Add items to see estimated cost"
+//   //           }
+//   //           type="info"
+//   //           showIcon
+//   //         />
+//   //       </Col>
+//   //     </Row>
+//   //   </Card>
+//   // );
+
+
+//   const renderBudgetInfo = () => {
+//     const itemsTotal = items.reduce((sum, item) => sum + (item.estimatedPrice * item.quantity || 0), 0);
+//     const isManualBudget = manualBudget !== null && manualBudget > 0;
+    
+//     return (
+//       <Card size="small" title="Budget Information" style={{ marginBottom: '24px' }}>
+//         <Row gutter={[16, 16]} align="middle">
+//           <Col xs={24} md={12}>
+//             <Form.Item
+//               name="budgetXAF"
+//               label="Budget (XAF)"
+//               help="Enter estimated budget in Central African Francs (overrides calculated total)"
+//             >
+//               <InputNumber
+//                 style={{ width: '100%' }}
+//                 formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+//                 parser={value => value.replace(/\$\s?|(,)/g, '')}
+//                 placeholder="Enter budget amount"
+//                 addonBefore={<DollarOutlined />}
+//                 onChange={(value) => {
+//                   setManualBudget(value);
+//                   // Recalculate budget details if budget code is selected
+//                   if (selectedBudgetCode && value) {
+//                     handleBudgetCodeChange(selectedBudgetCode);
+//                   }
+//                 }}
+//               />
+//             </Form.Item>
+//           </Col>
+//           <Col xs={24} md={12}>
+//             <Alert
+//               message={
+//                 <div>
+//                   <div style={{ marginBottom: '8px' }}>
+//                     <Text strong>Total Estimated Cost: </Text>
+//                     <Text style={{ fontSize: '18px', color: '#1890ff' }}>
+//                       {calculateTotalCost.toLocaleString()} XAF
+//                     </Text>
+//                   </div>
+//                   {isManualBudget && itemsTotal > 0 && (
+//                     <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
+//                       (Items total: {itemsTotal.toLocaleString()} XAF - Manual override applied)
+//                     </div>
+//                   )}
+//                 </div>
+//               }
+//               description={
+//                 isManualBudget 
+//                   ? "Using manually entered budget amount"
+//                   : calculateTotalCost > 0 
+//                     ? `Based on ${items.length} selected items with known prices` 
+//                     : "Add items or enter budget amount manually"
+//               }
+//               type={isManualBudget ? "warning" : "info"}
+//               showIcon
+//             />
+//           </Col>
+//         </Row>
+//       </Card>
+//     );
+//   };
+
 //   const renderProjectAndSupplierSelection = useCallback(() => (
 //     <Card 
 //       size="small" 
@@ -2644,7 +4232,6 @@ export default EnhancedPurchaseRequisitionForm;
 //       } 
 //       style={{ marginBottom: '24px' }}
 //     >
-//       {/* First Row: Project and Supplier Selection Mode */}
 //       <Row gutter={[16, 16]}>
 //         <Col xs={24} md={12}>
 //           <Form.Item
@@ -2656,7 +4243,7 @@ export default EnhancedPurchaseRequisitionForm;
 //               placeholder="Select project (optional)"
 //               allowClear
 //               showSearch
-//               loading={state.loadingProjects}
+//               loading={loadingProjects}
 //               onChange={(value) => setSelectedProject(value)}
 //               filterOption={(input, option) => {
 //                 const project = projects.find(p => p._id === option.value);
@@ -2700,7 +4287,7 @@ export default EnhancedPurchaseRequisitionForm;
 //               <Radio value="database">
 //                 <Space>
 //                   <DatabaseOutlined />
-//                   Database
+//                   Database ({suppliers.length})
 //                 </Space>
 //               </Radio>
 //               <Radio value="manual">
@@ -2714,7 +4301,23 @@ export default EnhancedPurchaseRequisitionForm;
 //         </Col>
 //       </Row>
 
-//       {/* Second Row: Supplier Selection Based on Mode */}
+//       {supplierError && (
+//         <Alert
+//           message="Supplier Loading Error"
+//           description={supplierError}
+//           type="error"
+//           showIcon
+//           closable
+//           onClose={() => setSupplierError(null)}
+//           action={
+//             <Button size="small" onClick={fetchSuppliers} icon={<ReloadOutlined />}>
+//               Retry
+//             </Button>
+//           }
+//           style={{ marginBottom: '16px' }}
+//         />
+//       )}
+
 //       <Row gutter={[16, 16]}>
 //         {supplierSelectionMode === 'database' ? (
 //           <>
@@ -2725,10 +4328,17 @@ export default EnhancedPurchaseRequisitionForm;
 //                 help="Choose from registered and approved suppliers"
 //               >
 //                 <Select
-//                   placeholder="Search and select a supplier"
+//                   placeholder={
+//                     loadingSuppliers 
+//                       ? "Loading suppliers..." 
+//                       : suppliers.length === 0 
+//                         ? "No suppliers available"
+//                         : "Search and select a supplier"
+//                   }
 //                   allowClear
 //                   showSearch
-//                   loading={state.loadingSuppliers}
+//                   loading={loadingSuppliers}
+//                   disabled={loadingSuppliers || suppliers.length === 0}
 //                   onChange={(value) => setSelectedSupplier(value)}
 //                   filterOption={(input, option) => {
 //                     const supplier = suppliers.find(s => s._id === option.value);
@@ -2743,9 +4353,19 @@ export default EnhancedPurchaseRequisitionForm;
 //                     return searchStr.includes(input.toLowerCase());
 //                   }}
 //                   notFoundContent={
-//                     state.loadingSuppliers ? (
+//                     loadingSuppliers ? (
 //                       <div style={{ textAlign: 'center', padding: '20px' }}>
 //                         <Spin size="small" />
+//                         <div><Text type="secondary">Loading suppliers...</Text></div>
+//                       </div>
+//                     ) : supplierError ? (
+//                       <div style={{ textAlign: 'center', padding: '20px' }}>
+//                         <Text type="danger">Error: {supplierError}</Text>
+//                         <div style={{ marginTop: '8px' }}>
+//                           <Button size="small" type="primary" onClick={fetchSuppliers}>
+//                             Retry
+//                           </Button>
+//                         </div>
 //                       </div>
 //                     ) : (
 //                       <div style={{ textAlign: 'center', padding: '20px' }}>
@@ -2783,7 +4403,7 @@ export default EnhancedPurchaseRequisitionForm;
 //                 <Button 
 //                   icon={<ReloadOutlined />} 
 //                   onClick={fetchSuppliers}
-//                   loading={state.loadingSuppliers}
+//                   loading={loadingSuppliers}
 //                   block
 //                 >
 //                   Refresh
@@ -2813,7 +4433,6 @@ export default EnhancedPurchaseRequisitionForm;
 //         )}
 //       </Row>
 
-//       {/* Project Budget Information */}
 //       {projectBudgetInfo && (
 //         <Alert
 //           message="Project Budget Information"
@@ -2868,7 +4487,6 @@ export default EnhancedPurchaseRequisitionForm;
 //         />
 //       )}
 
-//       {/* Selected Supplier Details */}
 //       {selectedSupplier && supplierSelectionMode === 'database' && (
 //         <Alert
 //           message="Selected Supplier Details"
@@ -2911,8 +4529,7 @@ export default EnhancedPurchaseRequisitionForm;
 //         />
 //       )}
 
-//       {/* Loading/Empty States */}
-//       {state.loadingProjects && !selectedProject && (
+//       {loadingProjects && !selectedProject && (
 //         <Alert
 //           message="Loading Projects"
 //           description="Please wait while we load available projects..."
@@ -2922,7 +4539,7 @@ export default EnhancedPurchaseRequisitionForm;
 //         />
 //       )}
       
-//       {!state.loadingProjects && projects.length === 0 && (
+//       {!loadingProjects && projects.length === 0 && (
 //         <Alert
 //           message="No Active Projects"
 //           description="No active projects found. You can still create the requisition without assigning it to a project."
@@ -2933,214 +4550,19 @@ export default EnhancedPurchaseRequisitionForm;
 //       )}
 //     </Card>
 //   ), [
-//     state.loadingProjects,
-//     state.loadingSuppliers,
+//     loadingProjects,
+//     loadingSuppliers,
 //     projects,
 //     suppliers,
 //     supplierSelectionMode,
 //     selectedSupplier,
+//     supplierError,
 //     projectBudgetInfo,
 //     calculateTotalCost,
 //     form,
 //     fetchSuppliers
 //   ]);
 
-//   // NEW: Render supplier selection section
-//   const renderSupplierSelection = () => (
-//     <Card 
-//       size="small" 
-//       title={
-//         <Space>
-//           <ShopOutlined />
-//           Preferred Supplier (Optional)
-//         </Space>
-//       } 
-//       style={{ marginBottom: '24px' }}
-//     >
-//       <Row gutter={[16, 16]}>
-//         <Col span={24}>
-//           <Form.Item
-//             label="Supplier Selection Method"
-//             help="Choose whether to select from registered suppliers or enter a new supplier name"
-//           >
-//             <Radio.Group 
-//               value={supplierSelectionMode} 
-//               onChange={(e) => {
-//                 setSupplierSelectionMode(e.target.value);
-//                 setSelectedSupplier(null);
-//                 form.setFieldsValue({ 
-//                   supplierId: undefined, 
-//                   preferredSupplierName: undefined 
-//                 });
-//               }}
-//             >
-//               <Radio value="database">
-//                 <Space>
-//                   <DatabaseOutlined />
-//                   Select from Database
-//                 </Space>
-//               </Radio>
-//               <Radio value="manual">
-//                 <Space>
-//                   <EditOutlined />
-//                   Enter Manually
-//                 </Space>
-//               </Radio>
-//             </Radio.Group>
-//           </Form.Item>
-//         </Col>
-//       </Row>
-
-//       {supplierSelectionMode === 'database' && (
-//         <Row gutter={[16, 16]}>
-//           <Col xs={24} md={16}>
-//             <Form.Item
-//               name="supplierId"
-//               label="Select Supplier"
-//               help="Choose from registered and approved suppliers"
-//             >
-//               <Select
-//                 placeholder="Search and select a supplier"
-//                 allowClear
-//                 showSearch
-//                 loading={state.loadingSuppliers}
-//                 onChange={(value) => setSelectedSupplier(value)}
-//                 filterOption={(input, option) => {
-//                   const supplier = suppliers.find(s => s._id === option.value);
-//                   if (!supplier) return false;
-                  
-//                   const companyName = supplier.supplierDetails?.companyName || '';
-//                   const fullName = supplier.fullName || '';
-//                   const email = supplier.email || '';
-//                   const supplierType = supplier.supplierDetails?.supplierType || '';
-                  
-//                   const searchStr = `${companyName} ${fullName} ${email} ${supplierType}`.toLowerCase();
-//                   return searchStr.includes(input.toLowerCase());
-//                 }}
-//                 notFoundContent={
-//                   state.loadingSuppliers ? (
-//                     <div style={{ textAlign: 'center', padding: '20px' }}>
-//                       <Spin size="small" />
-//                     </div>
-//                   ) : (
-//                     <div style={{ textAlign: 'center', padding: '20px' }}>
-//                       <Text type="secondary">No suppliers found</Text>
-//                     </div>
-//                   )
-//                 }
-//               >
-//                 {suppliers.map(supplier => (
-//                   <Option key={supplier._id} value={supplier._id}>
-//                     <div>
-//                       <Text strong>
-//                         {supplier.supplierDetails?.companyName || supplier.fullName}
-//                       </Text>
-//                       <br />
-//                       <Text type="secondary" style={{ fontSize: '12px' }}>
-//                         {supplier.supplierDetails?.supplierType && (
-//                           <Tag size="small" color="blue">
-//                             {supplier.supplierDetails.supplierType}
-//                           </Tag>
-//                         )}
-//                         {supplier.email}
-//                         {supplier.supplierDetails?.phoneNumber && 
-//                           ` | ${supplier.supplierDetails.phoneNumber}`
-//                         }
-//                       </Text>
-//                     </div>
-//                   </Option>
-//                 ))}
-//               </Select>
-//             </Form.Item>
-//           </Col>
-//           <Col xs={24} md={8}>
-//             <Button 
-//               icon={<ReloadOutlined />} 
-//               onClick={fetchSuppliers}
-//               loading={state.loadingSuppliers}
-//             >
-//               Refresh Suppliers
-//             </Button>
-//           </Col>
-//         </Row>
-//       )}
-
-//       {supplierSelectionMode === 'manual' && (
-//         <Row gutter={[16, 16]}>
-//           <Col xs={24} md={16}>
-//             <Form.Item
-//               name="preferredSupplierName"
-//               label="Supplier Name"
-//               help="Enter the name of the supplier (not yet registered in the system)"
-//               rules={[
-//                 { 
-//                   min: 2, 
-//                   message: 'Supplier name must be at least 2 characters' 
-//                 }
-//               ]}
-//             >
-//               <Input 
-//                 placeholder="Enter supplier company name or full name"
-//                 prefix={<ShopOutlined />}
-//               />
-//             </Form.Item>
-//           </Col>
-//           <Col xs={24} md={8}>
-//             <Alert
-//               message="New Supplier"
-//               description="This supplier will be noted for future registration"
-//               type="info"
-//               showIcon
-//             />
-//           </Col>
-//         </Row>
-//       )}
-
-//       {selectedSupplier && supplierSelectionMode === 'database' && (
-//         <Alert
-//           message="Selected Supplier Details"
-//           description={(() => {
-//             const supplier = suppliers.find(s => s._id === selectedSupplier);
-//             return supplier ? (
-//               <Descriptions column={2} size="small" style={{ marginTop: '8px' }}>
-//                 <Descriptions.Item label="Company">
-//                   <Text strong>{supplier.supplierDetails?.companyName || supplier.fullName}</Text>
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Contact">
-//                   {supplier.supplierDetails?.contactName || supplier.fullName}
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Email">
-//                   {supplier.email}
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Phone">
-//                   {supplier.supplierDetails?.phoneNumber || 'N/A'}
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Type">
-//                   <Tag color="blue">
-//                     {supplier.supplierDetails?.supplierType || 'N/A'}
-//                   </Tag>
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Status">
-//                   <Tag color={supplier.status === 'active' ? 'green' : 'orange'}>
-//                     {supplier.status || 'N/A'}
-//                   </Tag>
-//                 </Descriptions.Item>
-//                 {supplier.supplierDetails?.address && (
-//                   <Descriptions.Item label="Address" span={2}>
-//                     {supplier.supplierDetails.address}
-//                   </Descriptions.Item>
-//                 )}
-//               </Descriptions>
-//             ) : null;
-//           })()}
-//           type="info"
-//           style={{ marginTop: '16px' }}
-//         />
-//       )}
-//     </Card>
-//   );
-
-//   // Render attachments section
 //   const renderAttachments = () => (
 //     <Card size="small" title="Attachments (Optional)" style={{ marginBottom: '24px' }}>
 //       <Form.Item
@@ -3358,15 +4780,15 @@ export default EnhancedPurchaseRequisitionForm;
 //         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 //           <span>
 //             Items must be selected from the pre-approved database managed by the Supply Chain team. 
-//             {state.loadingItems ? ' Loading items...' : ` ${databaseItems.length} items available.`}
-//             {state.fetchError && ' (Error loading items)'}
+//             {loadingItems ? ' Loading items...' : ` ${databaseItems.length} items available.`}
+//             {fetchError && ' (Error loading items)'}
 //           </span>
 //           <Space>
 //             <Button
 //               type="link"
 //               size="small"
 //               onClick={handleRequestNewItem}
-//               disabled={state.loadingItems}
+//               disabled={loadingItems}
 //             >
 //               Request New Item
 //             </Button>
@@ -3377,294 +4799,18 @@ export default EnhancedPurchaseRequisitionForm;
 //                 const selectedCategory = form.getFieldValue('itemCategory');
 //                 fetchDatabaseItems(selectedCategory);
 //               }}
-//               loading={state.loadingItems}
+//               loading={loadingItems}
 //             >
 //               Refresh
 //             </Button>
 //           </Space>
 //         </div>
 //       }
-//       type={state.fetchError ? "error" : state.loadingItems ? "info" : "success"}
+//       type={fetchError ? "error" : loadingItems ? "info" : "success"}
 //       showIcon
 //       icon={<DatabaseOutlined />}
 //       style={{ marginBottom: '24px' }}
 //     />
-//   );
-
-//   const renderRequisitionInfo = () => (
-//     <Card size="small" title="Requisition Information" style={{ marginBottom: '24px' }}>
-//       <Row gutter={[16, 16]}>
-//         <Col xs={24} md={8}>
-//           <Form.Item
-//             name="requisitionNumber"
-//             label="Requisition Number"
-//           >
-//             <Input disabled />
-//           </Form.Item>
-//         </Col>
-//         <Col xs={24} md={8}>
-//           <Form.Item
-//             name="date"
-//             label="Date"
-//           >
-//             <DatePicker
-//               disabled
-//               style={{ width: '100%' }}
-//             />
-//           </Form.Item>
-//         </Col>
-//         <Col xs={24} md={8}>
-//           <Form.Item
-//             name="urgency"
-//             label="Urgency"
-//             rules={[{ required: true, message: 'Please select urgency level' }]}
-//           >
-//             <Select>
-//               {URGENCY_OPTIONS.map(option => (
-//                 <Option key={option.value} value={option.value}>
-//                   <Tag color={option.color}>{option.value}</Tag>
-//                 </Option>
-//               ))}
-//             </Select>
-//           </Form.Item>
-//         </Col>
-//       </Row>
-
-//       <Row gutter={[16, 16]}>
-//         <Col xs={24} md={8}>
-//           <Form.Item
-//             name="title"
-//             label="Title"
-//             rules={[{ required: true, message: 'Please enter requisition title' }]}
-//           >
-//             <Input placeholder="Purchase of IT accessories - Safety Stock" />
-//           </Form.Item>
-//         </Col>
-//         <Col xs={24} md={8}>
-//           <Form.Item
-//             name="deliveryLocation"
-//             label="Delivery Location"
-//             rules={[{ required: true, message: 'Please enter delivery location' }]}
-//           >
-//             <Input placeholder="Office" />
-//           </Form.Item>
-//         </Col>
-//         <Col xs={24} md={8}>
-//           <Form.Item
-//             name="expectedDate"
-//             label="Expected Date"
-//             rules={[{ required: true, message: 'Please select expected delivery date' }]}
-//           >
-//             <DatePicker style={{ width: '100%' }} />
-//           </Form.Item>
-//         </Col>
-//       </Row>
-//     </Card>
-//   );
-
-//   const renderRequesterDetails = () => (
-//     <Card size="small" title="Requester Details" style={{ marginBottom: '24px' }}>
-//       <Row gutter={[16, 16]}>
-//         <Col xs={24} md={8}>
-//           <Form.Item
-//             name="requesterName"
-//             label="Requester Name"
-//           >
-//             <Input disabled />
-//           </Form.Item>
-//         </Col>
-//         <Col xs={24} md={8}>
-//           <Form.Item
-//             name="department"
-//             label="Department"
-//           >
-//             <Input disabled />
-//           </Form.Item>
-//         </Col>
-//         <Col xs={24} md={8}>
-//           <Form.Item
-//             name="itemCategory"
-//             label="Primary Item Category"
-//             rules={[{ required: true, message: 'Please select primary category' }]}
-//           >
-//             <Select 
-//               placeholder="Select primary category"
-//               onChange={(value) => {
-//                 console.log('Category selected:', value);
-//                 if (value && value !== 'all') {
-//                   fetchDatabaseItems(value);
-//                 } else {
-//                   fetchDatabaseItems();
-//                 }
-//               }}
-//             >
-//               <Option value="all">All Categories</Option>
-//               {ITEM_CATEGORIES.map(category => (
-//                 <Option key={category} value={category}>
-//                   {category}
-//                 </Option>
-//               ))}
-//             </Select>
-//           </Form.Item>
-//         </Col>
-//       </Row>
-//     </Card>
-//   );
-
-//   const renderProjectSelection = () => (
-//     <Card 
-//       size="small" 
-//       title={
-//         <Space>
-//           <ProjectOutlined />
-//           Project Assignment (Optional)
-//         </Space>
-//       } 
-//       style={{ marginBottom: '24px' }}
-//     >
-//       <Row gutter={[16, 16]}>
-//         <Col xs={24} md={12}>
-//           <Form.Item
-//             name="project"
-//             label="Assign to Project"
-//             help="Select a project to associate this requisition with (optional)"
-//           >
-//             <Select
-//               placeholder="Select project (optional)"
-//               allowClear
-//               showSearch
-//               loading={state.loadingProjects}
-//               onChange={(value) => setSelectedProject(value)}
-//               filterOption={(input, option) => {
-//                 const project = projects.find(p => p._id === option.value);
-//                 return project && (
-//                   project.name.toLowerCase().includes(input.toLowerCase()) ||
-//                   project.code.toLowerCase().includes(input.toLowerCase())
-//                 );
-//               }}
-//             >
-//               {projects.map(project => (
-//                 <Option key={project._id} value={project._id}>
-//                   <div>
-//                     <Text strong>{project.code}</Text> - {project.name}
-//                     <br />
-//                     <Text type="secondary" style={{ fontSize: '12px' }}>
-//                       {project.projectType} | {project.priority} Priority | {project.status}
-//                     </Text>
-//                   </div>
-//                 </Option>
-//               ))}
-//             </Select>
-//           </Form.Item>
-//         </Col>
-//         <Col xs={24} md={12}>
-//           {state.loadingProjects && (
-//             <div style={{ textAlign: 'center', padding: '20px' }}>
-//               <Spin />
-//               <div style={{ marginTop: '8px' }}>
-//                 <Text type="secondary">Loading projects...</Text>
-//               </div>
-//             </div>
-//           )}
-//           {!state.loadingProjects && projects.length === 0 && (
-//             <Alert
-//               message="No Active Projects"
-//               description="No active projects found. You can still create the requisition without assigning it to a project."
-//               type="info"
-//               showIcon
-//             />
-//           )}
-//         </Col>
-//       </Row>
-
-//       {projectBudgetInfo && (
-//         <Alert
-//           message="Project Budget Information"
-//           description={
-//             <div>
-//               <Descriptions column={2} size="small" style={{ marginTop: '8px' }}>
-//                 <Descriptions.Item label="Project">
-//                   <Text strong>{projectBudgetInfo.projectCode}</Text> - {projectBudgetInfo.projectName}
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Status">
-//                   <Tag color={
-//                     projectBudgetInfo.status === 'In Progress' ? 'green' :
-//                     projectBudgetInfo.status === 'Planning' ? 'blue' :
-//                     projectBudgetInfo.status === 'Completed' ? 'purple' : 'orange'
-//                   }>
-//                     {projectBudgetInfo.status}
-//                   </Tag>
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Total Budget">
-//                   <Text>XAF {projectBudgetInfo.budgetAllocated.toLocaleString()}</Text>
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Remaining Budget">
-//                   <Text style={{ 
-//                     color: projectBudgetInfo.budgetRemaining < calculateTotalCost ? '#f5222d' : '#52c41a' 
-//                   }}>
-//                     XAF {projectBudgetInfo.budgetRemaining.toLocaleString()}</Text>
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Budget Utilization">
-//                   <Text>{projectBudgetInfo.budgetUtilization}%</Text>
-//                 </Descriptions.Item>
-//                 {projectBudgetInfo.budgetCode && (
-//                   <Descriptions.Item label="Budget Code">
-//                     <Tag color="gold">
-//                       {projectBudgetInfo.budgetCode.code} 
-//                       (Available: XAF {projectBudgetInfo.budgetCode.available.toLocaleString()})
-//                     </Tag>
-//                   </Descriptions.Item>
-//                 )}
-//               </Descriptions>
-//               {calculateTotalCost > projectBudgetInfo.budgetRemaining && (
-//                 <div style={{ marginTop: '8px' }}>
-//                   <Text type="danger">
-//                     <ExclamationCircleOutlined /> Warning: Estimated cost exceeds remaining project budget
-//                   </Text>
-//                 </div>
-//               )}
-//             </div>
-//           }
-//           type={calculateTotalCost > (projectBudgetInfo?.budgetRemaining || 0) ? "warning" : "info"}
-//           showIcon
-//           style={{ marginTop: '16px' }}
-//         />
-//       )}
-//     </Card>
-//   );
-
-//   const renderBudgetInfo = () => (
-//     <Card size="small" title="Budget Information" style={{ marginBottom: '24px' }}>
-//       <Row gutter={[16, 16]} align="middle">
-//         <Col xs={24} md={12}>
-//           <Form.Item
-//             name="budgetXAF"
-//             label="Budget (XAF)"
-//             help="Enter estimated budget in Central African Francs"
-//           >
-//             <InputNumber
-//               style={{ width: '100%' }}
-//               formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-//               parser={value => value.replace(/\$\s?|(,)/g, '')}
-//               placeholder="Enter budget amount"
-//               addonBefore={<DollarOutlined />}
-//             />
-//           </Form.Item>
-//         </Col>
-//         <Col xs={24} md={12}>
-//           <Alert
-//             message={`Estimated Total: ${calculateTotalCost.toLocaleString()} XAF`}
-//             description={
-//               calculateTotalCost > 0 
-//                 ? `Based on ${items.length} selected items with known prices` 
-//                 : "Add items to see estimated cost"
-//             }
-//             type="info"
-//             showIcon
-//           />
-//         </Col>
-//       </Row>
-//     </Card>
 //   );
 
 //   const renderItemsSection = () => (
@@ -3685,8 +4831,8 @@ export default EnhancedPurchaseRequisitionForm;
 //               type="primary" 
 //               icon={<PlusOutlined />}
 //               onClick={handleAddItem}
-//               loading={state.loadingItems}
-//               disabled={state.fetchError || databaseItems.length === 0}
+//               loading={loadingItems}
+//               disabled={fetchError || databaseItems.length === 0}
 //             >
 //               Add from Database
 //             </Button>
@@ -3695,17 +4841,17 @@ export default EnhancedPurchaseRequisitionForm;
 //       } 
 //       style={{ marginBottom: '24px' }}
 //     >
-//       {state.loadingItems ? (
+//       {loadingItems ? (
 //         <div style={{ textAlign: 'center', padding: '40px' }}>
 //           <Spin size="large" />
 //           <div style={{ marginTop: '16px' }}>
 //             <Text>Loading item database...</Text>
 //           </div>
 //         </div>
-//       ) : state.fetchError ? (
+//       ) : fetchError ? (
 //         <Alert
 //           message="Item Database Error"
-//           description={state.fetchError}
+//           description={fetchError}
 //           type="error"
 //           showIcon
 //           action={
@@ -3824,9 +4970,9 @@ export default EnhancedPurchaseRequisitionForm;
 //         <Button 
 //           type="primary" 
 //           htmlType="submit" 
-//           loading={state.loading}
+//           loading={loading}
 //           icon={<SendOutlined />}
-//           disabled={items.length === 0}
+//           disabled={items.length === 0 || !selectedBudgetCode}
 //         >
 //           {editData ? 'Update Requisition' : 'Submit Requisition'}
 //         </Button>
@@ -3837,14 +4983,14 @@ export default EnhancedPurchaseRequisitionForm;
 //   const renderAddItemModal = () => (
 //     <Modal
 //       title="Add Item from Database"
-//       open={state.showItemModal}
+//       open={showItemModal}
 //       onOk={handleItemModalOk}
 //       onCancel={() => {
-//         updateState({ showItemModal: false });
+//         setShowItemModal(false);
 //         itemForm.resetFields();
 //       }}
 //       width={700}
-//       okText={state.editingItem !== null ? "Update Item" : "Add Item"}
+//       okText={editingItem !== null ? "Update Item" : "Add Item"}
 //     >
 //       <Alert
 //         message="Database Item Selection"
@@ -3864,7 +5010,7 @@ export default EnhancedPurchaseRequisitionForm;
 //             placeholder="Search and select from approved items"
 //             showSearch
 //             optionFilterProp="children"
-//             loading={state.loadingItems}
+//             loading={loadingItems}
 //             filterOption={(input, option) => {
 //               const item = databaseItems.find(item => (item._id || item.id) === option.value);
 //               if (!item) return false;
@@ -3950,10 +5096,10 @@ export default EnhancedPurchaseRequisitionForm;
 //   const renderRequestNewItemModal = () => (
 //     <Modal
 //       title="Request New Item"
-//       open={state.showRequestModal}
+//       open={showRequestModal}
 //       onOk={handleRequestModalOk}
 //       onCancel={() => {
-//         updateState({ showRequestModal: false });
+//         setShowRequestModal(false);
 //         requestForm.resetFields();
 //       }}
 //       width={600}
@@ -4065,6 +5211,7 @@ export default EnhancedPurchaseRequisitionForm;
 //         <Form form={form} layout="vertical" onFinish={handleSubmit}>
 //           {renderRequisitionInfo()}
 //           {renderRequesterDetails()}
+//           {renderBudgetCodeSelection()}
 //           {renderProjectAndSupplierSelection()}
 //           {renderBudgetInfo()}
 //           {renderItemsSection()}
@@ -4081,6 +5228,11 @@ export default EnhancedPurchaseRequisitionForm;
 // };
 
 // export default EnhancedPurchaseRequisitionForm;
+
+
+
+
+
 
 
 
@@ -4112,7 +5264,9 @@ export default EnhancedPurchaseRequisitionForm;
 //   Divider,
 //   Spin,
 //   Descriptions,
-//   Progress
+//   Progress,
+//   Radio,
+//   AutoComplete
 // } from 'antd';
 // import {
 //   PlusOutlined,
@@ -4131,11 +5285,16 @@ export default EnhancedPurchaseRequisitionForm;
 //   FileOutlined,
 //   EyeOutlined,
 //   DownloadOutlined,
-//   InboxOutlined
+//   InboxOutlined,
+//   ShopOutlined,
+//   TagOutlined,
+//   WarningOutlined,
+//   CheckCircleOutlined
 // } from '@ant-design/icons';
 // import { purchaseRequisitionAPI } from '../../services/purchaseRequisitionAPI';
 // import { projectAPI } from '../../services/projectAPI';
 // import { itemAPI } from '../../services/itemAPI';
+// import supplierApiService from '../../services/supplierAPI';
 // import moment from 'moment';
 
 // const { Title, Text } = Typography;
@@ -4177,33 +5336,37 @@ export default EnhancedPurchaseRequisitionForm;
 // const MAX_FILES = 5;
 
 // const EnhancedPurchaseRequisitionForm = ({ onSubmit, onCancel, onSaveDraft, editData }) => {
-//   // Redux state
 //   const { user } = useSelector((state) => state.auth);
-
-//   // Form instances
 //   const [form] = Form.useForm();
 //   const [itemForm] = Form.useForm();
 //   const [requestForm] = Form.useForm();
 
 //   // State management
-//   const [state, setState] = useState({
-//     loading: false,
-//     loadingItems: true,
-//     loadingProjects: false,
-//     fetchError: null,
-//     showItemModal: false,
-//     showRequestModal: false,
-//     editingItem: null
-//   });
+//   const [loading, setLoading] = useState(false);
+//   const [loadingItems, setLoadingItems] = useState(true);
+//   const [loadingProjects, setLoadingProjects] = useState(false);
+//   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+//   const [loadingBudgetCodes, setLoadingBudgetCodes] = useState(false);
+//   const [fetchError, setFetchError] = useState(null);
+//   const [supplierError, setSupplierError] = useState(null);
+//   const [showItemModal, setShowItemModal] = useState(false);
+//   const [showRequestModal, setShowRequestModal] = useState(false);
+//   const [editingItem, setEditingItem] = useState(null);
 
 //   const [items, setItems] = useState([]);
 //   const [attachments, setAttachments] = useState([]);
 //   const [databaseItems, setDatabaseItems] = useState([]);
 //   const [projects, setProjects] = useState([]);
+//   const [suppliers, setSuppliers] = useState([]);
+//   const [budgetCodes, setBudgetCodes] = useState([]);
 //   const [selectedProject, setSelectedProject] = useState(null);
 //   const [projectBudgetInfo, setProjectBudgetInfo] = useState(null);
+//   const [selectedBudgetCode, setSelectedBudgetCode] = useState(null);
+//   const [budgetCodeDetails, setBudgetCodeDetails] = useState(null);
+  
+//   const [supplierSelectionMode, setSupplierSelectionMode] = useState('database');
+//   const [selectedSupplier, setSelectedSupplier] = useState(null);
 
-//   // Utility functions
 //   const generateRequisitionNumber = useCallback(() => {
 //     const now = new Date();
 //     const year = now.getFullYear();
@@ -4217,18 +5380,12 @@ export default EnhancedPurchaseRequisitionForm;
 //     return items.reduce((sum, item) => sum + (item.estimatedPrice * item.quantity || 0), 0);
 //   }, [items]);
 
-//   // State update helper
-//   const updateState = useCallback((updates) => {
-//     setState(prev => ({ ...prev, ...updates }));
-//   }, []);
-
 //   const validateFile = useCallback((file) => {
 //     const fileName = file.name || file.originalname || '';
 //     const fileSize = file.size || 0;
 //     const fileExt = fileName.includes('.') ? 
 //       '.' + fileName.split('.').pop().toLowerCase() : '';
 
-//     // Check file size
 //     if (fileSize > MAX_FILE_SIZE) {
 //       return {
 //         valid: false,
@@ -4236,7 +5393,6 @@ export default EnhancedPurchaseRequisitionForm;
 //       };
 //     }
 
-//     // Check file type
 //     if (!ALLOWED_FILE_TYPES.includes(fileExt)) {
 //       return {
 //         valid: false,
@@ -4247,10 +5403,95 @@ export default EnhancedPurchaseRequisitionForm;
 //     return { valid: true };
 //   }, []);
 
-//   // API functions (keeping existing ones, adding file handling)
+//   // Fetch budget codes
+//   const fetchBudgetCodes = useCallback(async () => {
+//     try {
+//       setLoadingBudgetCodes(true);
+//       const response = await purchaseRequisitionAPI.getActiveBudgetCodes()
+//       // const response = await fetch('/api/budget-codes/active', {
+//       //   headers: {
+//       //     'Authorization': `Bearer ${localStorage.getItem('token')}`
+//       //   }
+//       // });
+      
+//       if (response.ok) {
+//         const data = await response.json();
+//         if (data.success) {
+//           setBudgetCodes(data.data);
+//           console.log(`✅ Loaded ${data.data.length} active budget codes`);
+//         }
+//       }
+//     } catch (error) {
+//       console.error('Error fetching budget codes:', error);
+//       message.error('Failed to load budget codes');
+//     } finally {
+//       setLoadingBudgetCodes(false);
+//     }
+//   }, []);
+
+//   // Check budget code availability
+//   const checkBudgetCodeAvailability = useCallback(async (budgetCodeId, requiredAmount) => {
+//     try {
+//       const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
+//       if (!budgetCode) return { available: false, message: 'Budget code not found' };
+
+//       const available = budgetCode.budget - budgetCode.used;
+      
+//       if (available < requiredAmount) {
+//         return {
+//           available: false,
+//           message: `Insufficient budget. Available: XAF ${available.toLocaleString()}, Required: XAF ${requiredAmount.toLocaleString()}`
+//         };
+//       }
+
+//       return {
+//         available: true,
+//         budgetCode: budgetCode,
+//         availableAmount: available
+//       };
+//     } catch (error) {
+//       console.error('Error checking budget availability:', error);
+//       return { available: false, message: 'Failed to check budget availability' };
+//     }
+//   }, [budgetCodes]);
+
+//   // Handle budget code selection
+//   const handleBudgetCodeChange = useCallback(async (budgetCodeId) => {
+//     setSelectedBudgetCode(budgetCodeId);
+    
+//     if (!budgetCodeId) {
+//       setBudgetCodeDetails(null);
+//       return;
+//     }
+
+//     const budgetCode = budgetCodes.find(bc => bc._id === budgetCodeId);
+//     if (budgetCode) {
+//       const available = budgetCode.budget - budgetCode.used;
+//       const utilizationRate = Math.round((budgetCode.used / budgetCode.budget) * 100);
+      
+//       setBudgetCodeDetails({
+//         code: budgetCode.code,
+//         name: budgetCode.name,
+//         totalBudget: budgetCode.budget,
+//         used: budgetCode.used,
+//         available: available,
+//         utilizationRate: utilizationRate,
+//         status: utilizationRate >= 90 ? 'critical' : 
+//                 utilizationRate >= 75 ? 'high' : 
+//                 utilizationRate >= 50 ? 'moderate' : 'low'
+//       });
+
+//       if (calculateTotalCost > available) {
+//         message.warning(`Total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds available budget (XAF ${available.toLocaleString()})`);
+//       }
+//     }
+//   }, [budgetCodes, calculateTotalCost]);
+
+//   // Fetch database items
 //   const fetchDatabaseItems = useCallback(async (categoryFilter = null) => {
 //     try {
-//       updateState({ loadingItems: true, fetchError: null });
+//       setLoadingItems(true);
+//       setFetchError(null);
       
 //       console.log('Fetching database items...', categoryFilter ? `for category: ${categoryFilter}` : 'all items');
       
@@ -4268,20 +5509,21 @@ export default EnhancedPurchaseRequisitionForm;
 //       } else {
 //         console.error('API returned invalid data:', response);
 //         setDatabaseItems([]);
-//         updateState({ fetchError: response.message || 'Failed to load item database' });
+//         setFetchError(response.message || 'Failed to load item database');
 //       }
 //     } catch (error) {
 //       console.error('Error fetching database items:', error);
 //       setDatabaseItems([]);
-//       updateState({ fetchError: error.message || 'Failed to connect to item database' });
+//       setFetchError(error.message || 'Failed to connect to item database');
 //     } finally {
-//       updateState({ loadingItems: false });
+//       setLoadingItems(false);
 //     }
-//   }, [updateState]);
+//   }, []);
 
+//   // Fetch projects
 //   const fetchProjects = useCallback(async () => {
 //     try {
-//       updateState({ loadingProjects: true });
+//       setLoadingProjects(true);
 //       const response = await projectAPI.getActiveProjects();
       
 //       if (response.success) {
@@ -4295,10 +5537,11 @@ export default EnhancedPurchaseRequisitionForm;
 //       console.error('Error fetching projects:', error);
 //       setProjects([]);
 //     } finally {
-//       updateState({ loadingProjects: false });
+//       setLoadingProjects(false);
 //     }
-//   }, [updateState]);
+//   }, []);
 
+//   // Fetch project budget info
 //   const fetchProjectBudgetInfo = useCallback(async (projectId) => {
 //     try {
 //       const response = await projectAPI.getProjectById(projectId);
@@ -4329,6 +5572,54 @@ export default EnhancedPurchaseRequisitionForm;
 //     }
 //   }, []);
 
+//   // Fetch suppliers
+//   const fetchSuppliers = useCallback(async () => {
+//     setLoadingSuppliers(true);
+//     setSupplierError(null);
+    
+//     try {
+//       console.log('🔍 Starting supplier fetch...');
+      
+//       const token = localStorage.getItem('token');
+//       if (!token) {
+//         throw new Error('Please login to continue');
+//       }
+      
+//       const response = await supplierApiService.getAllSuppliers({ 
+//         status: 'active',
+//         limit: 100 
+//       });
+      
+//       console.log('📦 Fetch response:', response);
+      
+//       if (response.success && Array.isArray(response.data)) {
+//         setSuppliers(response.data);
+//         console.log(`✅ Successfully loaded ${response.data.length} suppliers`);
+        
+//         if (response.data.length > 0) {
+//           message.success(`Loaded ${response.data.length} active suppliers`);
+//         } else {
+//           message.info('No active suppliers found');
+//         }
+//       } else {
+//         const errorMsg = response.message || 'Failed to load suppliers';
+//         console.error('❌ Fetch failed:', errorMsg);
+//         setSupplierError(errorMsg);
+//         message.error(errorMsg);
+//         setSuppliers([]);
+//       }
+      
+//     } catch (error) {
+//       console.error('💥 Error fetching suppliers:', error);
+//       const errorMessage = error.message || 'Failed to load suppliers';
+//       setSupplierError(errorMessage);
+//       message.error(errorMessage);
+//       setSuppliers([]);
+//     } finally {
+//       setLoadingSuppliers(false);
+//     }
+//   }, []);
+
 //   // Form initialization
 //   const initializeForm = useCallback(() => {
 //     if (editData) {
@@ -4336,11 +5627,29 @@ export default EnhancedPurchaseRequisitionForm;
 //         ...editData,
 //         expectedDate: editData.expectedDate ? moment(editData.expectedDate) : moment().add(14, 'days'),
 //         date: editData.createdAt ? moment(editData.createdAt) : moment(),
-//         project: editData.project
+//         project: editData.project,
+//         budgetCode: editData.budgetCode
 //       };
+      
+//       // Initialize supplier selection
+//       if (editData.preferredSupplier) {
+//         if (editData.supplierId) {
+//           setSupplierSelectionMode('database');
+//           setSelectedSupplier(editData.supplierId);
+//           formData.supplierId = editData.supplierId;
+//         } else {
+//           setSupplierSelectionMode('manual');
+//           formData.preferredSupplierName = editData.preferredSupplier;
+//         }
+//       }
+      
 //       form.setFieldsValue(formData);
 //       setItems(editData.items || []);
 //       setSelectedProject(editData.project);
+      
+//       if (editData.budgetCode) {
+//         handleBudgetCodeChange(editData.budgetCode);
+//       }
       
 //       if (editData.attachments && editData.attachments.length > 0) {
 //         const existingAttachments = editData.attachments.map((att, index) => ({
@@ -4350,7 +5659,7 @@ export default EnhancedPurchaseRequisitionForm;
 //           url: att.url || att.downloadUrl,
 //           size: att.size || 0,
 //           type: att.mimetype || 'application/octet-stream',
-//           existing: true, 
+//           existing: true,
 //           publicId: att.publicId
 //         }));
 //         setAttachments(existingAttachments);
@@ -4366,15 +5675,16 @@ export default EnhancedPurchaseRequisitionForm;
 //         urgency: 'Medium'
 //       });
 //     }
-//   }, [editData, form, generateRequisitionNumber, user]);
+//   }, [editData, form, generateRequisitionNumber, user, handleBudgetCodeChange]);
 
 //   // Component initialization
 //   useEffect(() => {
-//     // Load projects and database items on component mount
 //     fetchProjects();
 //     fetchDatabaseItems();
+//     fetchSuppliers();
+//     fetchBudgetCodes();
 //     initializeForm();
-//   }, [fetchProjects, fetchDatabaseItems, initializeForm]);
+//   }, [fetchProjects, fetchDatabaseItems, fetchSuppliers, fetchBudgetCodes, initializeForm]);
 
 //   // Project selection effect
 //   useEffect(() => {
@@ -4385,14 +5695,15 @@ export default EnhancedPurchaseRequisitionForm;
 //     }
 //   }, [selectedProject, fetchProjectBudgetInfo]);
 
+//   // Item management functions
 //   const handleAddItem = useCallback(() => {
-//     if (state.loadingItems) {
+//     if (loadingItems) {
 //       message.warning('Please wait while items are loading...');
 //       return;
 //     }
     
-//     if (state.fetchError) {
-//       message.error('Cannot add items: ' + state.fetchError);
+//     if (fetchError) {
+//       message.error('Cannot add items: ' + fetchError);
 //       return;
 //     }
     
@@ -4401,18 +5712,20 @@ export default EnhancedPurchaseRequisitionForm;
 //       return;
 //     }
     
-//     updateState({ editingItem: null, showItemModal: true });
+//     setEditingItem(null);
+//     setShowItemModal(true);
 //     itemForm.resetFields();
-//   }, [state.loadingItems, state.fetchError, databaseItems, itemForm, updateState]);
+//   }, [loadingItems, fetchError, databaseItems, itemForm]);
 
 //   const handleEditItem = useCallback((item, index) => {
-//     updateState({ editingItem: index, showItemModal: true });
+//     setEditingItem(index);
+//     setShowItemModal(true);
 //     itemForm.setFieldsValue({
 //       itemId: item.itemId,
 //       quantity: item.quantity,
 //       projectName: item.projectName
 //     });
-//   }, [itemForm, updateState]);
+//   }, [itemForm]);
 
 //   const handleDeleteItem = useCallback((index) => {
 //     const newItems = items.filter((_, i) => i !== index);
@@ -4448,9 +5761,9 @@ export default EnhancedPurchaseRequisitionForm;
 //         estimatedPrice: selectedItem.standardPrice || 0
 //       };
 
-//       if (state.editingItem !== null) {
+//       if (editingItem !== null) {
 //         const newItems = [...items];
-//         newItems[state.editingItem] = itemData;
+//         newItems[editingItem] = itemData;
 //         setItems(newItems);
 //         message.success('Item updated successfully');
 //       } else if (existingItemIndex !== -1) {
@@ -4469,19 +5782,18 @@ export default EnhancedPurchaseRequisitionForm;
 //         message.success('Item added successfully');
 //       }
 
-//       updateState({ showItemModal: false });
+//       setShowItemModal(false);
 //       itemForm.resetFields();
 //     } catch (error) {
 //       console.error('Validation failed:', error);
 //       message.error('Failed to add item. Please try again.');
 //     }
-//   }, [itemForm, databaseItems, items, state.editingItem, updateState]);
+//   }, [itemForm, databaseItems, items, editingItem]);
 
-//   // Request new item functionality (keeping existing)
 //   const handleRequestNewItem = useCallback(() => {
-//     updateState({ showRequestModal: true });
+//     setShowRequestModal(true);
 //     requestForm.resetFields();
-//   }, [requestForm, updateState]);
+//   }, [requestForm]);
 
 //   const handleRequestModalOk = useCallback(async () => {
 //     try {
@@ -4498,7 +5810,7 @@ export default EnhancedPurchaseRequisitionForm;
 
 //       if (response.success) {
 //         message.success('Item request submitted to Supply Chain team. You will be notified when the item is available.');
-//         updateState({ showRequestModal: false });
+//         setShowRequestModal(false);
 //         requestForm.resetFields();
 //       } else {
 //         message.error(response.message || 'Failed to submit item request');
@@ -4507,20 +5819,17 @@ export default EnhancedPurchaseRequisitionForm;
 //       console.error('Request failed:', error);
 //       message.error('Failed to submit item request');
 //     }
-//   }, [requestForm, user, form, updateState]);
+//   }, [requestForm, user, form]);
 
-//   // FIXED: File upload handling
+//   // File upload handling
 //   const handleAttachmentChange = useCallback(({ fileList }) => {
 //     console.log('Attachment change:', fileList);
     
-//     // Process new uploads and validate them
 //     const processedFiles = fileList.map(file => {
-//       // Handle existing files
 //       if (file.existing) {
 //         return file;
 //       }
       
-//       // Handle new uploads
 //       if (file.originFileObj && file.status !== 'removed') {
 //         const validation = validateFile(file.originFileObj);
         
@@ -4542,12 +5851,10 @@ export default EnhancedPurchaseRequisitionForm;
 //       return file;
 //     });
 
-//     // Filter out error files and removed files
 //     const validFiles = processedFiles.filter(file => 
 //       file.status !== 'error' && file.status !== 'removed'
 //     );
     
-//     // Check file count limit
 //     if (validFiles.length > MAX_FILES) {
 //       message.error(`Maximum ${MAX_FILES} files allowed`);
 //       return;
@@ -4562,158 +5869,6 @@ export default EnhancedPurchaseRequisitionForm;
 //     }, 0);
 //   }, []);
 
-//   // Form submission
-//   const handleSubmit = useCallback(async (values) => {
-//     if (items.length === 0) {
-//       message.error('Please add at least one item to the requisition');
-//       return;
-//     }
-
-//     // Validate project budget if project is selected
-//     if (selectedProject && projectBudgetInfo) {
-//       if (calculateTotalCost > projectBudgetInfo.budgetRemaining) {
-//         Modal.confirm({
-//           title: 'Budget Warning',
-//           content: `The total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds the remaining project budget (XAF ${projectBudgetInfo.budgetRemaining.toLocaleString()}). Do you want to continue?`,
-//           onOk() {
-//             submitRequisition(values);
-//           }
-//         });
-//         return;
-//       }
-//     }
-
-//     submitRequisition(values);
-//   }, [items, selectedProject, projectBudgetInfo, calculateTotalCost]);
-
-
-//   const submitRequisition = useCallback(async (values) => {
-//     updateState({ loading: true });
-//     try {
-//       // Create FormData for file uploads
-//       const formData = new FormData();
-
-//       // Add all form fields
-//       formData.append('requisitionNumber', values.requisitionNumber);
-//       formData.append('title', values.title);
-//       formData.append('itemCategory', values.itemCategory);
-//       formData.append('budgetXAF', values.budgetXAF || '');
-//       formData.append('budgetHolder', values.budgetHolder);
-//       formData.append('urgency', values.urgency);
-//       formData.append('deliveryLocation', values.deliveryLocation);
-//       formData.append('expectedDate', values.expectedDate.format('YYYY-MM-DD'));
-//       formData.append('justificationOfPurchase', values.justificationOfPurchase);
-//       formData.append('justificationOfPreferredSupplier', values.justificationOfPreferredSupplier || '');
-      
-//       // Add project if selected
-//       if (selectedProject) {
-//         formData.append('project', selectedProject);
-//       }
-
-//       // CRITICAL FIX: Add items as JSON string
-//       formData.append('items', JSON.stringify(items));
-
-//       // CRITICAL FIX: Add file attachments properly
-//       console.log('Processing attachments:', attachments.length);
-      
-//       // Filter out existing attachments (for edit mode)
-//       const newAttachments = attachments.filter(att => !att.existing && att.originFileObj);
-      
-//       console.log('New attachments to upload:', newAttachments.length);
-      
-//       // Append each new file
-//       newAttachments.forEach((file, index) => {
-//         console.log(`Adding file ${index + 1}:`, file.name);
-//         formData.append('attachments', file.originFileObj, file.name);
-//       });
-
-//       // If editing, include existing attachment IDs to keep
-//       const existingAttachmentIds = attachments
-//         .filter(att => att.existing)
-//         .map(att => att._id || att.uid);
-      
-//       if (existingAttachmentIds.length > 0) {
-//         formData.append('existingAttachments', JSON.stringify(existingAttachmentIds));
-//       }
-
-//       // Log FormData contents for debugging
-//       console.log('=== FormData Contents ===');
-//       for (let pair of formData.entries()) {
-//         if (pair[0] === 'attachments') {
-//           console.log(pair[0], ':', pair[1].name, '-', pair[1].size, 'bytes');
-//         } else {
-//           console.log(pair[0], ':', typeof pair[1] === 'string' ? pair[1].substring(0, 100) : pair[1]);
-//         }
-//       }
-
-//       console.log('Submitting requisition with', newAttachments.length, 'new files...');
-
-//       // Send to API
-//       const response = await purchaseRequisitionAPI.createRequisition(formData);
-
-//       if (response.success) {
-//         message.success('Purchase requisition submitted successfully!');
-        
-//         // Show attachment upload status if any
-//         if (response.attachments) {
-//           const { uploaded, total } = response.attachments;
-//           if (uploaded < total) {
-//             message.warning(`${uploaded} out of ${total} attachments uploaded successfully`);
-//           } else if (uploaded > 0) {
-//             message.success(`All ${uploaded} attachments uploaded successfully`);
-//           }
-//         }
-        
-//         if (onSubmit) {
-//           onSubmit(response.data);
-//         }
-//       } else {
-//         message.error(response.message || 'Failed to submit requisition');
-//       }
-
-//     } catch (error) {
-//       console.error('Error submitting requisition:', error);
-      
-//       if (error.response?.data?.message) {
-//         message.error(error.response.data.message);
-//       } else {
-//         message.error('Failed to submit requisition. Please try again.');
-//       }
-//     } finally {
-//       updateState({ loading: false });
-//     }
-//   }, [items, attachments, selectedProject, onSubmit, updateState]);
-
-
-//   const handleSaveDraft = useCallback(async () => {
-//     try {
-//       const values = await form.getFieldsValue();
-//       const draftData = {
-//         ...values,
-//         expectedDate: values.expectedDate ? values.expectedDate.format('YYYY-MM-DD') : moment().add(14, 'days').format('YYYY-MM-DD'),
-//         items,
-//         project: selectedProject,
-//         status: 'draft',
-//         lastSaved: new Date(),
-//         totalEstimatedCost: calculateTotalCost
-//       };
-
-//       const response = await purchaseRequisitionAPI.saveDraft(draftData);
-
-//       if (response.success) {
-//         message.success('Draft saved successfully!');
-//         if (onSaveDraft) {
-//           onSaveDraft(response.data);
-//         }
-//       } else {
-//         message.error(response.message || 'Failed to save draft');
-//       }
-//     } catch (error) {
-//       console.error('Error saving draft:', error);
-//       message.error('Failed to save draft');
-//     }
-//   }, [form, items, selectedProject, calculateTotalCost, onSaveDraft]);
-
 //   const handleDownloadAttachment = useCallback(async (attachment) => {
 //     try {
 //       const token = localStorage.getItem('token');
@@ -4722,14 +5877,12 @@ export default EnhancedPurchaseRequisitionForm;
 //         return;
 //       }
 
-//       // Extract publicId from Cloudinary URL
 //       let publicId = '';
 //       if (attachment.url) {
 //         const urlParts = attachment.url.split('/');
 //         const uploadIndex = urlParts.findIndex(part => part === 'upload');
 //         if (uploadIndex !== -1 && uploadIndex + 2 < urlParts.length) {
 //           publicId = urlParts.slice(uploadIndex + 2).join('/');
-//           // Remove file extension from publicId
 //           const lastPart = publicId.split('/').pop();
 //           if (lastPart && lastPart.includes('.')) {
 //             publicId = publicId.replace(/\.[^/.]+$/, '');
@@ -4757,7 +5910,6 @@ export default EnhancedPurchaseRequisitionForm;
 //       const blob = await response.blob();
 //       const url = window.URL.createObjectURL(blob);
       
-//       // Create a temporary link to download the file
 //       const link = document.createElement('a');
 //       link.href = url;
 //       link.download = attachment.originalName || attachment.name || 'attachment';
@@ -4765,7 +5917,6 @@ export default EnhancedPurchaseRequisitionForm;
 //       link.click();
 //       document.body.removeChild(link);
       
-//       // Clean up the blob URL
 //       window.URL.revokeObjectURL(url);
       
 //       message.success('File downloaded successfully');
@@ -4773,14 +5924,700 @@ export default EnhancedPurchaseRequisitionForm;
 //       console.error('Error downloading attachment:', error);
 //       message.error('Failed to download attachment');
       
-//       // Fallback to direct URL if download fails
 //       if (attachment.url) {
 //         window.open(attachment.url, '_blank');
 //       }
 //     }
 //   }, []);
 
-//   // FIXED: Render attachments section
+//   // Form submission
+//   const handleSubmit = useCallback(async (values) => {
+//     if (items.length === 0) {
+//       message.error('Please add at least one item to the requisition');
+//       return;
+//     }
+
+//     // Validate budget code selection
+//     if (!values.budgetCode) {
+//       message.error('Please select a budget code');
+//       return;
+//     }
+
+//     // Validate project budget if project is selected
+//     if (selectedProject && projectBudgetInfo) {
+//       if (calculateTotalCost > projectBudgetInfo.budgetRemaining) {
+//         Modal.confirm({
+//           title: 'Budget Warning',
+//           content: `The total estimated cost (XAF ${calculateTotalCost.toLocaleString()}) exceeds the remaining project budget (XAF ${projectBudgetInfo.budgetRemaining.toLocaleString()}). Do you want to continue?`,
+//           onOk() {
+//             checkBudgetAndSubmit(values);
+//           }
+//         });
+//         return;
+//       }
+//     }
+
+//     checkBudgetAndSubmit(values);
+//   }, [items, selectedProject, projectBudgetInfo, calculateTotalCost, checkBudgetCodeAvailability]);
+
+//   const checkBudgetAndSubmit = useCallback(async (values) => {
+//     // Check budget availability
+//     const budgetCheck = await checkBudgetCodeAvailability(values.budgetCode, calculateTotalCost);
+    
+//     if (!budgetCheck.available) {
+//       Modal.error({
+//         title: 'Insufficient Budget',
+//         content: budgetCheck.message,
+//         okText: 'Understood'
+//       });
+//       return;
+//     }
+
+//     // Show confirmation with budget details
+//     Modal.confirm({
+//       title: 'Confirm Submission',
+//       content: (
+//         <div>
+//           <p><strong>Total Estimated Cost:</strong> XAF {calculateTotalCost.toLocaleString()}</p>
+//           <p><strong>Budget Code:</strong> {budgetCodeDetails?.code}</p>
+//           <p><strong>Available Budget:</strong> XAF {budgetCodeDetails?.available.toLocaleString()}</p>
+//           <p><strong>Remaining After:</strong> XAF {(budgetCodeDetails?.available - calculateTotalCost).toLocaleString()}</p>
+//           <Divider />
+//           <p>Are you sure you want to submit this requisition?</p>
+//         </div>
+//       ),
+//       onOk() {
+//         submitRequisition(values);
+//       }
+//     });
+//   }, [calculateTotalCost, budgetCodeDetails, checkBudgetCodeAvailability]);
+
+//   const submitRequisition = useCallback(async (values) => {
+//     setLoading(true);
+//     try {
+//       const formData = new FormData();
+
+//       // Add all form fields
+//       formData.append('requisitionNumber', values.requisitionNumber);
+//       formData.append('title', values.title);
+//       formData.append('itemCategory', values.itemCategory);
+//       formData.append('budgetXAF', values.budgetXAF || calculateTotalCost);
+//       formData.append('budgetCode', values.budgetCode);
+//       formData.append('budgetHolder', values.budgetHolder);
+//       formData.append('urgency', values.urgency);
+//       formData.append('deliveryLocation', values.deliveryLocation);
+//       formData.append('expectedDate', values.expectedDate.format('YYYY-MM-DD'));
+//       formData.append('justificationOfPurchase', values.justificationOfPurchase);
+//       formData.append('justificationOfPreferredSupplier', values.justificationOfPreferredSupplier || '');
+      
+//       // Add supplier information
+//       if (supplierSelectionMode === 'database' && selectedSupplier) {
+//         formData.append('supplierId', selectedSupplier);
+//         const supplier = suppliers.find(s => s._id === selectedSupplier);
+//         if (supplier) {
+//           formData.append('preferredSupplier', supplier.supplierDetails?.companyName || supplier.fullName);
+//         }
+//       } else if (supplierSelectionMode === 'manual' && values.preferredSupplierName) {
+//         formData.append('preferredSupplier', values.preferredSupplierName);
+//       }
+      
+//       if (selectedProject) {
+//         formData.append('project', selectedProject);
+//       }
+
+//       formData.append('items', JSON.stringify(items));
+
+//       // Handle file attachments
+//       const newAttachments = attachments.filter(att => !att.existing && att.originFileObj);
+      
+//       newAttachments.forEach((file, index) => {
+//         console.log(`Adding file ${index + 1}:`, file.name);
+//         formData.append('attachments', file.originFileObj, file.name);
+//       });
+
+//       const existingAttachmentIds = attachments
+//         .filter(att => att.existing)
+//         .map(att => att._id || att.uid);
+      
+//       if (existingAttachmentIds.length > 0) {
+//         formData.append('existingAttachments', JSON.stringify(existingAttachmentIds));
+//       }
+
+//       console.log('Submitting requisition with', newAttachments.length, 'new files...');
+
+//       const response = await purchaseRequisitionAPI.createRequisition(formData);
+
+//       if (response.success) {
+//         message.success('Purchase requisition submitted successfully!');
+        
+//         if (response.attachments) {
+//           const { uploaded, total } = response.attachments;
+//           if (uploaded < total) {
+//             message.warning(`${uploaded} out of ${total} attachments uploaded successfully`);
+//           } else if (uploaded > 0) {
+//             message.success(`All ${uploaded} attachments uploaded successfully`);
+//           }
+//         }
+        
+//         if (onSubmit) {
+//           onSubmit(response.data);
+//         }
+//       } else {
+//         message.error(response.message || 'Failed to submit requisition');
+//       }
+
+//     } catch (error) {
+//       console.error('Error submitting requisition:', error);
+      
+//       if (error.response?.data?.message) {
+//         message.error(error.response.data.message);
+//       } else {
+//         message.error('Failed to submit requisition. Please try again.');
+//       }
+//     } finally {
+//       setLoading(false);
+//     }
+//   }, [items, attachments, selectedProject, suppliers, selectedSupplier, supplierSelectionMode, calculateTotalCost, onSubmit]);
+
+//   const handleSaveDraft = useCallback(async () => {
+//     try {
+//       const values = await form.getFieldsValue();
+//       const draftData = {
+//         ...values,
+//         expectedDate: values.expectedDate ? values.expectedDate.format('YYYY-MM-DD') : moment().add(14, 'days').format('YYYY-MM-DD'),
+//         items,
+//         project: selectedProject,
+//         budgetCode: selectedBudgetCode,
+//         status: 'draft',
+//         lastSaved: new Date(),
+//         totalEstimatedCost: calculateTotalCost
+//       };
+
+//       const response = await purchaseRequisitionAPI.saveDraft(draftData);
+
+//       if (response.success) {
+//         message.success('Draft saved successfully!');
+//         if (onSaveDraft) {
+//           onSaveDraft(response.data);
+//         }
+//       } else {
+//         message.error(response.message || 'Failed to save draft');
+//       }
+//     } catch (error) {
+//       console.error('Error saving draft:', error);
+//       message.error('Failed to save draft');
+//     }
+//   }, [form, items, selectedProject, selectedBudgetCode, calculateTotalCost, onSaveDraft]);
+
+//   // Render functions
+
+//   const renderBudgetCodeSelection = () => (
+//     <Card 
+//       size="small" 
+//       title={
+//         <Space>
+//           <TagOutlined />
+//           Budget Code Selection (Required)
+//         </Space>
+//       } 
+//       style={{ marginBottom: '24px' }}
+//     >
+//       <Alert
+//         message="Budget Code Required"
+//         description="You must select a budget code before submitting. The system will verify that sufficient budget is available."
+//         type="info"
+//         showIcon
+//         style={{ marginBottom: '16px' }}
+//       />
+
+//       <Row gutter={[16, 16]}>
+//         <Col xs={24} md={16}>
+//           <Form.Item
+//             name="budgetCode"
+//             label="Select Budget Code"
+//             rules={[{ required: true, message: 'Budget code is required' }]}
+//             help="Choose the budget code that will fund this purchase"
+//           >
+//             <Select
+//               placeholder="Select budget code"
+//               loading={loadingBudgetCodes}
+//               showSearch
+//               allowClear
+//               onChange={handleBudgetCodeChange}
+//               filterOption={(input, option) => {
+//                 // Always show all options when input is empty
+//                 if (!input) return true;
+                
+//                 const code = budgetCodes.find(bc => bc._id === option.value);
+//                 if (!code) return false;
+                
+//                 const searchStr = `${code.code} ${code.name}`.toLowerCase();
+//                 return searchStr.includes(input.toLowerCase());
+//               }}
+//             >
+//               {budgetCodes.map(code => {
+//                 const available = code.budget - code.used;
+//                 const utilizationRate = Math.round((code.used / code.budget) * 100);
+//                 const status = utilizationRate >= 90 ? 'critical' : 
+//                              utilizationRate >= 75 ? 'high' : 
+//                              utilizationRate >= 50 ? 'moderate' : 'low';
+                
+//                 return (
+//                   <Option key={code._id} value={code._id}>
+//                     <div>
+//                       <Text strong>{code.code}</Text> - {code.name}
+//                       <br />
+//                       <Text type="secondary" style={{ fontSize: '12px' }}>
+//                         Available: XAF {available.toLocaleString()} 
+//                         {' | '}
+//                         <Tag 
+//                           color={
+//                             status === 'critical' ? 'red' :
+//                             status === 'high' ? 'orange' :
+//                             status === 'moderate' ? 'blue' : 'green'
+//                           }
+//                           style={{ marginLeft: '4px' }}
+//                         >
+//                           {utilizationRate}% used
+//                         </Tag>
+//                       </Text>
+//                     </div>
+//                   </Option>
+//                 );
+//               })}
+//             </Select>
+//           </Form.Item>
+//         </Col>
+        
+//         <Col xs={24} md={8}>
+//           <Form.Item label=" ">
+//             <Button 
+//               icon={<ReloadOutlined />} 
+//               onClick={fetchBudgetCodes}
+//               loading={loadingBudgetCodes}
+//               block
+//             >
+//               Refresh Codes
+//             </Button>
+//           </Form.Item>
+//         </Col>
+//       </Row>
+
+//       {/* Budget Code Details */}
+//       {budgetCodeDetails && (
+//         <Alert
+//           message={
+//             <Space>
+//               <CheckCircleOutlined style={{ color: '#52c41a' }} />
+//               Budget Code Selected
+//             </Space>
+//           }
+//           description={
+//             <div>
+//               <Descriptions column={2} size="small" style={{ marginTop: '8px' }}>
+//                 <Descriptions.Item label="Code">
+//                   <Text code strong>{budgetCodeDetails.code}</Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Name">
+//                   {budgetCodeDetails.name}
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Total Budget">
+//                   <Text strong>XAF {budgetCodeDetails.totalBudget.toLocaleString()}</Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Used">
+//                   <Text>XAF {budgetCodeDetails.used.toLocaleString()}</Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Available">
+//                   <Text strong style={{ color: '#52c41a' }}>
+//                     XAF {budgetCodeDetails.available.toLocaleString()}
+//                   </Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Utilization">
+//                   <Progress 
+//                     percent={budgetCodeDetails.utilizationRate} 
+//                     size="small"
+//                     status={
+//                       budgetCodeDetails.status === 'critical' ? 'exception' :
+//                       budgetCodeDetails.status === 'high' ? 'normal' : 'success'
+//                     }
+//                   />
+//                 </Descriptions.Item>
+//               </Descriptions>
+              
+//               {calculateTotalCost > 0 && (
+//                 <div style={{ marginTop: '12px', padding: '8px', backgroundColor: '#f0f8ff', borderRadius: '4px' }}>
+//                   <Text strong>Estimated Cost: </Text>
+//                   <Text style={{ color: '#1890ff' }}>XAF {calculateTotalCost.toLocaleString()}</Text>
+//                   <br />
+//                   <Text strong>Remaining After: </Text>
+//                   <Text style={{ 
+//                     color: budgetCodeDetails.available >= calculateTotalCost ? '#52c41a' : '#ff4d4f' 
+//                   }}>
+//                     XAF {(budgetCodeDetails.available - calculateTotalCost).toLocaleString()}
+//                   </Text>
+                  
+//                   {budgetCodeDetails.available < calculateTotalCost && (
+//                     <div style={{ marginTop: '8px' }}>
+//                       <WarningOutlined style={{ color: '#ff4d4f', marginRight: '4px' }} />
+//                       <Text type="danger">
+//                         Insufficient budget! Please select a different budget code or reduce items.
+//                       </Text>
+//                     </div>
+//                   )}
+//                 </div>
+//               )}
+//             </div>
+//           }
+//           type={budgetCodeDetails.available >= calculateTotalCost ? "success" : "warning"}
+//           showIcon
+//           style={{ marginTop: '16px' }}
+//         />
+//       )}
+//     </Card>
+//   );
+
+//   const renderProjectAndSupplierSelection = useCallback(() => (
+//     <Card 
+//       size="small" 
+//       title={
+//         <Space>
+//           <ProjectOutlined />
+//           Project Assignment & Preferred Supplier (Optional)
+//         </Space>
+//       } 
+//       style={{ marginBottom: '24px' }}
+//     >
+//       <Row gutter={[16, 16]}>
+//         <Col xs={24} md={12}>
+//           <Form.Item
+//             name="project"
+//             label="Assign to Project"
+//             help="Select a project to associate this requisition with (optional)"
+//           >
+//             <Select
+//               placeholder="Select project (optional)"
+//               allowClear
+//               showSearch
+//               loading={loadingProjects}
+//               onChange={(value) => setSelectedProject(value)}
+//               filterOption={(input, option) => {
+//                 const project = projects.find(p => p._id === option.value);
+//                 return project && (
+//                   project.name.toLowerCase().includes(input.toLowerCase()) ||
+//                   project.code.toLowerCase().includes(input.toLowerCase())
+//                 );
+//               }}
+//             >
+//               {projects.map(project => (
+//                 <Option key={project._id} value={project._id}>
+//                   <div>
+//                     <Text strong>{project.code}</Text> - {project.name}
+//                     <br />
+//                     <Text type="secondary" style={{ fontSize: '12px' }}>
+//                       {project.projectType} | {project.priority} Priority | {project.status}
+//                     </Text>
+//                   </div>
+//                 </Option>
+//               ))}
+//             </Select>
+//           </Form.Item>
+//         </Col>
+        
+//         <Col xs={24} md={12}>
+//           <Form.Item
+//             label="Supplier Selection Method"
+//             help="Choose whether to select from registered suppliers or enter a new supplier name"
+//           >
+//             <Radio.Group 
+//               value={supplierSelectionMode} 
+//               onChange={(e) => {
+//                 setSupplierSelectionMode(e.target.value);
+//                 setSelectedSupplier(null);
+//                 form.setFieldsValue({ 
+//                   supplierId: undefined, 
+//                   preferredSupplierName: undefined 
+//                 });
+//               }}
+//             >
+//               <Radio value="database">
+//                 <Space>
+//                   <DatabaseOutlined />
+//                   Database ({suppliers.length})
+//                 </Space>
+//               </Radio>
+//               <Radio value="manual">
+//                 <Space>
+//                   <EditOutlined />
+//                   Manual Entry
+//                 </Space>
+//               </Radio>
+//             </Radio.Group>
+//           </Form.Item>
+//         </Col>
+//       </Row>
+
+//       {supplierError && (
+//         <Alert
+//           message="Supplier Loading Error"
+//           description={supplierError}
+//           type="error"
+//           showIcon
+//           closable
+//           onClose={() => setSupplierError(null)}
+//           action={
+//             <Button size="small" onClick={fetchSuppliers} icon={<ReloadOutlined />}>
+//               Retry
+//             </Button>
+//           }
+//           style={{ marginBottom: '16px' }}
+//         />
+//       )}
+
+//       <Row gutter={[16, 16]}>
+//         {supplierSelectionMode === 'database' ? (
+//           <>
+//             <Col xs={24} md={20}>
+//               <Form.Item
+//                 name="supplierId"
+//                 label="Select Supplier"
+//                 help="Choose from registered and approved suppliers"
+//               >
+//                 <Select
+//                   placeholder={
+//                     loadingSuppliers 
+//                       ? "Loading suppliers..." 
+//                       : suppliers.length === 0 
+//                         ? "No suppliers available"
+//                         : "Search and select a supplier"
+//                   }
+//                   allowClear
+//                   showSearch
+//                   loading={loadingSuppliers}
+//                   disabled={loadingSuppliers || suppliers.length === 0}
+//                   onChange={(value) => setSelectedSupplier(value)}
+//                   filterOption={(input, option) => {
+//                     const supplier = suppliers.find(s => s._id === option.value);
+//                     if (!supplier) return false;
+                    
+//                     const companyName = supplier.supplierDetails?.companyName || '';
+//                     const fullName = supplier.fullName || '';
+//                     const email = supplier.email || '';
+//                     const supplierType = supplier.supplierDetails?.supplierType || '';
+                    
+//                     const searchStr = `${companyName} ${fullName} ${email} ${supplierType}`.toLowerCase();
+//                     return searchStr.includes(input.toLowerCase());
+//                   }}
+//                   notFoundContent={
+//                     loadingSuppliers ? (
+//                       <div style={{ textAlign: 'center', padding: '20px' }}>
+//                         <Spin size="small" />
+//                         <div><Text type="secondary">Loading suppliers...</Text></div>
+//                       </div>
+//                     ) : supplierError ? (
+//                       <div style={{ textAlign: 'center', padding: '20px' }}>
+//                         <Text type="danger">Error: {supplierError}</Text>
+//                         <div style={{ marginTop: '8px' }}>
+//                           <Button size="small" type="primary" onClick={fetchSuppliers}>
+//                             Retry
+//                           </Button>
+//                         </div>
+//                       </div>
+//                     ) : (
+//                       <div style={{ textAlign: 'center', padding: '20px' }}>
+//                         <Text type="secondary">No suppliers found</Text>
+//                       </div>
+//                     )
+//                   }
+//                 >
+//                   {suppliers.map(supplier => (
+//                     <Option key={supplier._id} value={supplier._id}>
+//                       <div>
+//                         <Text strong>
+//                           {supplier.supplierDetails?.companyName || supplier.fullName}
+//                         </Text>
+//                         <br />
+//                         <Text type="secondary" style={{ fontSize: '12px' }}>
+//                           {supplier.supplierDetails?.supplierType && (
+//                             <Tag size="small" color="blue">
+//                               {supplier.supplierDetails.supplierType}
+//                             </Tag>
+//                           )}
+//                           {supplier.email}
+//                           {supplier.supplierDetails?.phoneNumber && 
+//                             ` | ${supplier.supplierDetails.phoneNumber}`
+//                           }
+//                         </Text>
+//                       </div>
+//                     </Option>
+//                   ))}
+//                 </Select>
+//               </Form.Item>
+//             </Col>
+//             <Col xs={24} md={4}>
+//               <Form.Item label=" ">
+//                 <Button 
+//                   icon={<ReloadOutlined />} 
+//                   onClick={fetchSuppliers}
+//                   loading={loadingSuppliers}
+//                   block
+//                 >
+//                   Refresh
+//                 </Button>
+//               </Form.Item>
+//             </Col>
+//           </>
+//         ) : (
+//           <Col xs={24} md={24}>
+//             <Form.Item
+//               name="preferredSupplierName"
+//               label="Supplier Name"
+//               help="Enter the name of the supplier (not yet registered in the system)"
+//               rules={[
+//                 { 
+//                   min: 2, 
+//                   message: 'Supplier name must be at least 2 characters' 
+//                 }
+//               ]}
+//             >
+//               <Input 
+//                 placeholder="Enter supplier company name or full name"
+//                 prefix={<ShopOutlined />}
+//               />
+//             </Form.Item>
+//           </Col>
+//         )}
+//       </Row>
+
+//       {projectBudgetInfo && (
+//         <Alert
+//           message="Project Budget Information"
+//           description={
+//             <div>
+//               <Descriptions column={2} size="small" style={{ marginTop: '8px' }}>
+//                 <Descriptions.Item label="Project">
+//                   <Text strong>{projectBudgetInfo.projectCode}</Text> - {projectBudgetInfo.projectName}
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Status">
+//                   <Tag color={
+//                     projectBudgetInfo.status === 'In Progress' ? 'green' :
+//                     projectBudgetInfo.status === 'Planning' ? 'blue' :
+//                     projectBudgetInfo.status === 'Completed' ? 'purple' : 'orange'
+//                   }>
+//                     {projectBudgetInfo.status}
+//                   </Tag>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Total Budget">
+//                   <Text>XAF {projectBudgetInfo.budgetAllocated.toLocaleString()}</Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Remaining Budget">
+//                   <Text style={{ 
+//                     color: projectBudgetInfo.budgetRemaining < calculateTotalCost ? '#f5222d' : '#52c41a' 
+//                   }}>
+//                     XAF {projectBudgetInfo.budgetRemaining.toLocaleString()}</Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Budget Utilization">
+//                   <Text>{projectBudgetInfo.budgetUtilization}%</Text>
+//                 </Descriptions.Item>
+//                 {projectBudgetInfo.budgetCode && (
+//                   <Descriptions.Item label="Budget Code">
+//                     <Tag color="gold">
+//                       {projectBudgetInfo.budgetCode.code} 
+//                       (Available: XAF {projectBudgetInfo.budgetCode.available.toLocaleString()})
+//                     </Tag>
+//                   </Descriptions.Item>
+//                 )}
+//               </Descriptions>
+//               {calculateTotalCost > projectBudgetInfo.budgetRemaining && (
+//                 <div style={{ marginTop: '8px' }}>
+//                   <Text type="danger">
+//                     <ExclamationCircleOutlined /> Warning: Estimated cost exceeds remaining project budget
+//                   </Text>
+//                 </div>
+//               )}
+//             </div>
+//           }
+//           type={calculateTotalCost > (projectBudgetInfo?.budgetRemaining || 0) ? "warning" : "info"}
+//           showIcon
+//           style={{ marginTop: '16px' }}
+//         />
+//       )}
+
+//       {selectedSupplier && supplierSelectionMode === 'database' && (
+//         <Alert
+//           message="Selected Supplier Details"
+//           description={(() => {
+//             const supplier = suppliers.find(s => s._id === selectedSupplier);
+//             return supplier ? (
+//               <Descriptions column={2} size="small" style={{ marginTop: '8px' }}>
+//                 <Descriptions.Item label="Company">
+//                   <Text strong>{supplier.supplierDetails?.companyName || supplier.fullName}</Text>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Contact">
+//                   {supplier.supplierDetails?.contactName || supplier.fullName}
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Email">
+//                   {supplier.email}
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Phone">
+//                   {supplier.supplierDetails?.phoneNumber || 'N/A'}
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Type">
+//                   <Tag color="blue">
+//                     {supplier.supplierDetails?.supplierType || 'N/A'}
+//                   </Tag>
+//                 </Descriptions.Item>
+//                 <Descriptions.Item label="Status">
+//                   <Tag color={supplier.status === 'active' ? 'green' : 'orange'}>
+//                     {supplier.status || 'N/A'}
+//                   </Tag>
+//                 </Descriptions.Item>
+//                 {supplier.supplierDetails?.address && (
+//                   <Descriptions.Item label="Address" span={2}>
+//                     {supplier.supplierDetails.address}
+//                   </Descriptions.Item>
+//                 )}
+//               </Descriptions>
+//             ) : null;
+//           })()}
+//           type="info"
+//           style={{ marginTop: '16px' }}
+//         />
+//       )}
+
+//       {loadingProjects && !selectedProject && (
+//         <Alert
+//           message="Loading Projects"
+//           description="Please wait while we load available projects..."
+//           type="info"
+//           showIcon
+//           style={{ marginTop: '16px' }}
+//         />
+//       )}
+      
+//       {!loadingProjects && projects.length === 0 && (
+//         <Alert
+//           message="No Active Projects"
+//           description="No active projects found. You can still create the requisition without assigning it to a project."
+//           type="info"
+//           showIcon
+//           style={{ marginTop: '16px' }}
+//         />
+//       )}
+//     </Card>
+//   ), [
+//     loadingProjects,
+//     loadingSuppliers,
+//     projects,
+//     suppliers,
+//     supplierSelectionMode,
+//     selectedSupplier,
+//     supplierError,
+//     projectBudgetInfo,
+//     calculateTotalCost,
+//     form,
+//     fetchSuppliers
+//   ]);
+
 //   const renderAttachments = () => (
 //     <Card size="small" title="Attachments (Optional)" style={{ marginBottom: '24px' }}>
 //       <Form.Item
@@ -4816,7 +6653,6 @@ export default EnhancedPurchaseRequisitionForm;
 //             if (file.existing && file.url) {
 //               handleDownloadAttachment(file);
 //             } else if (file.originFileObj) {
-//               // For new files, create a blob URL for preview
 //               const url = URL.createObjectURL(file.originFileObj);
 //               window.open(url, '_blank');
 //             }
@@ -4886,7 +6722,7 @@ export default EnhancedPurchaseRequisitionForm;
 //     </Card>
 //   );
 
-//   // Table columns (keeping existing)
+//   // Table columns
 //   const itemColumns = useMemo(() => [
 //     {
 //       title: 'Code',
@@ -4999,15 +6835,15 @@ export default EnhancedPurchaseRequisitionForm;
 //         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 //           <span>
 //             Items must be selected from the pre-approved database managed by the Supply Chain team. 
-//             {state.loadingItems ? ' Loading items...' : ` ${databaseItems.length} items available.`}
-//             {state.fetchError && ' (Error loading items)'}
+//             {loadingItems ? ' Loading items...' : ` ${databaseItems.length} items available.`}
+//             {fetchError && ' (Error loading items)'}
 //           </span>
 //           <Space>
 //             <Button
 //               type="link"
 //               size="small"
 //               onClick={handleRequestNewItem}
-//               disabled={state.loadingItems}
+//               disabled={loadingItems}
 //             >
 //               Request New Item
 //             </Button>
@@ -5018,14 +6854,14 @@ export default EnhancedPurchaseRequisitionForm;
 //                 const selectedCategory = form.getFieldValue('itemCategory');
 //                 fetchDatabaseItems(selectedCategory);
 //               }}
-//               loading={state.loadingItems}
+//               loading={loadingItems}
 //             >
 //               Refresh
 //             </Button>
 //           </Space>
 //         </div>
 //       }
-//       type={state.fetchError ? "error" : state.loadingItems ? "info" : "success"}
+//       type={fetchError ? "error" : loadingItems ? "info" : "success"}
 //       showIcon
 //       icon={<DatabaseOutlined />}
 //       style={{ marginBottom: '24px' }}
@@ -5152,129 +6988,6 @@ export default EnhancedPurchaseRequisitionForm;
 //     </Card>
 //   );
 
-//   const renderProjectSelection = () => (
-//     <Card 
-//       size="small" 
-//       title={
-//         <Space>
-//           <ProjectOutlined />
-//           Project Assignment (Optional)
-//         </Space>
-//       } 
-//       style={{ marginBottom: '24px' }}
-//     >
-//       <Row gutter={[16, 16]}>
-//         <Col xs={24} md={12}>
-//           <Form.Item
-//             name="project"
-//             label="Assign to Project"
-//             help="Select a project to associate this requisition with (optional)"
-//           >
-//             <Select
-//               placeholder="Select project (optional)"
-//               allowClear
-//               showSearch
-//               loading={state.loadingProjects}
-//               onChange={(value) => setSelectedProject(value)}
-//               filterOption={(input, option) => {
-//                 const project = projects.find(p => p._id === option.value);
-//                 return project && (
-//                   project.name.toLowerCase().includes(input.toLowerCase()) ||
-//                   project.code.toLowerCase().includes(input.toLowerCase())
-//                 );
-//               }}
-//             >
-//               {projects.map(project => (
-//                 <Option key={project._id} value={project._id}>
-//                   <div>
-//                     <Text strong>{project.code}</Text> - {project.name}
-//                     <br />
-//                     <Text type="secondary" style={{ fontSize: '12px' }}>
-//                       {project.projectType} | {project.priority} Priority | {project.status}
-//                     </Text>
-//                   </div>
-//                 </Option>
-//               ))}
-//             </Select>
-//           </Form.Item>
-//         </Col>
-//         <Col xs={24} md={12}>
-//           {state.loadingProjects && (
-//             <div style={{ textAlign: 'center', padding: '20px' }}>
-//               <Spin />
-//               <div style={{ marginTop: '8px' }}>
-//                 <Text type="secondary">Loading projects...</Text>
-//               </div>
-//             </div>
-//           )}
-//           {!state.loadingProjects && projects.length === 0 && (
-//             <Alert
-//               message="No Active Projects"
-//               description="No active projects found. You can still create the requisition without assigning it to a project."
-//               type="info"
-//               showIcon
-//             />
-//           )}
-//         </Col>
-//       </Row>
-
-//       {projectBudgetInfo && (
-//         <Alert
-//           message="Project Budget Information"
-//           description={
-//             <div>
-//               <Descriptions column={2} size="small" style={{ marginTop: '8px' }}>
-//                 <Descriptions.Item label="Project">
-//                   <Text strong>{projectBudgetInfo.projectCode}</Text> - {projectBudgetInfo.projectName}
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Status">
-//                   <Tag color={
-//                     projectBudgetInfo.status === 'In Progress' ? 'green' :
-//                     projectBudgetInfo.status === 'Planning' ? 'blue' :
-//                     projectBudgetInfo.status === 'Completed' ? 'purple' : 'orange'
-//                   }>
-//                     {projectBudgetInfo.status}
-//                   </Tag>
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Total Budget">
-//                   <Text>XAF {projectBudgetInfo.budgetAllocated.toLocaleString()}</Text>
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Remaining Budget">
-//                   <Text style={{ 
-//                     color: projectBudgetInfo.budgetRemaining < calculateTotalCost ? '#f5222d' : '#52c41a' 
-//                   }}>
-//                     XAF {projectBudgetInfo.budgetRemaining.toLocaleString()}
-//                   </Text>
-//                 </Descriptions.Item>
-//                 <Descriptions.Item label="Budget Utilization">
-//                   <Text>{projectBudgetInfo.budgetUtilization}%</Text>
-//                 </Descriptions.Item>
-//                 {projectBudgetInfo.budgetCode && (
-//                   <Descriptions.Item label="Budget Code">
-//                     <Tag color="gold">
-//                       {projectBudgetInfo.budgetCode.code} 
-//                       (Available: XAF {projectBudgetInfo.budgetCode.available.toLocaleString()})
-//                     </Tag>
-//                   </Descriptions.Item>
-//                 )}
-//               </Descriptions>
-//               {calculateTotalCost > projectBudgetInfo.budgetRemaining && (
-//                 <div style={{ marginTop: '8px' }}>
-//                   <Text type="danger">
-//                     <ExclamationCircleOutlined /> Warning: Estimated cost exceeds remaining project budget
-//                   </Text>
-//                 </div>
-//               )}
-//             </div>
-//           }
-//           type={calculateTotalCost > (projectBudgetInfo?.budgetRemaining || 0) ? "warning" : "info"}
-//           showIcon
-//           style={{ marginTop: '16px' }}
-//         />
-//       )}
-//     </Card>
-//   );
-
 //   const renderBudgetInfo = () => (
 //     <Card size="small" title="Budget Information" style={{ marginBottom: '24px' }}>
 //       <Row gutter={[16, 16]} align="middle">
@@ -5327,8 +7040,8 @@ export default EnhancedPurchaseRequisitionForm;
 //               type="primary" 
 //               icon={<PlusOutlined />}
 //               onClick={handleAddItem}
-//               loading={state.loadingItems}
-//               disabled={state.fetchError || databaseItems.length === 0}
+//               loading={loadingItems}
+//               disabled={fetchError || databaseItems.length === 0}
 //             >
 //               Add from Database
 //             </Button>
@@ -5337,17 +7050,17 @@ export default EnhancedPurchaseRequisitionForm;
 //       } 
 //       style={{ marginBottom: '24px' }}
 //     >
-//       {state.loadingItems ? (
+//       {loadingItems ? (
 //         <div style={{ textAlign: 'center', padding: '40px' }}>
 //           <Spin size="large" />
 //           <div style={{ marginTop: '16px' }}>
 //             <Text>Loading item database...</Text>
 //           </div>
 //         </div>
-//       ) : state.fetchError ? (
+//       ) : fetchError ? (
 //         <Alert
 //           message="Item Database Error"
-//           description={state.fetchError}
+//           description={fetchError}
 //           type="error"
 //           showIcon
 //           action={
@@ -5466,9 +7179,9 @@ export default EnhancedPurchaseRequisitionForm;
 //         <Button 
 //           type="primary" 
 //           htmlType="submit" 
-//           loading={state.loading}
+//           loading={loading}
 //           icon={<SendOutlined />}
-//           disabled={items.length === 0}
+//           disabled={items.length === 0 || !selectedBudgetCode}
 //         >
 //           {editData ? 'Update Requisition' : 'Submit Requisition'}
 //         </Button>
@@ -5479,14 +7192,14 @@ export default EnhancedPurchaseRequisitionForm;
 //   const renderAddItemModal = () => (
 //     <Modal
 //       title="Add Item from Database"
-//       open={state.showItemModal}
+//       open={showItemModal}
 //       onOk={handleItemModalOk}
 //       onCancel={() => {
-//         updateState({ showItemModal: false });
+//         setShowItemModal(false);
 //         itemForm.resetFields();
 //       }}
 //       width={700}
-//       okText={state.editingItem !== null ? "Update Item" : "Add Item"}
+//       okText={editingItem !== null ? "Update Item" : "Add Item"}
 //     >
 //       <Alert
 //         message="Database Item Selection"
@@ -5506,7 +7219,7 @@ export default EnhancedPurchaseRequisitionForm;
 //             placeholder="Search and select from approved items"
 //             showSearch
 //             optionFilterProp="children"
-//             loading={state.loadingItems}
+//             loading={loadingItems}
 //             filterOption={(input, option) => {
 //               const item = databaseItems.find(item => (item._id || item.id) === option.value);
 //               if (!item) return false;
@@ -5592,10 +7305,10 @@ export default EnhancedPurchaseRequisitionForm;
 //   const renderRequestNewItemModal = () => (
 //     <Modal
 //       title="Request New Item"
-//       open={state.showRequestModal}
+//       open={showRequestModal}
 //       onOk={handleRequestModalOk}
 //       onCancel={() => {
-//         updateState({ showRequestModal: false });
+//         setShowRequestModal(false);
 //         requestForm.resetFields();
 //       }}
 //       width={600}
@@ -5707,10 +7420,11 @@ export default EnhancedPurchaseRequisitionForm;
 //         <Form form={form} layout="vertical" onFinish={handleSubmit}>
 //           {renderRequisitionInfo()}
 //           {renderRequesterDetails()}
-//           {renderProjectSelection()}
+//           {renderBudgetCodeSelection()}
+//           {renderProjectAndSupplierSelection()}
 //           {renderBudgetInfo()}
 //           {renderItemsSection()}
-//           {renderAttachments()} 
+//           {renderAttachments()}
 //           {renderJustifications()}
 //           {renderActionButtons()}
 //         </Form>
@@ -5722,9 +7436,7 @@ export default EnhancedPurchaseRequisitionForm;
 //   );
 // };
 
-
 // export default EnhancedPurchaseRequisitionForm;
-
 
 
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -73,6 +74,7 @@ const { Option } = Select;
 const { Step } = Steps;
 
 const BuyerRequisitionPortal = () => {
+  const navigate = useNavigate();
   const [requisitions, setRequisitions] = useState([]);
   const [selectedRequisition, setSelectedRequisition] = useState(null);
   const [detailDrawerVisible, setDetailDrawerVisible] = useState(false);
@@ -100,6 +102,7 @@ const BuyerRequisitionPortal = () => {
         'in_progress': { sourcingStatus: 'in_progress' },
         'quoted': { sourcingStatus: 'quotes_received' },
         'completed': { sourcingStatus: 'completed' },
+        'justified': { justified: true },
         'all': {}
       };
 
@@ -160,7 +163,8 @@ const BuyerRequisitionPortal = () => {
       'pending_sourcing': { color: 'orange', text: 'Pending Sourcing' },
       'in_progress': { color: 'blue', text: 'Sourcing in Progress' },
       'quotes_received': { color: 'purple', text: 'Quotes Received' },
-      'completed': { color: 'green', text: 'Completed' }
+      'completed': { color: 'green', text: 'Completed' },
+      'justified': { color: 'gold', text: 'Justified' }
     };
     const statusInfo = statusMap[status] || { color: 'default', text: status };
     return <Tag color={statusInfo.color}>{statusInfo.text}</Tag>;
@@ -554,7 +558,8 @@ const BuyerRequisitionPortal = () => {
     pending: requisitions.filter(req => req.sourcingStatus === 'pending_sourcing').length,
     inProgress: requisitions.filter(req => req.sourcingStatus === 'in_progress').length,
     quoted: requisitions.filter(req => req.sourcingStatus === 'quotes_received').length,
-    completed: requisitions.filter(req => req.sourcingStatus === 'completed').length
+    completed: requisitions.filter(req => req.sourcingStatus === 'completed').length,
+    justified: requisitions.filter(req => req.sourcingStatus === 'justified').length
   };
 
   const renderSupplierCard = (supplier) => (
@@ -749,6 +754,10 @@ const BuyerRequisitionPortal = () => {
             label: `Completed (${stats.completed})`
           },
           {
+            key: 'justified',
+            label: `Justified Purchases (${stats.justified})`
+          },
+          {
             key: 'all',
             label: 'All Requisitions'
           }
@@ -868,6 +877,26 @@ const BuyerRequisitionPortal = () => {
                 size="small"
                 rowKey={(record, index) => index}
               />
+            </Card>
+
+            {/* ✅ Purchase Justification (Buyer only) */}
+            <Card size="small" title="📝 Purchase Justification">
+              <Alert
+                message="Complete purchase justification"
+                description="Use the justification form to provide the full breakdown and receipts."
+                type="info"
+                style={{ marginBottom: '16px' }}
+                showIcon
+              />
+              <Button
+                type="primary"
+                icon={<FileTextOutlined />}
+                onClick={() =>
+                  navigate(`/buyer/requisitions/${selectedRequisition?.id || selectedRequisition?._id}/justify`)
+                }
+              >
+                Open Justification Form
+              </Button>
             </Card>
 
             {/* Notes */}

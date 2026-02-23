@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+const FILE_BASE_URL = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5001';
 
 class UnifiedSupplierAPI {
   constructor() {
@@ -30,22 +31,311 @@ class UnifiedSupplierAPI {
       (error) => {
         const message = error.response?.data?.message || error.message || 'An error occurred';
         console.error('API Error:', message);
-        
-        // Auto logout on 401
-        if (error.response?.status === 401) {
-          localStorage.removeItem('token');
-          window.location.href = '/login';
-        }
-        
         return Promise.reject(new Error(message));
       }
     );
   }
 
   // ===============================
+  // FILE DOWNLOAD HELPER
+  // ===============================
+
+  /**
+   * Download or view supplier document
+   * @param {object|string} fileData - File metadata object or URL string
+   * @param {boolean} download - If true, download; if false, open in new tab
+   */
+  async handleSupplierDocument(fileData, download = false) {
+    try {
+      if (!fileData) {
+        throw new Error('No file data provided');
+      }
+
+      console.log('🔍 Processing file data:', JSON.stringify(fileData, null, 2));
+
+      // Extract URL from file metadata
+      let fileUrl;
+      let fileName = 'document';
+      
+      if (typeof fileData === 'string') {
+        // It's already a URL or publicId/filename
+        if (fileData.startsWith('http')) {
+          fileUrl = fileData;
+          fileName = fileData.split('/').pop();
+        } else if (fileData.startsWith('/uploads/')) {
+          fileUrl = `${FILE_BASE_URL}${fileData}`;
+          fileName = fileData.split('/').pop();
+        } else if (fileData.startsWith('/')) {
+          fileUrl = `${FILE_BASE_URL}${fileData}`;
+          fileName = fileData.split('/').pop();
+        } else {
+          // It's just a filename - need to find it
+          // The file could be anywhere in /uploads/
+          // Since we don't know the exact path, we'll have to guess based on naming
+          if (fileData.startsWith('supplier_doc_')) {
+            // Try supplier-documents first
+            fileUrl = `${FILE_BASE_URL}/uploads/supplier-documents/${fileData}`;
+          } else {
+            // Try generic uploads
+            fileUrl = `${FILE_BASE_URL}/uploads/${fileData}`;
+          }
+          fileName = fileData;
+        }
+      } else if (fileData.url) {
+        // File metadata object with URL - THIS IS THE PREFERRED FORMAT
+        // The URL should already be the correct relative path
+        if (fileData.url.startsWith('http')) {
+          fileUrl = fileData.url;
+        } else if (fileData.url.startsWith('/uploads/')) {
+          // Perfect! It's already a relative path from root
+          fileUrl = `${FILE_BASE_URL}${fileData.url}`;
+        } else if (fileData.url.startsWith('/')) {
+          fileUrl = `${FILE_BASE_URL}${fileData.url}`;
+        } else {
+          // Relative path without leading slash
+          fileUrl = `${FILE_BASE_URL}/${fileData.url}`;
+        }
+        fileName = fileData.originalName || fileData.name || fileData.url.split('/').pop();
+      } else if (fileData.publicId || fileData.localPath) {
+        // Try to construct URL from publicId or localPath
+        let relativePath = null;
+        
+        if (fileData.localPath) {
+          // Extract everything after 'uploads'
+          // Handle both Windows and Unix paths
+          const normalizedPath = fileData.localPath.replace(/\\/g, '/');
+          const uploadsIndex = normalizedPath.lastIndexOf('uploads/');
+          
+          if (uploadsIndex !== -1) {
+            relativePath = '/' + normalizedPath.substring(uploadsIndex);
+          }
+        }
+        
+        if (relativePath) {
+          fileUrl = `${FILE_BASE_URL}${relativePath}`;
+        } else if (fileData.publicId) {
+          // Fallback to publicId
+          if (fileData.publicId.startsWith('supplier_doc_')) {
+            fileUrl = `${FILE_BASE_URL}/uploads/supplier-documents/${fileData.publicId}`;
+          } else {
+            fileUrl = `${FILE_BASE_URL}/uploads/${fileData.publicId}`;
+          }
+        }
+        
+        fileName = fileData.originalName || fileData.name || fileData.publicId || 'document';
+      } else {
+        throw new Error('Invalid file data format - no url, publicId, or localPath found');
+      }
+
+      // Clean up the file URL (remove double slashes except after http:)
+      fileUrl = fileUrl.replace(/([^:]\/)\/+/g, '$1');
+
+      console.log('📄 Final file URL:', fileUrl);
+      console.log('📝 File name:', fileName);
+
+      if (download) {
+        // Download file
+        try {
+          const response = await fetch(fileUrl, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          });
+
+          if (!response.ok) {
+            console.error(`❌ Download failed: HTTP ${response.status}`);
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          console.log('✅ File downloaded successfully');
+          return { success: true, message: 'File downloaded successfully' };
+        } catch (fetchError) {
+          console.error('❌ Fetch error:', fetchError);
+          console.log('⚠️ Attempting fallback: opening in new tab');
+          // Fallback: try opening in new tab
+          window.open(fileUrl, '_blank');
+          return { success: true, message: 'File opened in new tab (download failed)' };
+        }
+      } else {
+        // Open in new tab
+        console.log('📂 Opening file in new tab');
+        window.open(fileUrl, '_blank');
+        return { success: true, message: 'File opened in new tab' };
+      }
+    } catch (error) {
+      console.error('❌ Error handling file:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * View file inline
+   */
+  async viewFile(fileData) {
+    return this.handleSupplierDocument(fileData, false);
+  }
+
+  /**
+   * Download file
+   */
+  async downloadFile(fileData, fileName) {
+    return this.handleSupplierDocument(fileData, true);
+  }
+
+  /**
+   * Get file URL for viewing
+   * @param {string|object} fileData - File publicId or file object
+   * @returns {string} URL for viewing file
+   */
+  getFileViewUrl(fileData) {
+    if (!fileData) return null;
+    
+    const publicId = typeof fileData === 'string' ? fileData : fileData.publicId;
+    if (!publicId) return null;
+
+    // For supplier documents, use public route
+    if (publicId.startsWith('supplier_doc_')) {
+      return `${API_BASE_URL.replace('/api', '')}/api/files/supplier-document-view/${publicId}`;
+    }
+
+    // For images, use image route
+    const ext = publicId.split('.').pop().toLowerCase();
+    if (['png', 'jpg', 'jpeg', 'gif', 'svg'].includes(ext)) {
+      return `${API_BASE_URL.replace('/api', '')}/api/files/image/${publicId}`;
+    }
+
+    // For other files, use view route
+    return `${API_BASE_URL.replace('/api', '')}/api/files/view/${publicId}`;
+  }
+
+  /**
+   * Get file URL for downloading
+   * @param {string|object} fileData - File publicId or file object
+   * @returns {string} URL for downloading file
+   */
+  getFileDownloadUrl(fileData) {
+    if (!fileData) return null;
+    
+    const publicId = typeof fileData === 'string' ? fileData : fileData.publicId;
+    if (!publicId) return null;
+
+    // For supplier documents, use public download route
+    if (publicId.startsWith('supplier_doc_')) {
+      return `${API_BASE_URL.replace('/api', '')}/api/files/supplier-document/${publicId}`;
+    }
+
+    // For other files, use authenticated download route
+    return `${API_BASE_URL.replace('/api', '')}/api/files/download/${publicId}`;
+  }
+
+  // ===============================
+  // SUPPLIER APPROVAL WORKFLOW
+  // ===============================
+
+  /**
+   * Get suppliers pending approval for current user
+   */
+  async getPendingApprovals() {
+    try {
+      const response = await this.api.get('/suppliers/admin/approvals/pending');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get single supplier with approval details
+   */
+  async getSupplierApprovalDetails(supplierId) {
+    try {
+      const response = await this.api.get(`/suppliers/admin/approvals/${supplierId}`);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Process supplier approval/rejection
+   * @param {string} supplierId - Supplier ID
+   * @param {object} data - { decision: 'approved' | 'rejected', comments: string }
+   */
+  async processApproval(supplierId, data) {
+    try {
+      const response = await this.api.post(`/suppliers/admin/approvals/${supplierId}/decision`, data);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get approval statistics
+   */
+  async getApprovalStatistics() {
+    try {
+      const response = await this.api.get('/suppliers/admin/approvals/statistics');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get supplier approval timeline
+   */
+  async getApprovalTimeline(supplierId) {
+    try {
+      const response = await this.api.get(`/suppliers/admin/approvals/${supplierId}/timeline`);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk process supplier approvals
+   * @param {object} data - { supplierIds: string[], decision: 'approved' | 'rejected', comments: string }
+   */
+  async bulkProcessApprovals(data) {
+    try {
+      const response = await this.api.post('/suppliers/admin/approvals/bulk-process', data);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get approval dashboard data
+   */
+  async getApprovalDashboard() {
+    try {
+      const response = await this.api.get('/suppliers/admin/approvals/dashboard');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // ===============================
   // SUPPLIER OPERATIONS
   // ===============================
 
+  /**
+   * Register and onboard supplier (unified process)
+   */
   async registerAndOnboard(formData) {
     try {
       const config = {
@@ -58,6 +348,16 @@ class UnifiedSupplierAPI {
     }
   }
 
+  /**
+   * Submit onboarding application (alias for registerAndOnboard for compatibility)
+   */
+  async submitOnboarding(formData) {
+    return this.registerAndOnboard(formData);
+  }
+
+  /**
+   * Get complete supplier profile
+   */
   async getCompleteProfile(supplierId) {
     try {
       const response = await this.api.get(`/suppliers/${supplierId}/complete-profile`);
@@ -67,6 +367,9 @@ class UnifiedSupplierAPI {
     }
   }
 
+  /**
+   * Update supplier profile
+   */
   async updateProfile(supplierId, profileData) {
     try {
       const response = await this.api.put(`/suppliers/${supplierId}/profile`, profileData);
@@ -76,6 +379,9 @@ class UnifiedSupplierAPI {
     }
   }
 
+  /**
+   * Get all suppliers with filters
+   */
   async getAllSuppliers(params = {}) {
     try {
       const response = await this.api.get('/suppliers/admin/all', { params });
@@ -85,6 +391,9 @@ class UnifiedSupplierAPI {
     }
   }
 
+  /**
+   * Bulk import suppliers
+   */
   async bulkImport(suppliers) {
     try {
       const response = await this.api.post('/suppliers/bulk-import', { suppliers });
@@ -94,6 +403,10 @@ class UnifiedSupplierAPI {
     }
   }
 
+  /**
+   * Approve or reject supplier (legacy - use processApproval instead)
+   * @deprecated Use processApproval instead
+   */
   async approveOrReject(supplierId, action, comments) {
     try {
       const response = await this.api.post(`/suppliers/${supplierId}/approve-reject`, {
@@ -106,6 +419,9 @@ class UnifiedSupplierAPI {
     }
   }
 
+  /**
+   * Update supplier status
+   */
   async updateSupplierStatus(supplierId, statusData) {
     try {
       const response = await this.api.put(`/suppliers/admin/${supplierId}/status`, statusData);
@@ -115,6 +431,9 @@ class UnifiedSupplierAPI {
     }
   }
 
+  /**
+   * Get supplier dashboard (for logged-in suppliers)
+   */
   async getSupplierDashboard() {
     try {
       const response = await this.api.get('/suppliers/dashboard');
@@ -124,6 +443,9 @@ class UnifiedSupplierAPI {
     }
   }
 
+  /**
+   * Verify supplier email
+   */
   async verifyEmail(token) {
     try {
       const response = await this.api.get(`/suppliers/verify-email/${token}`);
@@ -133,162 +455,12 @@ class UnifiedSupplierAPI {
     }
   }
 
+  /**
+   * Supplier login
+   */
   async login(credentials) {
     try {
       const response = await this.api.post('/suppliers/login', credentials);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // ===============================
-  // SUPPLIER APPROVAL WORKFLOW
-  // ===============================
-
-  async getPendingApprovals() {
-    try {
-      const response = await this.api.get('/suppliers/admin/approvals/pending');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getSupplierApprovalDetails(supplierId) {
-    try {
-      const response = await this.api.get(`/suppliers/admin/approvals/${supplierId}`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async processApproval(supplierId, data) {
-    try {
-      const response = await this.api.post(`/suppliers/admin/approvals/${supplierId}/decision`, data);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getApprovalStatistics() {
-    try {
-      const response = await this.api.get('/suppliers/admin/approvals/statistics');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getApprovalTimeline(supplierId) {
-    try {
-      const response = await this.api.get(`/suppliers/admin/approvals/${supplierId}/timeline`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async bulkProcessApprovals(data) {
-    try {
-      const response = await this.api.post('/suppliers/admin/approvals/bulk-process', data);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getApprovalDashboard() {
-    try {
-      const response = await this.api.get('/suppliers/admin/approvals/dashboard');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // ===============================
-  // SUPPLIER INVOICES
-  // ===============================
-
-  async submitInvoice(formData) {
-    try {
-      const config = {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      };
-      const response = await this.api.post('/suppliers/invoices', formData, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getSupplierInvoices(params = {}) {
-    try {
-      const response = await this.api.get('/suppliers/invoices', { params });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getInvoiceDetails(invoiceId) {
-    try {
-      const response = await this.api.get(`/suppliers/invoices/${invoiceId}`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getInvoicesForFinance(params = {}) {
-    try {
-      const response = await this.api.get('/suppliers/admin/invoices', { params });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // ===============================
-  // SUPPLIER RFQ & QUOTES
-  // ===============================
-
-  async getSupplierRfqRequests(params = {}) {
-    try {
-      const response = await this.api.get('/suppliers/rfq-requests', { params });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getRfqDetails(rfqId) {
-    try {
-      const response = await this.api.get(`/suppliers/rfq-requests/${rfqId}`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async submitQuote(rfqId, formData) {
-    try {
-      const config = {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      };
-      const response = await this.api.post(`/suppliers/rfq-requests/${rfqId}/submit-quote`, formData, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getSupplierQuotes(params = {}) {
-    try {
-      const response = await this.api.get('/suppliers/quotes', { params });
       return response.data;
     } catch (error) {
       throw error;
@@ -576,6 +748,186 @@ class UnifiedSupplierAPI {
     }
   }
 
+  async addReviewNote(applicationId, noteData) {
+    try {
+      const response = await this.api.post(
+        `/suppliers/admin/onboarding/applications/${applicationId}/notes`,
+        noteData
+      );
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async uploadAdditionalDocuments(applicationId, formData) {
+    try {
+      const config = {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      };
+      const response = await this.api.post(
+        `/suppliers/admin/onboarding/applications/${applicationId}/documents`,
+        formData,
+        config
+      );
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async downloadDocument(applicationId, documentId) {
+    try {
+      const response = await this.api.get(
+        `/suppliers/admin/onboarding/applications/${applicationId}/documents/${documentId}`,
+        { responseType: 'blob' }
+      );
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getOnboardingStatistics() {
+    try {
+      const response = await this.api.get('/suppliers/admin/onboarding/statistics');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async bulkUpdateApplications(data) {
+    try {
+      const response = await this.api.put('/suppliers/admin/onboarding/applications/bulk-update', data);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async exportApplications(filters = {}) {
+    try {
+      const response = await this.api.get('/suppliers/admin/onboarding/export', {
+        params: filters,
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // ===============================
+  // SUPPLIER INVOICES
+  // ===============================
+
+  /**
+   * Submit supplier invoice
+   */
+  async submitInvoice(formData) {
+    try {
+      const config = {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      };
+      const response = await this.api.post('/suppliers/invoices', formData, config);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get supplier invoices
+   */
+  async getSupplierInvoices(params = {}) {
+    try {
+      const response = await this.api.get('/suppliers/invoices', { params });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get invoice details
+   */
+  async getInvoiceDetails(invoiceId) {
+    try {
+      const response = await this.api.get(`/suppliers/invoices/${invoiceId}`);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get invoices for finance (admin)
+   */
+  async getInvoicesForFinance(params = {}) {
+    try {
+      const response = await this.api.get('/suppliers/admin/invoices', { params });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // ===============================
+  // SUPPLIER RFQ & QUOTES
+  // ===============================
+
+  /**
+   * Get RFQ requests for supplier
+   */
+  async getSupplierRfqRequests(params = {}) {
+    try {
+      const response = await this.api.get('/suppliers/rfq-requests', { params });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get RFQ details
+   */
+  async getRfqDetails(rfqId) {
+    try {
+      const response = await this.api.get(`/suppliers/rfq-requests/${rfqId}`);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Submit quote for RFQ
+   */
+  async submitQuote(rfqId, formData) {
+    try {
+      const config = {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      };
+      const response = await this.api.post(`/suppliers/rfq-requests/${rfqId}/submit-quote`, formData, config);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get supplier quotes
+   */
+  async getSupplierQuotes(params = {}) {
+    try {
+      const response = await this.api.get('/suppliers/quotes', { params });
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   // ===============================
   // UTILITY METHODS
   // ===============================
@@ -605,6 +957,20 @@ class UnifiedSupplierAPI {
     return labels[status] || status;
   }
 
+  getSupplierStatusLabel(status) {
+    const labels = {
+      pending: 'Pending Review',
+      pending_supply_chain: 'Pending Supply Chain',
+      pending_head_of_business: 'Pending Executive',
+      pending_finance: 'Pending Finance',
+      approved: 'Approved',
+      rejected: 'Rejected',
+      suspended: 'Suspended',
+      inactive: 'Inactive'
+    };
+    return labels[status] || status;
+  }
+
   validateContractData(data) {
     const errors = {};
 
@@ -625,6 +991,24 @@ class UnifiedSupplierAPI {
     return {
       isValid: Object.keys(errors).length === 0,
       errors
+    };
+  }
+
+  validateSupplierData(data) {
+    const errors = {};
+
+    if (!data.companyName) errors.companyName = 'Company name is required';
+    if (!data.contactName) errors.contactName = 'Contact person is required';
+    if (!data.email) errors.email = 'Email is required';
+    if (!data.phoneNumber) errors.phoneNumber = 'Phone number is required';
+    if (!data.supplierType) errors.supplierType = 'Supplier type is required';
+
+    if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+      errors.email = 'Valid email is required';
+    }
+
+    return {
+      isValid: Object.keys(errors).length === 0,errors
     };
   }
 
@@ -668,6 +1052,22 @@ class UnifiedSupplierAPI {
       throw error;
     }
   }
+
+  async exportApplicationsAndDownload(filters = {}) {
+    try {
+      const blob = await this.exportApplications(filters);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `supplier-applications-${Date.now()}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
 export default new UnifiedSupplierAPI();
@@ -681,11 +1081,10 @@ export default new UnifiedSupplierAPI();
 
 
 
-
-
 // import axios from 'axios';
 
 // const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+// const FILE_BASE_URL = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5001';
 
 // class UnifiedSupplierAPI {
 //   constructor() {
@@ -721,9 +1120,259 @@ export default new UnifiedSupplierAPI();
 //   }
 
 //   // ===============================
+//   // FILE DOWNLOAD HELPER
+//   // ===============================
+
+//   /**
+//    * Download or view supplier document
+//    * @param {object|string} fileData - File metadata object or URL string
+//    * @param {boolean} download - If true, download; if false, open in new tab
+//    */
+//   async handleSupplierDocument(fileData, download = false) {
+//     try {
+//       if (!fileData) {
+//         throw new Error('No file data provided');
+//       }
+
+//       console.log('🔍 Processing file data:', JSON.stringify(fileData, null, 2));
+
+//       // Extract URL from file metadata
+//       let fileUrl;
+//       let fileName = 'document';
+      
+//       if (typeof fileData === 'string') {
+//         // It's already a URL or publicId/filename
+//         if (fileData.startsWith('http')) {
+//           fileUrl = fileData;
+//           fileName = fileData.split('/').pop();
+//         } else if (fileData.startsWith('/uploads/')) {
+//           fileUrl = `${FILE_BASE_URL}${fileData}`;
+//           fileName = fileData.split('/').pop();
+//         } else if (fileData.startsWith('/')) {
+//           fileUrl = `${FILE_BASE_URL}${fileData}`;
+//           fileName = fileData.split('/').pop();
+//         } else {
+//           // It's just a filename - need to find it
+//           // The file could be anywhere in /uploads/
+//           // Since we don't know the exact path, we'll have to guess based on naming
+//           if (fileData.startsWith('supplier_doc_')) {
+//             // Try supplier-documents first
+//             fileUrl = `${FILE_BASE_URL}/uploads/supplier-documents/${fileData}`;
+//           } else {
+//             // Try generic uploads
+//             fileUrl = `${FILE_BASE_URL}/uploads/${fileData}`;
+//           }
+//           fileName = fileData;
+//         }
+//       } else if (fileData.url) {
+//         // File metadata object with URL - THIS IS THE PREFERRED FORMAT
+//         // The URL should already be the correct relative path
+//         if (fileData.url.startsWith('http')) {
+//           fileUrl = fileData.url;
+//         } else if (fileData.url.startsWith('/uploads/')) {
+//           // Perfect! It's already a relative path from root
+//           fileUrl = `${FILE_BASE_URL}${fileData.url}`;
+//         } else if (fileData.url.startsWith('/')) {
+//           fileUrl = `${FILE_BASE_URL}${fileData.url}`;
+//         } else {
+//           // Relative path without leading slash
+//           fileUrl = `${FILE_BASE_URL}/${fileData.url}`;
+//         }
+//         fileName = fileData.originalName || fileData.name || fileData.url.split('/').pop();
+//       } else if (fileData.publicId || fileData.localPath) {
+//         // Try to construct URL from publicId or localPath
+//         let relativePath = null;
+        
+//         if (fileData.localPath) {
+//           // Extract everything after 'uploads'
+//           // Handle both Windows and Unix paths
+//           const normalizedPath = fileData.localPath.replace(/\\/g, '/');
+//           const uploadsIndex = normalizedPath.lastIndexOf('uploads/');
+          
+//           if (uploadsIndex !== -1) {
+//             relativePath = '/' + normalizedPath.substring(uploadsIndex);
+//           }
+//         }
+        
+//         if (relativePath) {
+//           fileUrl = `${FILE_BASE_URL}${relativePath}`;
+//         } else if (fileData.publicId) {
+//           // Fallback to publicId
+//           if (fileData.publicId.startsWith('supplier_doc_')) {
+//             fileUrl = `${FILE_BASE_URL}/uploads/supplier-documents/${fileData.publicId}`;
+//           } else {
+//             fileUrl = `${FILE_BASE_URL}/uploads/${fileData.publicId}`;
+//           }
+//         }
+        
+//         fileName = fileData.originalName || fileData.name || fileData.publicId || 'document';
+//       } else {
+//         throw new Error('Invalid file data format - no url, publicId, or localPath found');
+//       }
+
+//       // Clean up the file URL (remove double slashes except after http:)
+//       fileUrl = fileUrl.replace(/([^:]\/)\/+/g, '$1');
+
+//       console.log('📄 Final file URL:', fileUrl);
+//       console.log('📝 File name:', fileName);
+
+//       if (download) {
+//         // Download file
+//         try {
+//           const response = await fetch(fileUrl, {
+//             headers: {
+//               'Authorization': `Bearer ${localStorage.getItem('token')}`
+//             }
+//           });
+
+//           if (!response.ok) {
+//             console.error(`❌ Download failed: HTTP ${response.status}`);
+//             throw new Error(`HTTP error! status: ${response.status}`);
+//           }
+
+//           const blob = await response.blob();
+//           const url = window.URL.createObjectURL(blob);
+//           const link = document.createElement('a');
+//           link.href = url;
+//           link.download = fileName;
+//           document.body.appendChild(link);
+//           link.click();
+//           document.body.removeChild(link);
+//           window.URL.revokeObjectURL(url);
+          
+//           console.log('✅ File downloaded successfully');
+//           return { success: true, message: 'File downloaded successfully' };
+//         } catch (fetchError) {
+//           console.error('❌ Fetch error:', fetchError);
+//           console.log('⚠️ Attempting fallback: opening in new tab');
+//           // Fallback: try opening in new tab
+//           window.open(fileUrl, '_blank');
+//           return { success: true, message: 'File opened in new tab (download failed)' };
+//         }
+//       } else {
+//         // Open in new tab
+//         console.log('📂 Opening file in new tab');
+//         window.open(fileUrl, '_blank');
+//         return { success: true, message: 'File opened in new tab' };
+//       }
+//     } catch (error) {
+//       console.error('❌ Error handling file:', error);
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * View file inline
+//    */
+//   async viewFile(fileData) {
+//     return this.handleSupplierDocument(fileData, false);
+//   }
+
+//   /**
+//    * Download file
+//    */
+//   async downloadFile(fileData, fileName) {
+//     return this.handleSupplierDocument(fileData, true);
+//   }
+
+//   // ===============================
+//   // SUPPLIER APPROVAL WORKFLOW
+//   // ===============================
+
+//   /**
+//    * Get suppliers pending approval for current user
+//    */
+//   async getPendingApprovals() {
+//     try {
+//       const response = await this.api.get('/suppliers/admin/approvals/pending');
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Get single supplier with approval details
+//    */
+//   async getSupplierApprovalDetails(supplierId) {
+//     try {
+//       const response = await this.api.get(`/suppliers/admin/approvals/${supplierId}`);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Process supplier approval/rejection
+//    * @param {string} supplierId - Supplier ID
+//    * @param {object} data - { decision: 'approved' | 'rejected', comments: string }
+//    */
+//   async processApproval(supplierId, data) {
+//     try {
+//       const response = await this.api.post(`/suppliers/admin/approvals/${supplierId}/decision`, data);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Get approval statistics
+//    */
+//   async getApprovalStatistics() {
+//     try {
+//       const response = await this.api.get('/suppliers/admin/approvals/statistics');
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Get supplier approval timeline
+//    */
+//   async getApprovalTimeline(supplierId) {
+//     try {
+//       const response = await this.api.get(`/suppliers/admin/approvals/${supplierId}/timeline`);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Bulk process supplier approvals
+//    * @param {object} data - { supplierIds: string[], decision: 'approved' | 'rejected', comments: string }
+//    */
+//   async bulkProcessApprovals(data) {
+//     try {
+//       const response = await this.api.post('/suppliers/admin/approvals/bulk-process', data);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Get approval dashboard data
+//    */
+//   async getApprovalDashboard() {
+//     try {
+//       const response = await this.api.get('/suppliers/admin/approvals/dashboard');
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   // ===============================
 //   // SUPPLIER OPERATIONS
 //   // ===============================
 
+//   /**
+//    * Register and onboard supplier (unified process)
+//    */
 //   async registerAndOnboard(formData) {
 //     try {
 //       const config = {
@@ -736,6 +1385,16 @@ export default new UnifiedSupplierAPI();
 //     }
 //   }
 
+//   /**
+//    * Submit onboarding application (alias for registerAndOnboard for compatibility)
+//    */
+//   async submitOnboarding(formData) {
+//     return this.registerAndOnboard(formData);
+//   }
+
+//   /**
+//    * Get complete supplier profile
+//    */
 //   async getCompleteProfile(supplierId) {
 //     try {
 //       const response = await this.api.get(`/suppliers/${supplierId}/complete-profile`);
@@ -745,6 +1404,9 @@ export default new UnifiedSupplierAPI();
 //     }
 //   }
 
+//   /**
+//    * Update supplier profile
+//    */
 //   async updateProfile(supplierId, profileData) {
 //     try {
 //       const response = await this.api.put(`/suppliers/${supplierId}/profile`, profileData);
@@ -754,6 +1416,9 @@ export default new UnifiedSupplierAPI();
 //     }
 //   }
 
+//   /**
+//    * Get all suppliers with filters
+//    */
 //   async getAllSuppliers(params = {}) {
 //     try {
 //       const response = await this.api.get('/suppliers/admin/all', { params });
@@ -763,6 +1428,9 @@ export default new UnifiedSupplierAPI();
 //     }
 //   }
 
+//   /**
+//    * Bulk import suppliers
+//    */
 //   async bulkImport(suppliers) {
 //     try {
 //       const response = await this.api.post('/suppliers/bulk-import', { suppliers });
@@ -772,6 +1440,10 @@ export default new UnifiedSupplierAPI();
 //     }
 //   }
 
+//   /**
+//    * Approve or reject supplier (legacy - use processApproval instead)
+//    * @deprecated Use processApproval instead
+//    */
 //   async approveOrReject(supplierId, action, comments) {
 //     try {
 //       const response = await this.api.post(`/suppliers/${supplierId}/approve-reject`, {
@@ -784,6 +1456,9 @@ export default new UnifiedSupplierAPI();
 //     }
 //   }
 
+//   /**
+//    * Update supplier status
+//    */
 //   async updateSupplierStatus(supplierId, statusData) {
 //     try {
 //       const response = await this.api.put(`/suppliers/admin/${supplierId}/status`, statusData);
@@ -793,9 +1468,36 @@ export default new UnifiedSupplierAPI();
 //     }
 //   }
 
+//   /**
+//    * Get supplier dashboard (for logged-in suppliers)
+//    */
 //   async getSupplierDashboard() {
 //     try {
 //       const response = await this.api.get('/suppliers/dashboard');
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Verify supplier email
+//    */
+//   async verifyEmail(token) {
+//     try {
+//       const response = await this.api.get(`/suppliers/verify-email/${token}`);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Supplier login
+//    */
+//   async login(credentials) {
+//     try {
+//       const response = await this.api.post('/suppliers/login', credentials);
 //       return response.data;
 //     } catch (error) {
 //       throw error;
@@ -812,10 +1514,8 @@ export default new UnifiedSupplierAPI();
 //       let config = {};
 
 //       if (files && files.length > 0) {
-//         // If files are provided, use FormData
 //         const formData = new FormData();
         
-//         // Append all contract data
 //         Object.keys(contractData).forEach(key => {
 //           if (contractData[key] !== undefined && contractData[key] !== null) {
 //             if (typeof contractData[key] === 'object' && !Array.isArray(contractData[key])) {
@@ -826,7 +1526,6 @@ export default new UnifiedSupplierAPI();
 //           }
 //         });
 
-//         // Append files
 //         files.forEach(file => {
 //           formData.append('contractDocuments', file.originFileObj || file);
 //         });
@@ -834,7 +1533,6 @@ export default new UnifiedSupplierAPI();
 //         payload = formData;
 //         config.headers = { 'Content-Type': 'multipart/form-data' };
 //       } else {
-//         // No files, send JSON
 //         payload = contractData;
 //       }
 
@@ -1078,10 +1776,189 @@ export default new UnifiedSupplierAPI();
 //   async updateApplicationStatus(applicationId, statusData) {
 //     try {
 //       const response = await this.api.put(
-//         `
-//         /suppliers/admin/onboarding/applications/${applicationId}/status`,
+//         `/suppliers/admin/onboarding/applications/${applicationId}/status`,
 //         statusData
 //       );
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   async addReviewNote(applicationId, noteData) {
+//     try {
+//       const response = await this.api.post(
+//         `/suppliers/admin/onboarding/applications/${applicationId}/notes`,
+//         noteData
+//       );
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   async uploadAdditionalDocuments(applicationId, formData) {
+//     try {
+//       const config = {
+//         headers: { 'Content-Type': 'multipart/form-data' }
+//       };
+//       const response = await this.api.post(
+//         `/suppliers/admin/onboarding/applications/${applicationId}/documents`,
+//         formData,
+//         config
+//       );
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   async downloadDocument(applicationId, documentId) {
+//     try {
+//       const response = await this.api.get(
+//         `/suppliers/admin/onboarding/applications/${applicationId}/documents/${documentId}`,
+//         { responseType: 'blob' }
+//       );
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   async getOnboardingStatistics() {
+//     try {
+//       const response = await this.api.get('/suppliers/admin/onboarding/statistics');
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   async bulkUpdateApplications(data) {
+//     try {
+//       const response = await this.api.put('/suppliers/admin/onboarding/applications/bulk-update', data);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   async exportApplications(filters = {}) {
+//     try {
+//       const response = await this.api.get('/suppliers/admin/onboarding/export', {
+//         params: filters,
+//         responseType: 'blob'
+//       });
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   // ===============================
+//   // SUPPLIER INVOICES
+//   // ===============================
+
+//   /**
+//    * Submit supplier invoice
+//    */
+//   async submitInvoice(formData) {
+//     try {
+//       const config = {
+//         headers: { 'Content-Type': 'multipart/form-data' }
+//       };
+//       const response = await this.api.post('/suppliers/invoices', formData, config);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Get supplier invoices
+//    */
+//   async getSupplierInvoices(params = {}) {
+//     try {
+//       const response = await this.api.get('/suppliers/invoices', { params });
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Get invoice details
+//    */
+//   async getInvoiceDetails(invoiceId) {
+//     try {
+//       const response = await this.api.get(`/suppliers/invoices/${invoiceId}`);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Get invoices for finance (admin)
+//    */
+//   async getInvoicesForFinance(params = {}) {
+//     try {
+//       const response = await this.api.get('/suppliers/admin/invoices', { params });
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   // ===============================
+//   // SUPPLIER RFQ & QUOTES
+//   // ===============================
+
+//   /**
+//    * Get RFQ requests for supplier
+//    */
+//   async getSupplierRfqRequests(params = {}) {
+//     try {
+//       const response = await this.api.get('/suppliers/rfq-requests', { params });
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Get RFQ details
+//    */
+//   async getRfqDetails(rfqId) {
+//     try {
+//       const response = await this.api.get(`/suppliers/rfq-requests/${rfqId}`);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Submit quote for RFQ
+//    */
+//   async submitQuote(rfqId, formData) {
+//     try {
+//       const config = {
+//         headers: { 'Content-Type': 'multipart/form-data' }
+//       };
+//       const response = await this.api.post(`/suppliers/rfq-requests/${rfqId}/submit-quote`, formData, config);
+//       return response.data;
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
+
+//   /**
+//    * Get supplier quotes
+//    */
+//   async getSupplierQuotes(params = {}) {
+//     try {
+//       const response = await this.api.get('/suppliers/quotes', { params });
 //       return response.data;
 //     } catch (error) {
 //       throw error;
@@ -1117,6 +1994,20 @@ export default new UnifiedSupplierAPI();
 //     return labels[status] || status;
 //   }
 
+//   getSupplierStatusLabel(status) {
+//     const labels = {
+//       pending: 'Pending Review',
+//       pending_supply_chain: 'Pending Supply Chain',
+//       pending_head_of_business: 'Pending Executive',
+//       pending_finance: 'Pending Finance',
+//       approved: 'Approved',
+//       rejected: 'Rejected',
+//       suspended: 'Suspended',
+//       inactive: 'Inactive'
+//     };
+//     return labels[status] || status;
+//   }
+
 //   validateContractData(data) {
 //     const errors = {};
 
@@ -1132,6 +2023,25 @@ export default new UnifiedSupplierAPI();
 //       if (new Date(data.startDate) >= new Date(data.endDate)) {
 //         errors.endDate = 'End date must be after start date';
 //       }
+//     }
+
+//     return {
+//       isValid: Object.keys(errors).length === 0,
+//       errors
+//     };
+//   }
+
+//   validateSupplierData(data) {
+//     const errors = {};
+
+//     if (!data.companyName) errors.companyName = 'Company name is required';
+//     if (!data.contactName) errors.contactName = 'Contact person is required';
+//     if (!data.email) errors.email = 'Email is required';
+//     if (!data.phoneNumber) errors.phoneNumber = 'Phone number is required';
+//     if (!data.supplierType) errors.supplierType = 'Supplier type is required';
+
+//     if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+//       errors.email = 'Valid email is required';
 //     }
 
 //     return {
@@ -1180,6 +2090,25 @@ export default new UnifiedSupplierAPI();
 //       throw error;
 //     }
 //   }
+
+//   async exportApplicationsAndDownload(filters = {}) {
+//     try {
+//       const blob = await this.exportApplications(filters);
+//       const url = window.URL.createObjectURL(blob);
+//       const link = document.createElement('a');
+//       link.href = url;
+//       link.download = `supplier-applications-${Date.now()}.xlsx`;
+//       document.body.appendChild(link);
+//       link.click();
+//       document.body.removeChild(link);
+//       window.URL.revokeObjectURL(url);
+//     } catch (error) {
+//       throw error;
+//     }
+//   }
 // }
 
 // export default new UnifiedSupplierAPI();
+
+
+

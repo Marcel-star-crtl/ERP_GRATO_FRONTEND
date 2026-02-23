@@ -1,704 +1,3 @@
-// import React, { useState, useEffect, useCallback } from 'react';
-// import {
-//   Card,
-//   Table,
-//   Button,
-//   Modal,
-//   Select,
-//   Form,
-//   Typography,
-//   Tag,
-//   Space,
-//   Input,
-//   Descriptions,
-//   Alert,
-//   message,
-//   Popconfirm,
-//   Tooltip,
-//   Badge,
-//   Checkbox,
-//   Statistic,
-//   Row,
-//   Col,
-//   notification
-// } from 'antd';
-// import {
-//   FileTextOutlined,
-//   SendOutlined,
-//   CloseCircleOutlined,
-//   CheckCircleOutlined,
-//   ClockCircleOutlined,
-//   EyeOutlined,
-//   ReloadOutlined,
-//   ShopOutlined,
-//   TeamOutlined,
-//   FilterOutlined,
-//   FileOutlined
-// } from '@ant-design/icons';
-// import api from '../../services/api';
-
-// const { Title, Text, Paragraph } = Typography;
-// const { Option } = Select;
-// const { TextArea } = Input;
-
-// const SupplyChainInvoiceManagement = () => {
-//   const [invoices, setInvoices] = useState([]);
-//   const [loading, setLoading] = useState(false);
-//   const [selectedInvoices, setSelectedInvoices] = useState([]);
-//   const [assignModalVisible, setAssignModalVisible] = useState(false);
-//   const [rejectModalVisible, setRejectModalVisible] = useState(false);
-//   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
-//   const [selectedInvoice, setSelectedInvoice] = useState(null);
-//   const [stats, setStats] = useState(null);
-//   const [filters, setFilters] = useState({
-//     serviceCategory: null,
-//     supplierType: null
-//   });
-//   const [form] = Form.useForm();
-//   const [rejectForm] = Form.useForm();
-
-//   // Fetch pending invoices
-//   const fetchPendingInvoices = useCallback(async () => {
-//     try {
-//       setLoading(true);
-//       const params = new URLSearchParams();
-      
-//       if (filters.serviceCategory) params.append('serviceCategory', filters.serviceCategory);
-//       if (filters.supplierType) params.append('supplierType', filters.supplierType);
-      
-//       const response = await api.get(`/suppliers/supply-chain/invoices/pending?${params}`);
-      
-//       if (response.data.success) {
-//         setInvoices(response.data.data || []);
-//       }
-//     } catch (error) {
-//       console.error('Error fetching invoices:', error);
-//       message.error('Failed to fetch invoices');
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, [filters]);
-
-//   // Fetch dashboard stats
-//   const fetchStats = useCallback(async () => {
-//     try {
-//       const response = await api.get('/suppliers/supply-chain/dashboard/stats');
-//       if (response.data.success) {
-//         setStats(response.data.data);
-//       }
-//     } catch (error) {
-//       console.error('Error fetching stats:', error);
-//     }
-//   }, []);
-
-//   useEffect(() => {
-//     fetchPendingInvoices();
-//     fetchStats();
-//   }, [fetchPendingInvoices, fetchStats]);
-
-//   // Handle single assignment
-//   const handleAssign = async (values) => {
-//     try {
-//       setLoading(true);
-      
-//       if (selectedInvoices.length === 1) {
-//         // Single assignment
-//         const response = await api.post(`/suppliers/supply-chain/invoices/${selectedInvoices[0]}/assign`, {
-//           department: values.department,
-//           comments: values.comments
-//         });
-        
-//         if (response.data.success) {
-//           message.success('Invoice assigned successfully');
-//         }
-//       } else {
-//         // Bulk assignment
-//         const response = await api.post('/suppliers/supply-chain/invoices/bulk-assign', {
-//           invoiceIds: selectedInvoices,
-//           department: values.department,
-//           comments: values.comments
-//         });
-        
-//         if (response.data.success) {
-//           const { successful, failed } = response.data.data;
-//           notification.success({
-//             message: 'Bulk Assignment Completed',
-//             description: `${successful.length} invoice(s) assigned successfully. ${failed.length} failed.`,
-//             duration: 5
-//           });
-//         }
-//       }
-      
-//       setSelectedInvoices([]);
-//       setAssignModalVisible(false);
-//       form.resetFields();
-//       fetchPendingInvoices();
-//       fetchStats();
-      
-//     } catch (error) {
-//       message.error(error.response?.data?.message || 'Failed to assign invoice');
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   // Handle rejection
-//   const handleReject = async (values) => {
-//     try {
-//       setLoading(true);
-      
-//       const response = await api.post(`/suppliers/supply-chain/invoices/${selectedInvoice._id}/reject`, {
-//         rejectionReason: values.rejectionReason
-//       });
-      
-//       if (response.data.success) {
-//         message.success('Invoice rejected successfully');
-//         setRejectModalVisible(false);
-//         setSelectedInvoice(null);
-//         rejectForm.resetFields();
-//         fetchPendingInvoices();
-//         fetchStats();
-//       }
-//     } catch (error) {
-//       message.error(error.response?.data?.message || 'Failed to reject invoice');
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   // View invoice details
-//   const handleViewDetails = async (invoice) => {
-//     setSelectedInvoice(invoice);
-//     setDetailsModalVisible(true);
-//   };
-
-//   const columns = [
-//     {
-//       title: (
-//         <Checkbox
-//           indeterminate={selectedInvoices.length > 0 && selectedInvoices.length < invoices.length}
-//           checked={invoices.length > 0 && selectedInvoices.length === invoices.length}
-//           onChange={(e) => {
-//             if (e.target.checked) {
-//               setSelectedInvoices(invoices.map(inv => inv._id));
-//             } else {
-//               setSelectedInvoices([]);
-//             }
-//           }}
-//         />
-//       ),
-//       dataIndex: 'select',
-//       key: 'select',
-//       width: 50,
-//       render: (_, record) => (
-//         <Checkbox
-//           checked={selectedInvoices.includes(record._id)}
-//           onChange={(e) => {
-//             if (e.target.checked) {
-//               setSelectedInvoices([...selectedInvoices, record._id]);
-//             } else {
-//               setSelectedInvoices(selectedInvoices.filter(id => id !== record._id));
-//             }
-//           }}
-//         />
-//       )
-//     },
-//     {
-//       title: 'PO Number',
-//       dataIndex: 'poNumber',
-//       key: 'poNumber',
-//       render: (text) => <Text code>{text}</Text>,
-//       width: 150
-//     },
-//     {
-//       title: 'Invoice Number',
-//       dataIndex: 'invoiceNumber',
-//       key: 'invoiceNumber',
-//       width: 140
-//     },
-//     {
-//       title: 'Supplier',
-//       key: 'supplier',
-//       render: (_, record) => (
-//         <div>
-//           <Text strong>{record.supplierDetails?.companyName}</Text>
-//           <br />
-//           <Text type="secondary" style={{ fontSize: '12px' }}>
-//             {record.supplierDetails?.contactName}
-//           </Text>
-//           <br />
-//           <Tag size="small" color="green">
-//             {record.supplierDetails?.supplierType}
-//           </Tag>
-//         </div>
-//       ),
-//       width: 220
-//     },
-//     {
-//       title: 'Amount',
-//       dataIndex: 'invoiceAmount',
-//       key: 'amount',
-//       render: (amount, record) => (
-//         <Text strong>{record.currency || 'XAF'} {amount.toLocaleString()}</Text>
-//       ),
-//       width: 120
-//     },
-//     {
-//       title: 'Service Category',
-//       dataIndex: 'serviceCategory',
-//       key: 'category',
-//       render: (cat) => <Tag color="purple">{cat}</Tag>,
-//       width: 130
-//     },
-//     {
-//       title: 'Submitted',
-//       key: 'submitted',
-//       render: (_, record) => (
-//         <div>
-//           <div>{new Date(record.uploadedDate).toLocaleDateString('en-GB')}</div>
-//           <Text type="secondary" style={{ fontSize: '11px' }}>
-//             {record.uploadedTime}
-//           </Text>
-//         </div>
-//       ),
-//       width: 100
-//     },
-//     {
-//       title: 'Files',
-//       key: 'files',
-//       render: (_, record) => (
-//         <Space>
-//           {record.poFile && (
-//             <Tooltip title="PO File">
-//               <Button size="small" icon={<FileOutlined />} type="link" />
-//             </Tooltip>
-//           )}
-//           {record.invoiceFile && (
-//             <Tooltip title="Invoice File">
-//               <Button size="small" icon={<FileOutlined />} type="link" />
-//             </Tooltip>
-//           )}
-//         </Space>
-//       ),
-//       width: 80
-//     },
-//     {
-//       title: 'Actions',
-//       key: 'actions',
-//       fixed: 'right',
-//       width: 200,
-//       render: (_, record) => (
-//         <Space size="small">
-//           <Tooltip title="View Details">
-//             <Button 
-//               size="small" 
-//               icon={<EyeOutlined />}
-//               onClick={() => handleViewDetails(record)}
-//             />
-//           </Tooltip>
-          
-//           <Tooltip title="Assign to Department">
-//             <Button 
-//               size="small" 
-//               type="primary"
-//               icon={<SendOutlined />}
-//               onClick={() => {
-//                 setSelectedInvoice(record);
-//                 setSelectedInvoices([record._id]);
-//                 setAssignModalVisible(true);
-//               }}
-//             >
-//               Assign
-//             </Button>
-//           </Tooltip>
-          
-//           <Tooltip title="Reject Invoice">
-//             <Button 
-//               size="small" 
-//               danger
-//               icon={<CloseCircleOutlined />}
-//               onClick={() => {
-//                 setSelectedInvoice(record);
-//                 setRejectModalVisible(true);
-//               }}
-//             >
-//               Reject
-//             </Button>
-//           </Tooltip>
-//         </Space>
-//       )
-//     }
-//   ];
-
-//   return (
-//     <div style={{ padding: '24px' }}>
-//       <Card>
-//         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-//           <Title level={2} style={{ margin: 0 }}>
-//             <TeamOutlined /> Supply Chain - Invoice Management
-//           </Title>
-//           <Space>
-//             <Button 
-//               icon={<ReloadOutlined />} 
-//               onClick={() => {
-//                 fetchPendingInvoices();
-//                 fetchStats();
-//               }}
-//               loading={loading}
-//             >
-//               Refresh
-//             </Button>
-//           </Space>
-//         </div>
-
-//         {/* Statistics */}
-//         {stats && (
-//           <Row gutter={16} style={{ marginBottom: '24px' }}>
-//             <Col span={6}>
-//               <Card>
-//                 <Statistic
-//                   title="Pending Assignment"
-//                   value={stats.pendingAssignment}
-//                   prefix={<ClockCircleOutlined />}
-//                   valueStyle={{ color: '#faad14' }}
-//                 />
-//               </Card>
-//             </Col>
-//             <Col span={6}>
-//               <Card>
-//                 <Statistic
-//                   title="Assigned Today"
-//                   value={stats.assignedToday}
-//                   prefix={<CheckCircleOutlined />}
-//                   valueStyle={{ color: '#52c41a' }}
-//                 />
-//               </Card>
-//             </Col>
-//             <Col span={6}>
-//               <Card>
-//                 <Statistic
-//                   title="Rejected Today"
-//                   value={stats.rejectedToday}
-//                   prefix={<CloseCircleOutlined />}
-//                   valueStyle={{ color: '#ff4d4f' }}
-//                 />
-//               </Card>
-//             </Col>
-//             <Col span={6}>
-//               <Card>
-//                 <Statistic
-//                   title="In Approval Chain"
-//                   value={stats.inApprovalChain}
-//                   prefix={<ShopOutlined />}
-//                   valueStyle={{ color: '#1890ff' }}
-//                 />
-//               </Card>
-//             </Col>
-//           </Row>
-//         )}
-
-//         {/* Filters */}
-//         <Card size="small" style={{ marginBottom: '16px', backgroundColor: '#fafafa' }}>
-//           <Row gutter={16}>
-//             <Col span={8}>
-//               <Select
-//                 placeholder="Filter by Service Category"
-//                 style={{ width: '100%' }}
-//                 allowClear
-//                 value={filters.serviceCategory}
-//                 onChange={(value) => setFilters(prev => ({ ...prev, serviceCategory: value }))}
-//               >
-//                 <Option value="HSE">HSE</Option>
-//                 <Option value="Refurbishment">Refurbishment</Option>
-//                 <Option value="Project">Project</Option>
-//                 <Option value="Operations">Operations</Option>
-//                 <Option value="Diesel">Diesel</Option>
-//                 <Option value="Supply Chain">Supply Chain</Option>
-//                 <Option value="HR/Admin">HR/Admin</Option>
-//                 <Option value="General">General</Option>
-//               </Select>
-//             </Col>
-//             <Col span={8}>
-//               <Select
-//                 placeholder="Filter by Supplier Type"
-//                 style={{ width: '100%' }}
-//                 allowClear
-//                 value={filters.supplierType}
-//                 onChange={(value) => setFilters(prev => ({ ...prev, supplierType: value }))}
-//               >
-//                 <Option value="Materials">Materials</Option>
-//                 <Option value="Services">Services</Option>
-//                 <Option value="Equipment">Equipment</Option>
-//                 <Option value="Contractor">Contractor</Option>
-//               </Select>
-//             </Col>
-//           </Row>
-//         </Card>
-
-//         {/* Bulk Actions Alert */}
-//         {selectedInvoices.length > 0 && (
-//           <Alert
-//             message={`${selectedInvoices.length} invoice(s) selected`}
-//             type="info"
-//             showIcon
-//             action={
-//               <Space>
-//                 <Button size="small" onClick={() => setSelectedInvoices([])}>
-//                   Clear Selection
-//                 </Button>
-//                 <Button 
-//                   size="small" 
-//                   type="primary"
-//                   icon={<SendOutlined />}
-//                   onClick={() => setAssignModalVisible(true)}
-//                 >
-//                   Bulk Assign
-//                 </Button>
-//               </Space>
-//             }
-//             style={{ marginBottom: '16px' }}
-//           />
-//         )}
-
-//         <Table
-//           columns={columns}
-//           dataSource={invoices}
-//           loading={loading}
-//           rowKey="_id"
-//           scroll={{ x: 1300 }}
-//           size="small"
-//           pagination={{
-//             showSizeChanger: true,
-//             showQuickJumper: true,
-//             showTotal: (total) => `Total ${total} invoices`
-//           }}
-//         />
-//       </Card>
-
-//       {/* Assignment Modal */}
-//       <Modal
-//         title={
-//           <Space>
-//             <SendOutlined />
-//             {selectedInvoices.length > 1 ? `Bulk Assign ${selectedInvoices.length} Invoices` : 'Assign Invoice to Department'}
-//           </Space>
-//         }
-//         open={assignModalVisible}
-//         onCancel={() => {
-//           setAssignModalVisible(false);
-//           setSelectedInvoice(null);
-//           setSelectedInvoices([]);
-//           form.resetFields();
-//         }}
-//         footer={null}
-//         width={600}
-//       >
-//         <Alert
-//           message="Supply Chain Assignment"
-//           description={
-//             <div>
-//               <Paragraph>
-//                 Assigning this invoice will:
-//               </Paragraph>
-//               <ul>
-//                 <li><strong>Auto-approve</strong> at Supply Chain level</li>
-//                 <li>Create 3-level approval chain: Dept Head → Head of Business → Finance</li>
-//                 <li>Notify Department Head to begin approval process</li>
-//               </ul>
-//             </div>
-//           }
-//           type="warning"
-//           showIcon
-//           style={{ marginBottom: '16px' }}
-//         />
-
-//         <Form
-//           form={form}
-//           layout="vertical"
-//           onFinish={handleAssign}
-//         >
-//           <Form.Item
-//             name="department"
-//             label="Assign to Department"
-//             rules={[{ required: true, message: 'Please select a department' }]}
-//           >
-//             <Select placeholder="Select department">
-//               <Option value="HSE">HSE</Option>
-//               <Option value="Refurbishment">Refurbishment</Option>
-//               <Option value="Project">Project</Option>
-//               <Option value="Operations">Operations</Option>
-//               <Option value="Diesel">Diesel</Option>
-//               <Option value="Supply Chain">Supply Chain</Option>
-//               <Option value="HR/Admin">HR/Admin</Option>
-//               <Option value="Finance">Finance</Option>
-//               <Option value="General">General</Option>
-//             </Select>
-//           </Form.Item>
-
-//           <Form.Item
-//             name="comments"
-//             label="Comments (Optional)"
-//           >
-//             <TextArea 
-//               rows={3}
-//               placeholder="Add any comments for the department head..."
-//               maxLength={300}
-//               showCount
-//             />
-//           </Form.Item>
-
-//           <Form.Item>
-//             <Space>
-//               <Button onClick={() => {
-//                 setAssignModalVisible(false);
-//                 setSelectedInvoice(null);
-//                 setSelectedInvoices([]);
-//                 form.resetFields();
-//               }}>
-//                 Cancel
-//               </Button>
-//               <Button 
-//                 type="primary" 
-//                 htmlType="submit"
-//                 loading={loading}
-//                 icon={<SendOutlined />}
-//               >
-//                 {selectedInvoices.length > 1 ? `Assign ${selectedInvoices.length} Invoices` : 'Assign Invoice'}
-//               </Button>
-//             </Space>
-//           </Form.Item>
-//         </Form>
-//       </Modal>
-
-//       {/* Rejection Modal */}
-//       <Modal
-//         title={
-//           <Space>
-//             <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
-//             Reject Invoice
-//           </Space>
-//         }
-//         open={rejectModalVisible}
-//         onCancel={() => {
-//           setRejectModalVisible(false);
-//           setSelectedInvoice(null);
-//           rejectForm.resetFields();
-//         }}
-//         footer={null}
-//         width={500}
-//       >
-//         <Alert
-//           message="Rejection Notice"
-//           description="The supplier will be able to resubmit a corrected invoice after rejection."
-//           type="warning"
-//           showIcon
-//           style={{ marginBottom: '16px' }}
-//         />
-
-//         <Form
-//           form={rejectForm}
-//           layout="vertical"
-//           onFinish={handleReject}
-//         >
-//           <Form.Item
-//             name="rejectionReason"
-//             label="Rejection Reason"
-//             rules={[
-//               { required: true, message: 'Please provide a rejection reason' },
-//               { min: 10, message: 'Reason must be at least 10 characters' }
-//             ]}
-//           >
-//             <TextArea 
-//               rows={4} 
-//               placeholder="Explain why this invoice is being rejected..."
-//               maxLength={500}
-//               showCount
-//             />
-//           </Form.Item>
-
-//           <Form.Item>
-//             <Space>
-//               <Button onClick={() => {
-//                 setRejectModalVisible(false);
-//                 setSelectedInvoice(null);
-//                 rejectForm.resetFields();
-//               }}>
-//                 Cancel
-//               </Button>
-//               <Button 
-//                 danger
-//                 type="primary" 
-//                 htmlType="submit"
-//                 loading={loading}
-//                 icon={<CloseCircleOutlined />}
-//               >
-//                 Reject Invoice
-//               </Button>
-//             </Space>
-//           </Form.Item>
-//         </Form>
-//       </Modal>
-
-//       {/* Details Modal */}
-//       <Modal
-//         title={<Space><FileTextOutlined /> Invoice Details</Space>}
-//         open={detailsModalVisible}
-//         onCancel={() => {
-//           setDetailsModalVisible(false);
-//           setSelectedInvoice(null);
-//         }}
-//         footer={null}
-//         width={700}
-//       >
-//         {selectedInvoice && (
-//           <Descriptions bordered column={2} size="small">
-//             <Descriptions.Item label="PO Number" span={2}>
-//               <Text code copyable>{selectedInvoice.poNumber}</Text>
-//             </Descriptions.Item>
-//             <Descriptions.Item label="Invoice Number">
-//               {selectedInvoice.invoiceNumber}
-//             </Descriptions.Item>
-//             <Descriptions.Item label="Amount">
-//               <Text strong>{selectedInvoice.currency} {selectedInvoice.invoiceAmount.toLocaleString()}</Text>
-//             </Descriptions.Item>
-//             <Descriptions.Item label="Supplier Company" span={2}>
-//               <div>
-//                 <Text strong>{selectedInvoice.supplierDetails?.companyName}</Text>
-//                 <br />
-//                 <Text type="secondary">{selectedInvoice.supplierDetails?.contactName}</Text>
-//               </div>
-//             </Descriptions.Item>
-//             <Descriptions.Item label="Supplier Type">
-//               <Tag color="green">{selectedInvoice.supplierDetails?.supplierType}</Tag>
-//             </Descriptions.Item>
-//             <Descriptions.Item label="Service Category">
-//               <Tag color="purple">{selectedInvoice.serviceCategory}</Tag>
-//             </Descriptions.Item>
-//             <Descriptions.Item label="Submitted Date" span={2}>
-//               {new Date(selectedInvoice.uploadedDate).toLocaleDateString('en-GB')} at {selectedInvoice.uploadedTime}
-//             </Descriptions.Item>
-//             {selectedInvoice.description && (
-//               <Descriptions.Item label="Description" span={2}>
-//                 <Paragraph>{selectedInvoice.description}</Paragraph>
-//               </Descriptions.Item>
-//             )}
-//           </Descriptions>
-//         )}
-//       </Modal>
-//     </div>
-//   );
-// };
-
-// export default SupplyChainInvoiceManagement;
-
-
-
-
-
-
-
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
@@ -723,7 +22,8 @@ import {
   notification,
   Upload,
   Steps,
-  Divider
+  Divider,
+  App
 } from 'antd';
 import {
   FileTextOutlined,
@@ -827,16 +127,65 @@ const SupplyChainInvoiceManagement = () => {
       const response = await api.get(`/suppliers/invoices/${selectedInvoice._id}/download-for-signing`);
       
       if (response.data.success) {
-        const { url, originalName } = response.data.data;
+        let { url, originalName } = response.data.data;
         
-        // Create a temporary link and trigger download
+        console.log('Original URL from API:', url);
+        
+        // Get the API server URL (e.g., http://localhost:5001)
+        const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+        const apiUrl = new URL(apiBaseUrl);
+        const serverBase = `${apiUrl.protocol}//${apiUrl.host}`;
+        
+        // Build absolute URL for static files
+        let absoluteUrl;
+        
+        if (url.startsWith('http')) {
+          // Already absolute URL
+          absoluteUrl = url;
+        } else if (url.startsWith('/uploads/')) {
+          // It's a local file path - use server base + path
+          absoluteUrl = serverBase + url;
+        } else if (url.startsWith('/api/uploads/')) {
+          // Remove the /api prefix
+          const cleanPath = url.replace('/api/uploads/', '/uploads/');
+          absoluteUrl = serverBase + cleanPath;
+        } else {
+          // Try to use it as-is
+          absoluteUrl = serverBase + url;
+        }
+        
+        console.log('Downloading from:', absoluteUrl);
+        
+        // Fetch the file as a blob
+        const fileResponse = await fetch(absoluteUrl, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        
+        if (!fileResponse.ok) {
+          throw new Error(`Failed to fetch file: ${fileResponse.statusText} (${fileResponse.status})`);
+        }
+        
+        const blob = await fileResponse.blob();
+        
+        // Verify we got a valid file
+        if (blob.size === 0) {
+          throw new Error('Downloaded file is empty');
+        }
+        
+        console.log('Blob size:', blob.size, 'bytes');
+        console.log('Blob type:', blob.type);
+        
+        // Create blob URL and trigger download
+        const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = url;
+        link.href = blobUrl;
         link.download = originalName || 'invoice.pdf';
-        link.target = '_blank';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
         
         message.success('Invoice downloaded successfully. Please sign and upload.');
         setDocumentDownloaded(true);
@@ -844,7 +193,7 @@ const SupplyChainInvoiceManagement = () => {
       }
     } catch (error) {
       console.error('Error downloading invoice:', error);
-      message.error(error.response?.data?.message || 'Failed to download invoice');
+      message.error(`Failed to download invoice: ${error.message}`);
     } finally {
       setDownloadingInvoice(false);
     }
@@ -1146,18 +495,19 @@ const SupplyChainInvoiceManagement = () => {
   ];
 
   return (
-    <div style={{ padding: '24px' }}>
-      <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <Title level={2} style={{ margin: 0 }}>
-            <TeamOutlined /> Supply Chain - Supplier Invoice Management
-          </Title>
-          <Space>
-            <Button 
-              icon={<ReloadOutlined />} 
-              onClick={() => {
-                fetchPendingInvoices();
-                fetchStats();
+    <App>
+      <div style={{ padding: '24px' }}>
+        <Card>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+            <Title level={2} style={{ margin: 0 }}>
+              <TeamOutlined /> Supply Chain - Supplier Invoice Management
+            </Title>
+            <Space>
+              <Button 
+                icon={<ReloadOutlined />} 
+                onClick={() => {
+                  fetchPendingInvoices();
+                  fetchStats();
               }}
               loading={loading}
             >
@@ -1621,7 +971,8 @@ const SupplyChainInvoiceManagement = () => {
           </Descriptions>
         )}
       </Modal>
-    </div>
+      </div>
+    </App>
   );
 };
 

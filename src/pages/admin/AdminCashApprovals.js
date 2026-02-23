@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+import DOMPurify from 'dompurify';
 import {
   Card,
   Table,
@@ -803,7 +804,12 @@ const AdminCashApprovals = () => {
                 {selectedRequest.requiredDate ? new Date(selectedRequest.requiredDate).toLocaleDateString('en-GB') : 'N/A'}
               </Descriptions.Item>
               <Descriptions.Item label="Purpose" span={2}>
-                {selectedRequest.purpose}
+                <div 
+                  dangerouslySetInnerHTML={{ 
+                    __html: DOMPurify.sanitize(selectedRequest.purpose || '') 
+                  }}
+                  style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                />
               </Descriptions.Item>
               {selectedRequest.businessJustification && (
                 <Descriptions.Item label="Business Justification" span={2}>
@@ -932,7 +938,12 @@ const AdminCashApprovals = () => {
                 {selectedRequest.requiredDate ? new Date(selectedRequest.requiredDate).toLocaleDateString('en-GB') : 'N/A'}
               </Descriptions.Item>
               <Descriptions.Item label="Purpose" span={2}>
-                {selectedRequest.purpose}
+                <div 
+                  dangerouslySetInnerHTML={{ 
+                    __html: DOMPurify.sanitize(selectedRequest.purpose || '') 
+                  }}
+                  style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                />
               </Descriptions.Item>
               {selectedRequest.businessJustification && (
                 <Descriptions.Item label="Business Justification" span={2}>

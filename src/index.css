@@ -77,3 +77,34 @@
   --color-text: #81AFDD;
   --color-subtext: #FF8A71;
 }
+
+/* Ant Design Dropdown Z-Index Fix - Critical Override */
+.ant-select-dropdown,
+body > .ant-select-dropdown {
+  z-index: 99999 !important;
+  position: fixed !important;
+}
+
+.ant-picker-dropdown,
+body > .ant-picker-dropdown {
+  z-index: 99999 !important;
+  position: fixed !important;
+}
+
+.ant-select-dropdown * {
+  z-index: inherit;
+}
+
+/* Ensure overflow doesn't hide dropdowns */
+.ant-form-item,
+.ant-form-item-control,
+.ant-form-item-control-input,
+.ant-form-item-control-input-content,
+.ant-row,
+.ant-col {
+  overflow: visible !important;
+}
+
+.ant-card-body {
+  overflow: visible !important;
+}

@@ -46,6 +46,7 @@ import {
   PaperClipOutlined
 } from '@ant-design/icons';
 import { purchaseRequisitionAPI } from '../../services/purchaseRequisitionAPI'; 
+import AttachmentDisplay from '../../components/AttachmentDisplay';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;

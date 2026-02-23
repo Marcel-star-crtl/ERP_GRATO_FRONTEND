@@ -1,0 +1,94 @@
+/* Ant Design Dropdown Z-Index Fix */
+
+/* Global dropdown container */
+body > .ant-select-dropdown,
+body > .ant-picker-dropdown {
+  z-index: 9999 !important;
+}
+
+/* Select Dropdown */
+.ant-select-dropdown {
+  z-index: 9999 !important;
+}
+
+/* DatePicker Dropdown */
+.ant-picker-dropdown {
+  z-index: 9999 !important;
+}
+
+/* AutoComplete Dropdown */
+.ant-select-dropdown.ant-select-dropdown-placement-bottomLeft,
+.ant-select-dropdown.ant-select-dropdown-placement-topLeft,
+.ant-select-dropdown.ant-select-dropdown-placement-bottomRight,
+.ant-select-dropdown.ant-select-dropdown-placement-topRight {
+  z-index: 9999 !important;
+}
+
+/* Modal Dropdown (for modals within modals) */
+.ant-modal .ant-select-dropdown {
+  z-index: 10000 !important;
+}
+
+.ant-modal .ant-picker-dropdown {
+  z-index: 10000 !important;
+}
+
+/* Tooltip */
+.ant-tooltip {
+  z-index: 9998 !important;
+}
+
+/* Popover */
+.ant-popover {
+  z-index: 9998 !important;
+}
+
+/* Menu */
+.ant-menu-submenu-popup {
+  z-index: 9999 !important;
+}
+
+/* Ensure Form items don't create stacking context */
+.ant-form-item-control {
+  position: relative;
+  z-index: auto;
+}
+
+.ant-form-item {
+  position: relative;
+  z-index: auto;
+}
+
+/* Card and sections should have lower z-index */
+.ant-card {
+  position: relative;
+  z-index: 1;
+}
+
+.ant-collapse {
+  position: relative;
+  z-index: 1;
+}
+
+/* Notification/Message */
+.ant-notification {
+  z-index: 10001 !important;
+}
+
+.ant-message {
+  z-index: 10001 !important;
+}
+
+/* Spin/Loading overlay */
+.ant-spin {
+  z-index: 1800 !important;
+}
+
+/* Ensure select and datepicker don't have overflow hidden */
+.ant-form-item-control-input {
+  overflow: visible !important;
+}
+
+.ant-form-item-control-input-content {
+  overflow: visible !important;
+}

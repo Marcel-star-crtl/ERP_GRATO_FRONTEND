@@ -68,10 +68,26 @@ const EmployeeForm = () => {
       form.setFieldsValue({
         fullName: employee.fullName,
         email: employee.email,
+        personalEmail: employee.personalEmail,
+        phoneNumber: employee.phoneNumber,
         department: employee.department,
         position: employee.position,
         role: employee.role,
         departmentRole: employee.departmentRole,
+
+        // Personal details (ID information)
+        dateOfBirth: employee.personalDetails?.dateOfBirth ? dayjs(employee.personalDetails.dateOfBirth) : null,
+        placeOfBirth: employee.personalDetails?.placeOfBirth,
+        sex: employee.personalDetails?.sex,
+        height: employee.personalDetails?.height,
+        nationality: employee.personalDetails?.nationality,
+        idNumber: employee.personalDetails?.idNumber,
+        idIssueDate: employee.personalDetails?.idIssueDate ? dayjs(employee.personalDetails.idIssueDate) : null,
+        idExpiryDate: employee.personalDetails?.idExpiryDate ? dayjs(employee.personalDetails.idExpiryDate) : null,
+        idAuthority: employee.personalDetails?.idAuthority,
+        idAddress: employee.personalDetails?.idAddress,
+        fatherName: employee.personalDetails?.fatherName,
+        motherName: employee.personalDetails?.motherName,
         
         // Employment details
         employeeId: employee.employmentDetails?.employeeId,
@@ -85,6 +101,10 @@ const EmployeeForm = () => {
         salaryAmount: employee.employmentDetails?.salary?.amount,
         salaryCurrency: employee.employmentDetails?.salary?.currency || 'XAF',
         paymentFrequency: employee.employmentDetails?.salary?.paymentFrequency,
+
+        // Bank details
+        bankName: employee.employmentDetails?.bankDetails?.bankName,
+        accountName: employee.employmentDetails?.bankDetails?.accountName,
         
         // Government IDs
         cnpsNumber: employee.employmentDetails?.governmentIds?.cnpsNumber,
@@ -109,38 +129,94 @@ const EmployeeForm = () => {
   const handleSubmit = async (values) => {
     try {
       setSubmitting(true);
+      const allValues = form.getFieldsValue(true);
+
+      const existingPersonalDetails = employeeData?.personalDetails || {};
+      const personalDetails = {
+        ...existingPersonalDetails
+      };
+
+      if (allValues.dateOfBirth) personalDetails.dateOfBirth = allValues.dateOfBirth.format('YYYY-MM-DD');
+      if (allValues.placeOfBirth !== undefined) personalDetails.placeOfBirth = allValues.placeOfBirth;
+      if (allValues.sex !== undefined) personalDetails.sex = allValues.sex;
+      if (allValues.height !== undefined) personalDetails.height = allValues.height;
+      if (allValues.nationality !== undefined) personalDetails.nationality = allValues.nationality;
+      if (allValues.idNumber !== undefined) personalDetails.idNumber = allValues.idNumber;
+      if (allValues.idIssueDate) personalDetails.idIssueDate = allValues.idIssueDate.format('YYYY-MM-DD');
+      if (allValues.idExpiryDate) personalDetails.idExpiryDate = allValues.idExpiryDate.format('YYYY-MM-DD');
+      if (allValues.idAuthority !== undefined) personalDetails.idAuthority = allValues.idAuthority;
+      if (allValues.idAddress !== undefined) personalDetails.idAddress = allValues.idAddress;
+      if (allValues.fatherName !== undefined) personalDetails.fatherName = allValues.fatherName;
+      if (allValues.motherName !== undefined) personalDetails.motherName = allValues.motherName;
+
+      const existingEmploymentDetails = employeeData?.employmentDetails || {};
+      const employmentDetails = {
+        ...existingEmploymentDetails
+      };
+
+      if (allValues.employeeId !== undefined) employmentDetails.employeeId = allValues.employeeId;
+      if (allValues.contractType !== undefined) employmentDetails.contractType = allValues.contractType;
+      if (allValues.employmentStatus !== undefined) employmentDetails.employmentStatus = allValues.employmentStatus;
+      if (allValues.startDate) employmentDetails.startDate = allValues.startDate.format('YYYY-MM-DD');
+      if (allValues.contractEndDate) employmentDetails.contractEndDate = allValues.contractEndDate.format('YYYY-MM-DD');
+      if (allValues.probationEndDate) employmentDetails.probationEndDate = allValues.probationEndDate.format('YYYY-MM-DD');
+
+      if (
+        allValues.salaryAmount !== undefined ||
+        allValues.salaryCurrency !== undefined ||
+        allValues.paymentFrequency !== undefined
+      ) {
+        employmentDetails.salary = {
+          ...(existingEmploymentDetails.salary || {}),
+          amount: allValues.salaryAmount !== undefined ? allValues.salaryAmount : existingEmploymentDetails.salary?.amount,
+          currency: allValues.salaryCurrency !== undefined ? allValues.salaryCurrency : (existingEmploymentDetails.salary?.currency || 'XAF'),
+          paymentFrequency: allValues.paymentFrequency !== undefined ? allValues.paymentFrequency : existingEmploymentDetails.salary?.paymentFrequency
+        };
+      }
+
+      if (
+        allValues.bankName !== undefined ||
+        allValues.accountName !== undefined
+      ) {
+        employmentDetails.bankDetails = {
+          ...(existingEmploymentDetails.bankDetails || {}),
+          bankName: allValues.bankName !== undefined ? allValues.bankName : existingEmploymentDetails.bankDetails?.bankName,
+          accountName: allValues.accountName !== undefined ? allValues.accountName : existingEmploymentDetails.bankDetails?.accountName
+        };
+      }
+
+      if (
+        allValues.cnpsNumber !== undefined ||
+        allValues.taxPayerNumber !== undefined ||
+        allValues.nationalIdNumber !== undefined
+      ) {
+        employmentDetails.governmentIds = {
+          ...(existingEmploymentDetails.governmentIds || {}),
+          cnpsNumber: allValues.cnpsNumber !== undefined ? allValues.cnpsNumber : existingEmploymentDetails.governmentIds?.cnpsNumber,
+          taxPayerNumber: allValues.taxPayerNumber !== undefined ? allValues.taxPayerNumber : existingEmploymentDetails.governmentIds?.taxPayerNumber,
+          nationalIdNumber: allValues.nationalIdNumber !== undefined ? allValues.nationalIdNumber : existingEmploymentDetails.governmentIds?.nationalIdNumber
+        };
+      }
+
+      if (allValues.emergencyContacts !== undefined) {
+        employmentDetails.emergencyContacts = allValues.emergencyContacts || [];
+      }
+
+      if (allValues.hrNotes !== undefined) {
+        employmentDetails.hrNotes = allValues.hrNotes;
+      }
       
       const payload = {
-        fullName: values.fullName,
-        email: values.email,
-        department: values.department,
-        position: values.position,
-        role: values.role || 'employee',
-        departmentRole: values.departmentRole || 'staff',
-        
-        employmentDetails: {
-          employeeId: values.employeeId,
-          contractType: values.contractType,
-          employmentStatus: values.employmentStatus,
-          startDate: values.startDate?.format('YYYY-MM-DD'),
-          contractEndDate: values.contractEndDate?.format('YYYY-MM-DD'),
-          probationEndDate: values.probationEndDate?.format('YYYY-MM-DD'),
-          
-          salary: {
-            amount: values.salaryAmount,
-            currency: values.salaryCurrency,
-            paymentFrequency: values.paymentFrequency
-          },
-          
-          governmentIds: {
-            cnpsNumber: values.cnpsNumber,
-            taxPayerNumber: values.taxPayerNumber,
-            nationalIdNumber: values.nationalIdNumber
-          },
-          
-          emergencyContacts: values.emergencyContacts || [],
-          hrNotes: values.hrNotes
-        }
+        fullName: allValues.fullName,
+        email: allValues.email,
+        personalEmail: allValues.personalEmail,
+        phoneNumber: allValues.phoneNumber,
+        department: allValues.department,
+        position: allValues.position,
+        role: allValues.role || 'employee',
+        departmentRole: allValues.departmentRole || 'staff',
+        personalDetails,
+        employmentDetails
       };
 
       if (isEditMode) {
@@ -322,6 +398,30 @@ const EmployeeForm = () => {
 
                 <Col xs={24} md={12}>
                   <Form.Item
+                    name="personalEmail"
+                    label="Personal Email"
+                    rules={[
+                      { type: 'email', message: 'Please enter valid personal email' }
+                    ]}
+                  >
+                    <Input 
+                      placeholder="john.doe@gmail.com"
+                      prefix={<MailOutlined />}
+                    />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="phoneNumber"
+                    label="Phone Number"
+                  >
+                    <Input placeholder="e.g., 670000000" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
                     name="department"
                     label="Department"
                     rules={[
@@ -387,6 +487,123 @@ const EmployeeForm = () => {
                 </Col>
               </Row>
 
+              <Divider orientation="left">
+                <IdcardOutlined /> ID Information
+              </Divider>
+
+              <Row gutter={16}>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="dateOfBirth"
+                    label="Date of Birth"
+                  >
+                    <DatePicker style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="placeOfBirth"
+                    label="Place of Birth"
+                  >
+                    <Input placeholder="e.g., Oku" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="sex"
+                    label="Sex"
+                  >
+                    <Select placeholder="Select sex">
+                      <Option value="M">Male</Option>
+                      <Option value="F">Female</Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="height"
+                    label="Height (m)"
+                  >
+                    <InputNumber style={{ width: '100%' }} min={0} step={0.01} placeholder="e.g., 1.68" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="nationality"
+                    label="Nationality"
+                  >
+                    <Input placeholder="e.g., Cameroon" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="idNumber"
+                    label="National ID Number"
+                  >
+                    <Input placeholder="e.g., 20190397009010771" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="idIssueDate"
+                    label="ID Issue Date"
+                  >
+                    <DatePicker style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="idExpiryDate"
+                    label="ID Expiry Date"
+                  >
+                    <DatePicker style={{ width: '100%' }} />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="idAuthority"
+                    label="Issuing Authority"
+                  >
+                    <Input placeholder="e.g., Identification Post" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="idAddress"
+                    label="Address on ID"
+                  >
+                    <Input placeholder="e.g., Atuazire" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="fatherName"
+                    label="Father's Name"
+                  >
+                    <Input placeholder="e.g., Tata Paul Ngong" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="motherName"
+                    label="Mother's Name"
+                  >
+                    <Input placeholder="e.g., Victorine Kembeh" />
+                  </Form.Item>
+                </Col>
+              </Row>
+
               <div style={{ textAlign: 'right', marginTop: '24px' }}>
                 <Button
                   type="primary"
@@ -447,11 +664,12 @@ const EmployeeForm = () => {
                   >
                     <Select placeholder="Select status">
                       <Option value="Probation">Probation</Option>
-                      <Option value="Active">Active</Option>
+                      <Option value="Ongoing">Ongoing</Option>
                       <Option value="On Leave">On Leave</Option>
                       <Option value="Suspended">Suspended</Option>
                       <Option value="Notice Period">Notice Period</Option>
-                      <Option value="Inactive">Inactive</Option>
+                      <Option value="Termination">Termination</Option>
+                      <Option value="End of Contract">End of Contract</Option>
                     </Select>
                   </Form.Item>
                 </Col>
@@ -538,6 +756,23 @@ const EmployeeForm = () => {
                       <Option value="Bi-weekly">Bi-weekly</Option>
                       <Option value="Weekly">Weekly</Option>
                     </Select>
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="bankName"
+                    label="Bank Name"
+                  >
+                    <Input placeholder="e.g., Afriland First Bank" />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="accountName"
+                    label="Account Name"
+                  >
+                    <Input placeholder="e.g., Marcel Yosimbom Ngong" />
                   </Form.Item>
                 </Col>
               </Row>

@@ -19,7 +19,7 @@ const SupplierLoginForm = () => {
     try {
       setLoading(true);
      
-      const response = await api.post('/api/suppliers/login', {
+      const response = await api.post('/suppliers/login', {
         email: values.email,
         password: values.password
       });
@@ -113,6 +113,13 @@ const SupplierLoginForm = () => {
               >
                 Log in
               </Button>
+            </Form.Item>
+            <Form.Item>
+              <div style={{ textAlign: 'right' }}>
+                <Link to="/supplier/forgot-password">
+                  <AntLink>Forgot password?</AntLink>
+                </Link>
+              </div>
             </Form.Item>
           </Form>
         </Card>

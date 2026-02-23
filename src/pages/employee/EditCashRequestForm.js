@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import {
   Form,
   Input,
@@ -660,35 +662,26 @@ const EditCashRequestForm = () => {
         <Form.Item
           name="purpose"
           label="Purpose of Request"
-          rules={[{ 
-            required: true,
-            min: 10,
-            message: 'Please provide a detailed purpose (minimum 10 characters)'
-          }]}
+          rules={[]}
         >
-          <TextArea 
-            rows={3} 
-            placeholder="Describe the purpose of this cash request"
-            showCount
-            maxLength={500}
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="businessJustification"
-          label="Business Justification"
-          rules={[{ 
-            required: true,
-            min: 20,
-            message: 'Please provide a detailed justification (minimum 20 characters)'
-          }]}
-        >
-          <TextArea 
-            rows={4} 
-            placeholder="Explain why this expense is necessary for business operations"
-            showCount
-            maxLength={1000}
-          />
+          <div style={{ 
+            border: '1px solid #d9d9d9', 
+            borderRadius: '6px',
+            overflow: 'hidden'
+          }}>
+            <ReactQuill
+              theme="snow"
+              modules={{
+                toolbar: [
+                  ['bold', 'italic', 'underline'],
+                  [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                  ['clean']
+                ]
+              }}
+              placeholder="Describe the purpose of this cash request - items will stay on separate lines"
+              style={{ minHeight: '150px' }}
+            />
+          </div>
         </Form.Item>
 
         <Form.Item

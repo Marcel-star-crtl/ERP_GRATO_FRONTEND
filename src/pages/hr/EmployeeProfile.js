@@ -328,6 +328,17 @@ const EmployeeProfile = () => {
                   {employee.email}
                 </Space>
               </Descriptions.Item>
+              <Descriptions.Item label="Personal Email">
+                {employee.personalEmail ? (
+                  <Space>
+                    <MailOutlined />
+                    {employee.personalEmail}
+                  </Space>
+                ) : 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Phone Number">
+                {employee.phoneNumber || 'N/A'}
+              </Descriptions.Item>
               <Descriptions.Item label="Department">
                 {employee.department}
               </Descriptions.Item>
@@ -339,6 +350,48 @@ const EmployeeProfile = () => {
               </Descriptions.Item>
               <Descriptions.Item label="Department Role">
                 <Tag>{employee.departmentRole || 'Staff'}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Date of Birth">
+                {employee.personalDetails?.dateOfBirth
+                  ? dayjs(employee.personalDetails.dateOfBirth).format('MMM DD, YYYY')
+                  : 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Place of Birth">
+                {employee.personalDetails?.placeOfBirth || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Sex">
+                {employee.personalDetails?.sex || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Height">
+                {employee.personalDetails?.height ? `${employee.personalDetails.height} m` : 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Nationality">
+                {employee.personalDetails?.nationality || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="National ID Number">
+                {employee.personalDetails?.idNumber || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="ID Issue Date">
+                {employee.personalDetails?.idIssueDate
+                  ? dayjs(employee.personalDetails.idIssueDate).format('MMM DD, YYYY')
+                  : 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="ID Expiry Date">
+                {employee.personalDetails?.idExpiryDate
+                  ? dayjs(employee.personalDetails.idExpiryDate).format('MMM DD, YYYY')
+                  : 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Issuing Authority">
+                {employee.personalDetails?.idAuthority || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Address on ID">
+                {employee.personalDetails?.idAddress || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Father's Name">
+                {employee.personalDetails?.fatherName || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Mother's Name">
+                {employee.personalDetails?.motherName || 'N/A'}
               </Descriptions.Item>
             </Descriptions>
 
@@ -451,6 +504,12 @@ const EmployeeProfile = () => {
               </Descriptions.Item>
               <Descriptions.Item label="Payment Frequency">
                 {employee.employmentDetails?.salary?.paymentFrequency || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Bank Name">
+                {employee.employmentDetails?.bankDetails?.bankName || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Account Name">
+                {employee.employmentDetails?.bankDetails?.accountName || 'N/A'}
               </Descriptions.Item>
             </Descriptions>
 

@@ -63,10 +63,12 @@ import {
   TagOutlined,
   FilePdfOutlined,
   FileZipOutlined,
-  ShareAltOutlined
+  ShareAltOutlined,
+  TeamOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
 import { buyerRequisitionAPI } from '../../services/buyerRequisitionAPI';
+import UnifiedSupplierAPI from '../../services/unifiedSupplierAPI';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -146,10 +148,11 @@ const BuyerPurchaseOrders = () => {
 
   const loadSuppliers = async () => {
     try {
+      setLoading(true); // Set loading before fetch
       console.log('=== LOADING SUPPLIERS FROM DATABASE ===');
-      const response = await buyerRequisitionAPI.getSuppliers({
-        page: 1,
-        limit: 100
+      
+      const response = await UnifiedSupplierAPI.getAllSuppliers({
+        status: 'approved'
       });
       
       if (response.success && response.data) {
@@ -162,6 +165,8 @@ const BuyerPurchaseOrders = () => {
     } catch (error) {
       console.error('Error loading suppliers:', error);
       message.warning('Could not load suppliers from database');
+    } finally {
+      setLoading(false); // Always clear loading
     }
   };
 
@@ -590,15 +595,39 @@ const BuyerPurchaseOrders = () => {
           return;
         }
 
+        const resolvedName =
+          selectedSupplier.supplierDetails?.companyName ||
+          selectedSupplier.companyName ||
+          selectedSupplier.name ||
+          selectedSupplier.fullName ||
+          selectedSupplier.displayName ||
+          '';
+
+        const resolvedEmail =
+          selectedSupplier.email ||
+          selectedSupplier.supplierDetails?.email ||
+          selectedSupplier.supplierDetails?.contactEmail ||
+          '';
+
+        const resolvedPhone =
+          selectedSupplier.phoneNumber ||
+          selectedSupplier.phone ||
+          selectedSupplier.supplierDetails?.phoneNumber ||
+          selectedSupplier.supplierDetails?.alternatePhone ||
+          '';
+
+        const supplierAddress = selectedSupplier.supplierDetails?.address || selectedSupplier.address;
+        const resolvedAddress = typeof supplierAddress === 'object' ?
+          `${supplierAddress.street || ''}, ${supplierAddress.city || ''}, ${supplierAddress.state || ''}`.trim() :
+          supplierAddress || '';
+
         supplierDetails = {
           id: selectedSupplier._id,
-          name: selectedSupplier.name,
-          email: selectedSupplier.email,
-          phone: selectedSupplier.phone,
-          address: typeof selectedSupplier.address === 'object' ? 
-            `${selectedSupplier.address.street || ''}, ${selectedSupplier.address.city || ''}, ${selectedSupplier.address.state || ''}`.trim() :
-            selectedSupplier.address || '',
-          businessType: selectedSupplier.businessType,
+          name: resolvedName,
+          email: resolvedEmail,
+          phone: resolvedPhone,
+          address: resolvedAddress,
+          businessType: selectedSupplier.businessType || selectedSupplier.supplierDetails?.businessType,
           isExternal: false
         };
       }
@@ -620,7 +649,7 @@ const BuyerPurchaseOrders = () => {
         taxApplicable: values.taxApplicable || false,
         taxRate: values.taxRate || 19.2,
         deliveryAddress: values.deliveryAddress,
-        expectedDeliveryDate: values.expectedDeliveryDate.toISOString(),
+        expectedDeliveryDate: values.expectedDeliveryDate.endOf('day').toISOString(),
         paymentTerms: values.paymentTerms,
         specialInstructions: values.specialInstructions,
         notes: values.notes
@@ -810,7 +839,7 @@ const BuyerPurchaseOrders = () => {
       console.log('Cleaned items:', cleanedItems);
       
       const updateData = {
-        expectedDeliveryDate: values.expectedDeliveryDate ? values.expectedDeliveryDate.toISOString() : null,
+        expectedDeliveryDate: values.expectedDeliveryDate ? values.expectedDeliveryDate.endOf('day').toISOString() : null,
         deliveryAddress: values.deliveryAddress,
         paymentTerms: values.paymentTerms,
         specialInstructions: values.specialInstructions || '',
@@ -888,6 +917,50 @@ const BuyerPurchaseOrders = () => {
     } catch (error) {
       console.error('Error sending PO:', error);
       message.error('Failed to send purchase order');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendToSupplyChain = async (po) => {
+    try {
+      setLoading(true);
+      
+      // Update PO status to pending_supply_chain_assignment
+      const response = await fetch(
+        `${process.env.REACT_APP_API_URL || 'http://localhost:5001/api'}/buyer/purchase-orders/${po.id}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({
+            status: 'pending_supply_chain_assignment',
+            sentDate: new Date().toISOString(),
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        message.success('Purchase order sent to Supply Chain for assignment');
+        
+        notification.success({
+          message: 'PO Sent to Supply Chain',
+          description: `Purchase order ${po.poNumber} has been sent to Supply Chain for department assignment.`,
+          duration: 5
+        });
+        
+        // Reload purchase orders
+        await loadPurchaseOrders();
+      } else {
+        throw new Error(data.message || 'Failed to send PO to Supply Chain');
+      }
+    } catch (error) {
+      console.error('Error sending PO to Supply Chain:', error);
+      message.error(error.message || 'Failed to send PO to Supply Chain');
     } finally {
       setLoading(false);
     }
@@ -1059,6 +1132,7 @@ const BuyerPurchaseOrders = () => {
       render: (status) => getStatusTag(status),
       width: 140
     },
+
     {
       title: 'Actions',
       key: 'actions',
@@ -1072,17 +1146,36 @@ const BuyerPurchaseOrders = () => {
                 onClick={() => handleViewDetails(record)}
               />
             </Tooltip>
+            
+            {/* Show "Send to Supply Chain" for draft POs */}
             {record.status === 'draft' && (
+              <Tooltip title="Send to Supply Chain">
+                <Button 
+                  size="small" 
+                  type="primary"
+                  icon={<SendOutlined />}
+                  onClick={() => handleSendToSupplyChain(record)}
+                >
+                  To Supply Chain
+                </Button>
+              </Tooltip>
+            )}
+            
+            {/* Show "Send to Supplier" for approved POs */}
+            {record.status === 'approved' && (
               <Tooltip title="Send to Supplier">
                 <Button 
                   size="small" 
                   type="primary"
                   icon={<SendOutlined />}
                   onClick={() => handleSendPO(record)}
-                />
+                >
+                  To Supplier
+                </Button>
               </Tooltip>
             )}
-            {!['delivered', 'completed', 'cancelled'].includes(record.status) && (
+            
+            {!['delivered', 'completed', 'cancelled', 'pending_supply_chain_assignment'].includes(record.status) && (
               <Tooltip title="Edit PO">
                 <Button 
                   size="small" 
@@ -1118,7 +1211,7 @@ const BuyerPurchaseOrders = () => {
               />
             </Tooltip>
             
-            {!['delivered', 'completed', 'cancelled'].includes(record.status) && (
+            {!['delivered', 'completed', 'cancelled', 'pending_supply_chain_assignment'].includes(record.status) && (
               <Tooltip title="Cancel PO">
                 <Button 
                   size="small" 
@@ -1417,6 +1510,53 @@ const BuyerPurchaseOrders = () => {
           </Row>
 
           {!isExternalSupplier ? (
+            // <Form.Item
+            //   name="supplierId"
+            //   label={
+            //     <Space>
+            //       Select Registered Supplier
+            //       {suppliers.length > 0 && (
+            //         <Tag color="green" size="small">
+            //           {suppliers.length} in database
+            //         </Tag>
+            //       )}
+            //     </Space>
+            //   }
+            //   rules={[{ required: !isExternalSupplier, message: 'Please select a supplier' }]}
+            // >
+            //   <Select
+            //     placeholder="Search and select supplier from database"
+            //     showSearch
+            //     loading={suppliers.length === 0}
+            //     notFoundContent={suppliers.length === 0 ? <Spin size="small" /> : 'No suppliers found'}
+            //     filterOption={(input, option) =>
+            //       option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+            //     }
+            //     optionLabelProp="label"
+            //   >
+            //     {suppliers.map(supplier => (
+            //       <Option 
+            //         key={supplier._id} 
+            //         value={supplier._id}
+            //         label={supplier.name}
+            //       >
+            //         <div>
+            //           <div style={{ fontWeight: 'bold' }}>
+            //             {supplier.name}
+            //           </div>
+            //           <div style={{ fontSize: '12px', color: '#666' }}>
+            //             {supplier.email} • {supplier.businessType}
+            //           </div>
+            //           <div style={{ fontSize: '11px', color: '#999' }}>
+            //             Rating: {supplier.performance?.overallRating || 'N/A'} • 
+            //             Orders: {supplier.performance?.totalOrders || 0}
+            //           </div>
+            //         </div>
+            //       </Option>
+            //     ))}
+            //   </Select>
+            // </Form.Item>
+
             <Form.Item
               name="supplierId"
               label={
@@ -1434,29 +1574,53 @@ const BuyerPurchaseOrders = () => {
               <Select
                 placeholder="Search and select supplier from database"
                 showSearch
-                loading={suppliers.length === 0}
-                notFoundContent={suppliers.length === 0 ? <Spin size="small" /> : 'No suppliers found'}
-                filterOption={(input, option) =>
-                  option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                loading={loading && suppliers.length === 0}
+                notFoundContent={
+                  loading ? (
+                    <div style={{ textAlign: 'center', padding: '20px' }}>
+                      <Spin size="small" />
+                      <div style={{ marginTop: '8px' }}>
+                        <Text type="secondary">Loading suppliers...</Text>
+                      </div>
+                    </div>
+                  ) : suppliers.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px' }}>
+                      <Text type="secondary">No approved suppliers found</Text>
+                    </div>
+                  ) : (
+                    'No matching suppliers'
+                  )
                 }
+                filterOption={(input, option) => {
+                  const supplier = suppliers.find(s => s._id === option.value);
+                  if (!supplier) return false;
+                  
+                  const searchFields = [
+                    supplier.supplierDetails?.companyName || '',
+                    supplier.email || '',
+                    supplier.supplierDetails?.supplierType || ''
+                  ].join(' ').toLowerCase();
+                  
+                  return searchFields.includes(input.toLowerCase());
+                }}
                 optionLabelProp="label"
               >
                 {suppliers.map(supplier => (
                   <Option 
                     key={supplier._id} 
                     value={supplier._id}
-                    label={supplier.name}
+                    label={supplier.supplierDetails?.companyName || supplier.email}
                   >
                     <div>
                       <div style={{ fontWeight: 'bold' }}>
-                        {supplier.name}
+                        {supplier.supplierDetails?.companyName || 'Unnamed Supplier'}
                       </div>
                       <div style={{ fontSize: '12px', color: '#666' }}>
-                        {supplier.email} • {supplier.businessType}
+                        {supplier.email} • {supplier.supplierDetails?.supplierType || 'N/A'}
                       </div>
                       <div style={{ fontSize: '11px', color: '#999' }}>
-                        Rating: {supplier.performance?.overallRating || 'N/A'} • 
-                        Orders: {supplier.performance?.totalOrders || 0}
+                        Status: {supplier.status} • 
+                        Rating: {supplier.performance?.overallRating || 'N/A'}
                       </div>
                     </div>
                   </Option>
@@ -1734,11 +1898,12 @@ const BuyerPurchaseOrders = () => {
               <Form.Item
                 name="expectedDeliveryDate"
                 label="Expected Delivery Date"
+                initialValue={moment()}
                 rules={[{ required: true, message: 'Please select expected delivery date' }]}
               >
                 <DatePicker 
                   style={{ width: '100%' }}
-                  disabledDate={(current) => current && current < moment().add(1, 'day')}
+                  disabledDate={(current) => current && current < moment().startOf('day')}
                 />
               </Form.Item>
             </Col>
@@ -1864,8 +2029,6 @@ const BuyerPurchaseOrders = () => {
             <TextArea
               rows={3}
               placeholder="Add any special instructions for the supplier..."
-              showCount
-              maxLength={500}
             />
           </Form.Item>
 
@@ -1913,8 +2076,6 @@ const BuyerPurchaseOrders = () => {
             <TextArea
               rows={2}
               placeholder="Add any internal notes (not visible to supplier)..."
-              showCount
-              maxLength={300}
             />
           </Form.Item>
         </Form>
@@ -2094,76 +2255,6 @@ const BuyerPurchaseOrders = () => {
         />
       </Modal>
 
-      {/* ========== EDIT PO MODAL ========== */}
-      {/* <Modal
-        title={`Edit Purchase Order - ${selectedPO?.poNumber || selectedPO?.id}`}
-        open={editModalVisible}
-        onOk={handleUpdatePO}
-        onCancel={() => setEditModalVisible(false)}
-        confirmLoading={loading}
-        width={600}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="expectedDeliveryDate"
-            label="Expected Delivery Date"
-            rules={[{ required: true, message: 'Please select expected delivery date' }]}
-          >
-            <DatePicker 
-              style={{ width: '100%' }}
-              disabledDate={(current) => current && current < moment().add(1, 'day')}
-            />
-          </Form.Item>
-          
-          <Form.Item
-            name="paymentTerms"
-            label="Payment Terms"
-            rules={[{ required: true, message: 'Please select payment terms' }]}
-          >
-            <Select placeholder="Select payment terms">
-              <Option value="15 days">15 days</Option>
-              <Option value="30 days">30 days</Option>
-              <Option value="45 days">45 days</Option>
-              <Option value="60 days">60 days</Option>
-              <Option value="Cash on delivery">Cash on delivery</Option>
-              <Option value="Advance payment">Advance payment</Option>
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            name="deliveryAddress"
-            label="Delivery Address"
-            rules={[{ required: true, message: 'Please enter delivery address' }]}
-          >
-            <TextArea rows={2} placeholder="Enter delivery address..." />
-          </Form.Item>
-
-          <Form.Item
-            name="specialInstructions"
-            label="Special Instructions"
-          >
-            <TextArea
-              rows={3}
-              placeholder="Add any special instructions for the supplier..."
-              showCount
-              maxLength={500}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="notes"
-            label="Internal Notes"
-          >
-            <TextArea
-              rows={2}
-              placeholder="Add any internal notes (not visible to supplier)..."
-              showCount
-              maxLength={300}
-            />
-          </Form.Item>
-        </Form>
-      </Modal> */}
-
       {/* // Enhanced Edit Modal JSX (replace existing edit modal) */}
       <Modal
         title={`Edit Purchase Order - ${selectedPO?.poNumber || selectedPO?.id}`}
@@ -2190,11 +2281,12 @@ const BuyerPurchaseOrders = () => {
               <Form.Item
                 name="expectedDeliveryDate"
                 label="Expected Delivery Date"
+                initialValue={moment()}
                 rules={[{ required: true, message: 'Please select expected delivery date' }]}
               >
                 <DatePicker 
                   style={{ width: '100%' }}
-                  disabledDate={(current) => current && current < moment().add(1, 'day')}
+                  disabledDate={(current) => current && current < moment().startOf('day')}
                 />
               </Form.Item>
             </Col>
@@ -2435,8 +2527,6 @@ const BuyerPurchaseOrders = () => {
             <TextArea
               rows={3}
               placeholder="Add any special instructions for the supplier..."
-              showCount
-              maxLength={500}
             />
           </Form.Item>
 
@@ -2447,8 +2537,6 @@ const BuyerPurchaseOrders = () => {
             <TextArea
               rows={2}
               placeholder="Add any internal notes (not visible to supplier)..."
-              showCount
-              maxLength={300}
             />
           </Form.Item>
         </Form>

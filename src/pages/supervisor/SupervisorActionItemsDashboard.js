@@ -35,7 +35,8 @@ import {
     StarOutlined,
     EditOutlined,
     DeleteOutlined,
-    SafetyOutlined
+    SafetyOutlined,
+    CrownOutlined
 } from '@ant-design/icons';
 import { actionItemAPI } from '../../services/actionItemAPI';
 import moment from 'moment';
@@ -87,6 +88,9 @@ const SupervisorActionItemsDashboard = () => {
                     filteredTasks = filteredTasks.filter(t => t.status === 'Pending Approval');
                 } else if (activeTab === 'pending-completions') {
                     filteredTasks = filteredTasks.filter(t =>
+                        t.status === 'Pending L1 Grading' ||     // NEW: Add this
+                        t.status === 'Pending L2 Review' ||      // NEW: Add this
+                        t.status === 'Pending L3 Final Approval' || // NEW: Add this
                         t.status === 'Pending Completion Approval' ||
                         (t.assignedTo && t.assignedTo.some(a => a.completionStatus === 'submitted'))
                     );
@@ -514,12 +518,14 @@ const SupervisorActionItemsDashboard = () => {
                                 myAssignment?.completionStatus === 'pending';
                 
                 const canGrade = isTaskSupervisor && 
-                                record.status === 'Pending Completion Approval' &&
+                                (record.status === 'Pending L1 Grading' || 
+                                record.status === 'Pending Completion Approval') &&
                                 record.assignedTo?.some(a => a.completionStatus === 'submitted');
 
                 const canApproveCreation = isTaskSupervisor && record.status === 'Pending Approval';
 
                 const needsL2Review = record.status === 'Pending L2 Review';
+                const needsL3Review = record.status === 'Pending L3 Final Approval';
                 const assignee = record.assignedTo?.[0];
 
                 return (
@@ -583,12 +589,12 @@ const SupervisorActionItemsDashboard = () => {
                                             a => a.completionStatus === 'submitted'
                                         );
                                         if (submittedAssignee) {
-                                            openApprovalModal(record, submittedAssignee);
+                                            navigate(`/supervisor/task-completion-approval/${record._id}/${submittedAssignee.user._id}`);
                                         }
                                     }}
                                     style={{ backgroundColor: '#faad14', borderColor: '#faad14' }}
                                 >
-                                    Grade
+                                    Grade (L1)
                                 </Button>
                             </Tooltip>
                         )}
@@ -603,6 +609,20 @@ const SupervisorActionItemsDashboard = () => {
                                     style={{ backgroundColor: '#fa8c16', borderColor: '#fa8c16' }}
                                 >
                                     Review (L2)
+                                </Button>
+                            </Tooltip>
+                        )}
+
+                        {needsL3Review && assignee && (
+                            <Tooltip title="Level 3 Final Approval (Project Creator)">
+                                <Button
+                                    type="primary"
+                                    size="small"
+                                    icon={<CrownOutlined />}
+                                    onClick={() => navigate(`/supervisor/action-items/${record._id}/assignee/${assignee.user._id}/review-l3`)}
+                                    style={{ backgroundColor: '#faad14', borderColor: '#faad14' }}
+                                >
+                                    Final Approval (L3)
                                 </Button>
                             </Tooltip>
                         )}

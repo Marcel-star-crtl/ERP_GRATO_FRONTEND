@@ -162,45 +162,58 @@ const RequestDetails = () => {
   const [deleting, setDeleting] = useState(false);
 
   // Get current user ID from localStorage or context
-  const currentUserId = JSON.parse(localStorage.getItem('user'))?._id;
+  const currentUser = JSON.parse(localStorage.getItem('user'));
+  const currentUserId = currentUser?._id || currentUser?.id;
+
+  const fetchRequest = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('Fetching request details for ID:', requestId);
+      
+      if (!requestId) {
+        throw new Error('No request ID provided');
+      }
+
+      const response = await api.get(`/cash-requests/${requestId}`);
+      
+      console.log('Request details response:', response.data);
+      
+      if (response.data.success) {
+        const requestData = response.data.data;
+        console.log('Setting request data:', requestData);
+        console.log('Attachments found:', requestData.attachments);
+        console.log('Disbursements found:', requestData.disbursements);
+        setRequest(requestData);
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch request details');
+      }
+    } catch (error) {
+      console.error('Error fetching request:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to load request details';
+      setError(errorMessage);
+      message.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchRequest = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        console.log('Fetching request details for ID:', requestId);
-        
-        if (!requestId) {
-          throw new Error('No request ID provided');
-        }
-
-        const response = await api.get(`/cash-requests/${requestId}`);
-        
-        console.log('Request details response:', response.data);
-        
-        if (response.data.success) {
-          const requestData = response.data.data;
-          console.log('Setting request data:', requestData);
-          console.log('Attachments found:', requestData.attachments);
-          console.log('Disbursements found:', requestData.disbursements);
-          setRequest(requestData);
-        } else {
-          throw new Error(response.data.message || 'Failed to fetch request details');
-        }
-      } catch (error) {
-        console.error('Error fetching request:', error);
-        const errorMessage = error.response?.data?.message || error.message || 'Failed to load request details';
-        setError(errorMessage);
-        message.error(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchRequest();
   }, [requestId]);
+
+  const handleAcknowledgeDisbursement = async (disbursementId) => {
+    try {
+      await api.post(`/cash-requests/${requestId}/disbursements/${disbursementId}/acknowledge`, {
+        acknowledgmentNotes: 'Receipt acknowledged by employee'
+      });
+      message.success('Receipt acknowledged successfully');
+      fetchRequest();
+    } catch (error) {
+      message.error(error.response?.data?.message || 'Failed to acknowledge receipt');
+    }
+  };
 
   const getStatusTag = (status) => {
     const statusMap = {
@@ -707,6 +720,32 @@ const RequestDetails = () => {
                         </Text>
                       </>
                     )}
+                    {disb.acknowledged && (
+                      <>
+                        <br />
+                        <Tag color="green" style={{ marginTop: 6 }}>Acknowledged</Tag>
+                        <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                          {disb.acknowledgmentDate ? new Date(disb.acknowledgmentDate).toLocaleString('en-GB') : ''}
+                        </Text>
+                      </>
+                    )}
+                    {!disb.acknowledged && (() => {
+                      const requestEmployeeId = request.employee?._id || request.employee?.id || request.employee;
+                      return requestEmployeeId && currentUserId && requestEmployeeId.toString() === currentUserId.toString();
+                    })() && (
+                      <div style={{ marginTop: 8 }}>
+                        <Popconfirm
+                          title="Acknowledge receipt of this payment?"
+                          okText="Yes"
+                          cancelText="No"
+                          onConfirm={() => handleAcknowledgeDisbursement(disb._id)}
+                        >
+                          <Button size="small" type="primary" icon={<CheckCircleOutlined />}>
+                            Acknowledge Receipt
+                          </Button>
+                        </Popconfirm>
+                      </div>
+                    )}
                   </div>
                 </Timeline.Item>
               ))}
@@ -760,7 +799,16 @@ const RequestDetails = () => {
   console.log('Rendering with request:', request);
   console.log('Attachments in render:', request.attachments);
 
-  const canGeneratePDF = ['partially_disbursed', 'fully_disbursed', 'completed'].includes(request.status);
+  // const canGeneratePDF = ['partially_disbursed', 'fully_disbursed', 'completed'].includes(request.status);
+  const canGeneratePDF = [
+    'partially_disbursed', 
+    'fully_disbursed',
+    'justification_pending_supervisor',
+    'justification_pending_departmental_head',
+    'justification_pending_hr',
+    'justification_pending_finance',
+    'completed'
+  ].includes(request.status);
 
   return (
     <div style={{ padding: '24px' }}>
@@ -928,12 +976,6 @@ const RequestDetails = () => {
           <Descriptions.Item label="Purpose">
             <Paragraph style={{ marginBottom: 0 }}>
               {request.purpose || 'N/A'}
-            </Paragraph>
-          </Descriptions.Item>
-          
-          <Descriptions.Item label="Business Justification">
-            <Paragraph style={{ marginBottom: 0 }}>
-              {request.businessJustification || 'N/A'}
             </Paragraph>
           </Descriptions.Item>
           

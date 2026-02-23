@@ -47,7 +47,7 @@ const SupplierPerformanceDashboard = () => {
 
   const fetchRankings = async () => {
     try {
-      const response = await axios.get('/api/supplier-performance/rankings');
+      const response = await axios.get('/supplier-performance/rankings');
       setRankings(response.data.data.rankings || []);
     } catch (error) {
       console.error('Error fetching rankings:', error);
@@ -58,7 +58,7 @@ const SupplierPerformanceDashboard = () => {
   const fetchEvaluations = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/supplier-performance/evaluations');
+      const response = await axios.get('/supplier-performance/evaluations');
       setEvaluations(response.data.data.evaluations || []);
     } catch (error) {
       console.error('Error fetching evaluations:', error);

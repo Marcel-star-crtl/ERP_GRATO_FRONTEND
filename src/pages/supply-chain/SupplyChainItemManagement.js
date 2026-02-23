@@ -78,10 +78,15 @@ const SupplyChainItemManagement = () => {
     'Software',
     'Hardware',
     'Furniture',
+    'Civil Works',
+    'Security',
+    'Rollout',
     'Safety Equipment',
     'Maintenance Supplies',
     'Personal Accessories',
     'Spares',
+    'Expense',
+
     'Other'
   ];
 
@@ -97,6 +102,9 @@ const SupplyChainItemManagement = () => {
     'Maintenance Supplies': ['Cleaning', 'Repair Tools', 'Spare Parts', 'Other Maintenance'],
     'Personal Accessories': ['Electronics', 'Household Items', 'Personal Care', 'Entertainment', 'Other Personal'],
     'Spares': ['Spares'],
+    'Civil Works': ['Civil Works'],
+    'Security': ['Security'],
+    'Rollout': ['Rollout'],
     'Other': ['Miscellaneous']
   };
 

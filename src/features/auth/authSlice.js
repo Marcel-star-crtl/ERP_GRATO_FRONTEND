@@ -37,6 +37,7 @@ const authSlice = createSlice({
       // Store in localStorage
       localStorage.setItem('token', action.payload.token);
       localStorage.setItem('user', JSON.stringify(action.payload.user));
+      sessionStorage.removeItem('kpi_notice_seen');
     },
     loginFailure: (state, action) => {
       state.loading = false;
@@ -58,6 +59,7 @@ const authSlice = createSlice({
       // Store in localStorage
       localStorage.setItem('token', action.payload.token);
       localStorage.setItem('user', JSON.stringify(action.payload.user));
+      sessionStorage.removeItem('kpi_notice_seen');
     },
     logout: (state) => {
       state.isAuthenticated = false;
@@ -68,6 +70,7 @@ const authSlice = createSlice({
       // Clear localStorage
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      sessionStorage.removeItem('kpi_notice_seen');
     },
     clearError: (state) => {
       state.error = null;

@@ -63,6 +63,114 @@ export const projectsAPI = {
   }
 };
 
+// Project Plans endpoints
+export const projectPlanAPI = {
+  // Employee endpoints
+  getMyPlans: async () => {
+    const response = await api.get('/project-plans/my-plans');
+    return response.data;
+  },
+
+  getStats: async () => {
+    const response = await api.get('/project-plans/stats');
+    return response.data;
+  },
+
+  createPlan: async (planData) => {
+    const response = await api.post('/project-plans', planData);
+    return response.data;
+  },
+
+  updatePlan: async (planId, planData) => {
+    const response = await api.put(`/project-plans/${planId}`, planData);
+    return response.data;
+  },
+
+  deletePlan: async (planId) => {
+    const response = await api.delete(`/project-plans/${planId}`);
+    return response.data;
+  },
+
+  getPlanById: async (planId) => {
+    const response = await api.get(`/project-plans/${planId}`);
+    return response.data;
+  },
+
+  // NEW: Submit for approval
+  submitForApproval: async (planId) => {
+    const response = await api.post(`/project-plans/${planId}/submit`);
+    return response.data;
+  },
+
+  // Approver endpoints
+  getPendingApprovals: async () => {
+    const response = await api.get('/project-plans/pending-approvals');
+    return response.data;
+  },
+
+  getAllPlans: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    const url = queryString ? `/project-plans/all?${queryString}` : '/project-plans/all';
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  approvePlan: async (planId, comments) => {
+    const response = await api.post(`/project-plans/${planId}/approve`, { comments });
+    return response.data;
+  },
+
+  rejectPlan: async (planId, comments) => {
+    const response = await api.post(`/project-plans/${planId}/reject`, { comments });
+    return response.data;
+  },
+
+  // Completion items endpoints
+  markItemComplete: async (planId, itemId, notes = '') => {
+    const response = await api.post(`/project-plans/${planId}/completion-items/${itemId}/complete`, { notes });
+    return response.data;
+  },
+
+  unmarkItemComplete: async (planId, itemId) => {
+    const response = await api.post(`/project-plans/${planId}/completion-items/${itemId}/uncomplete`);
+    return response.data;
+  }
+};
+
+
+// Salary API
+export const salaryPaymentAPI = {
+  create: async (formData) => {
+    const response = await api.post('/salary-payments', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  },
+
+  getAll: async (params = {}) => {
+    const response = await api.get('/salary-payments', { params });
+    return response.data;
+  },
+
+  getById: async (id) => {
+    const response = await api.get(`/salary-payments/${id}`);
+    return response.data;
+  },
+
+  downloadDocument: async (paymentId, documentId) => {
+    const response = await api.get(
+      `/salary-payments/${paymentId}/documents/${documentId}/download`,
+      { responseType: 'blob' }
+    );
+    return response.data;
+  },
+
+  getDashboardStats: async () => {
+    const response = await api.get('/salary-payments/dashboard-stats');
+    return response.data;
+  }
+};
+
 // ===== IT SUPPORT API =====
 export const itSupportAPI = {
   getDashboardStats: async () => {
@@ -660,6 +768,83 @@ export const cashRequestAPI = {
     }
   }, 
 
+};
+
+export const accountingAPI = {
+  bootstrapDefaultChart: async () => {
+    const response = await api.post('/accounting/bootstrap/default-chart');
+    return response.data;
+  },
+
+  bootstrapDefaultRules: async () => {
+    const response = await api.post('/accounting/bootstrap/default-rules');
+    return response.data;
+  },
+
+  getAccounts: async (params = {}) => {
+    const response = await api.get('/accounting/accounts', { params });
+    return response.data;
+  },
+
+  createAccount: async (payload) => {
+    const response = await api.post('/accounting/accounts', payload);
+    return response.data;
+  },
+
+  getRules: async (params = {}) => {
+    const response = await api.get('/accounting/rules', { params });
+    return response.data;
+  },
+
+  createRule: async (payload) => {
+    const response = await api.post('/accounting/rules', payload);
+    return response.data;
+  },
+
+  updateRule: async (ruleId, payload) => {
+    const response = await api.put(`/accounting/rules/${ruleId}`, payload);
+    return response.data;
+  },
+
+  getJournalEntries: async (params = {}) => {
+    const response = await api.get('/accounting/journal-entries', { params });
+    return response.data;
+  },
+
+  createJournalEntry: async (payload) => {
+    const response = await api.post('/accounting/journal-entries', payload);
+    return response.data;
+  },
+
+  reverseJournalEntry: async (entryId, payload) => {
+    const response = await api.post(`/accounting/journal-entries/${entryId}/reverse`, payload);
+    return response.data;
+  },
+
+  getPeriods: async (params = {}) => {
+    const response = await api.get('/accounting/periods', { params });
+    return response.data;
+  },
+
+  openPeriod: async (payload) => {
+    const response = await api.post('/accounting/periods/open', payload);
+    return response.data;
+  },
+
+  closePeriod: async (payload) => {
+    const response = await api.post('/accounting/periods/close', payload);
+    return response.data;
+  },
+
+  getTrialBalance: async (params = {}) => {
+    const response = await api.get('/accounting/reports/trial-balance', { params });
+    return response.data;
+  },
+
+  getGeneralLedger: async (accountId, params = {}) => {
+    const response = await api.get(`/accounting/reports/general-ledger/${accountId}`, { params });
+    return response.data;
+  }
 };
 
 export default api;
