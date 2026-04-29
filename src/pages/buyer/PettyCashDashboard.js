@@ -40,7 +40,7 @@ const PettyCashDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [selectedForm, setSelectedForm] = useState(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   
   // ✅ FIXED: Add pagination state
@@ -146,11 +146,9 @@ const PettyCashDashboard = () => {
 
   const handleDownloadPDF = async (form) => {
     try {
-      setDownloading(true);
+      setDownloadingId(form.id);
       message.loading({ content: 'Generating PDF...', key: 'download' });
-      
       const blob = await pettyCashAPI.downloadPettyCashFormPDF(form.id);
-      
       // Create download link
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -160,18 +158,14 @@ const PettyCashDashboard = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
       message.success({ content: 'PDF downloaded successfully', key: 'download' });
-      
-      // ✅ FIXED: Reload current page instead of resetting to page 1
       await loadPettyCashForms(pagination.current, pagination.pageSize);
       await loadStats();
-      
     } catch (error) {
       console.error('Error downloading PDF:', error);
       message.error({ content: 'Failed to download PDF', key: 'download' });
     } finally {
-      setDownloading(false);
+      setDownloadingId(null);
     }
   };
 
@@ -338,7 +332,7 @@ const PettyCashDashboard = () => {
             type="primary"
             icon={<DownloadOutlined />}
             onClick={() => handleDownloadPDF(record)}
-            loading={downloading}
+            loading={downloadingId === record.id}
           >
             Download
           </Button>
@@ -484,7 +478,7 @@ const PettyCashDashboard = () => {
                 });
               }
             }}
-            loading={downloading}
+            loading={downloadingId === selectedForm?.requisition?.id}
           >
             Download PDF
           </Button>

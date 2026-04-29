@@ -399,12 +399,93 @@ const ITRequestDetails = () => {
                   )}
                 </Card>
               ))}
-              <Divider />
-              <Text strong>Total Estimated Cost: </Text>
-              <Text style={{ fontSize: '18px', color: '#1890ff' }}>
-                {request.totalEstimatedCost?.toLocaleString()} XAF
-              </Text>
             </Card>
+          )}
+
+          {/* IT Discharge Section */}
+          {request.status === 'it_approved' || request.status === 'pending_discharge' ? (
+            <Card title="IT Discharge of Items" style={{ marginBottom: '16px' }}>
+              <Form layout="vertical">
+                <Form.Item label="Select Items to Discharge">
+                  {/* TODO: Replace with asset selection logic */}
+                  <ul>
+                    {request.requestedItems.map((item, idx) => (
+                      <li key={idx}>{item.item} (Qty: {item.quantity})</li>
+                    ))}
+                  </ul>
+                </Form.Item>
+                <Form.Item label="IT Staff Signature (Upload)">
+                  {/* TODO: Replace with signature pad if available */}
+                  <Input type="file" accept="image/*" />
+                </Form.Item>
+                <Form.Item>
+                  <Button type="primary">Submit Discharge</Button>
+                </Form.Item>
+              </Form>
+            </Card>
+          ) : null}
+
+          {/* Requester Acknowledgment Section */}
+          {request.status === 'pending_acknowledgment' ? (
+            <Card title="Requester Acknowledgment" style={{ marginBottom: '16px' }}>
+              <ul>
+                {request.dischargedItems?.map((item, idx) => (
+                  <li key={idx}>{item.item} (Qty: {item.quantity})</li>
+                ))}
+              </ul>
+              <Form layout="vertical">
+                <Form.Item label="Requester Signature (Upload)">
+                  {/* TODO: Replace with signature pad if available */}
+                  <Input type="file" accept="image/*" />
+                </Form.Item>
+                <Form.Item>
+                  <Button type="primary">Acknowledge Receipt</Button>
+                </Form.Item>
+              </Form>
+            </Card>
+          ) : null}
+
+
+
+          {/* Discharge/Acknowledgment Complete Section */}
+          {request.status === 'discharge_complete' ? (
+            <Card title="Discharge & Acknowledgment Complete" style={{ marginBottom: '16px' }}>
+              <p>All items have been discharged and acknowledged.</p>
+              <Button
+                type="primary"
+                icon={<FileTextOutlined />}
+                onClick={async () => {
+                  try {
+                    const apiUrl = `${process.env.REACT_APP_API_URL}/it-support/${request._id}/discharge-pdf`;
+                    const token = localStorage.getItem('token');
+                    const response = await fetch(apiUrl, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    });
+                    if (!response.ok) throw new Error('Failed to download PDF');
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `IT_Discharge_${request.ticketNumber}.pdf`;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(url);
+                  } catch (err) {
+                    message.error('Failed to download discharge PDF');
+                  }
+                }}
+              >
+                Download Discharge PDF
+              </Button>
+            </Card>
+          ) : null}
+
+          {/* Total Estimated Cost (if present) */}
+          {request.totalEstimatedCost && (
+            <Text style={{ fontSize: '18px', color: '#1890ff' }}>
+              {request.totalEstimatedCost?.toLocaleString()} XAF
+            </Text>
           )}
 
           {/* Device Details (if technical issue) */}

@@ -433,6 +433,12 @@ const FinanceCashApprovalForm = () => {
     }
   ];
 
+
+  // --- Reimbursement fields ---
+  const advanceReceived = request.advanceReceived || 0;
+  const amountSpent = request.amountSpent || 0;
+  const reimbursementDue = amountSpent - advanceReceived;
+
   const amountRequested = request.amountRequested || 0;
   const totalDisbursed = request.totalDisbursed || 0;
   const remainingBalance = request.remainingBalance || (amountRequested - totalDisbursed);
@@ -903,11 +909,26 @@ const FinanceCashApprovalForm = () => {
               {request.urgency?.toUpperCase()}
             </Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="Amount Requested">
-            <Text strong style={{ color: '#1890ff', fontSize: '16px' }}>
-              XAF {amountRequested.toLocaleString()}
-            </Text>
-          </Descriptions.Item>
+           <Descriptions.Item label="Amount Requested">
+             {isReimbursement ? (
+               <div>
+                 <Text strong>Advance Received: </Text>
+                 <Text>XAF {advanceReceived.toLocaleString()}</Text>
+                 <br />
+                 <Text strong>Amount Spent: </Text>
+                 <Text>XAF {amountSpent.toLocaleString()}</Text>
+                 <br />
+                 <Text strong>Reimbursement Due: </Text>
+                 <Text type={reimbursementDue > 0 ? 'danger' : 'success'}>
+                   XAF {reimbursementDue.toLocaleString()}
+                 </Text>
+               </div>
+             ) : (
+               <Text strong style={{ color: '#1890ff', fontSize: '16px' }}>
+                 XAF {amountRequested.toLocaleString()}
+               </Text>
+             )}
+           </Descriptions.Item>
           <Descriptions.Item label="Submitted Date">
             {new Date(request.createdAt).toLocaleDateString('en-GB')}
           </Descriptions.Item>

@@ -50,7 +50,7 @@ const EmployeeITRequestDetails = () => {
   const [error, setError] = useState(null);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
-  
+
   const navigate = useNavigate();
   const { requestId } = useParams();
   const { user } = useSelector((state) => state.auth);
@@ -59,23 +59,20 @@ const EmployeeITRequestDetails = () => {
     if (requestId) {
       fetchRequestDetails();
     }
+    // eslint-disable-next-line
   }, [requestId]);
 
   const fetchRequestDetails = async () => {
     try {
       setLoading(true);
       setError(null);
-
-      console.log('Fetching IT request details for:', requestId);
       const response = await itSupportAPI.getRequestById(requestId);
-      
       if (response?.success && response?.data) {
         setRequest(response.data);
       } else {
         setError('Failed to load request details');
       }
     } catch (error) {
-      console.error('Error fetching request details:', error);
       setError(error.response?.data?.message || 'Failed to fetch request details');
     } finally {
       setLoading(false);
@@ -92,6 +89,45 @@ const EmployeeITRequestDetails = () => {
     } catch (error) {
       message.error(error.response?.data?.message || 'Failed to delete request');
     }
+  };
+
+  // ...existing hooks, useEffect, and logic...
+
+  // Place this section after request is loaded and before the return statement
+  const renderDischargePDFSection = () => {
+    if (!request || request.status !== 'discharge_complete') return null;
+    return (
+      <Card title="Discharge & Acknowledgment Complete" style={{ marginBottom: '16px' }}>
+        <p>All items have been discharged and acknowledged.</p>
+        <Button
+          type="primary"
+          icon={<FilePdfOutlined />}
+          onClick={async () => {
+            try {
+              const apiUrl = `${process.env.REACT_APP_API_URL}/it-support/${request._id}/discharge-pdf`;
+              const token = localStorage.getItem('token');
+              const response = await fetch(apiUrl, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              if (!response.ok) throw new Error('Failed to download PDF');
+              const blob = await response.blob();
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `IT_Discharge_${request.ticketNumber}.pdf`;
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+              window.URL.revokeObjectURL(url);
+            } catch (err) {
+              message.error('Failed to download discharge PDF');
+            }
+          }}
+        >
+          Download Discharge PDF
+        </Button>
+      </Card>
+    );
   };
 
   const getStatusTag = (status) => {
@@ -137,9 +173,30 @@ const EmployeeITRequestDetails = () => {
     return <FileTextOutlined style={{ fontSize: '32px', color: '#8c8c8c' }} />;
   };
 
-  const handleDownload = (attachment) => {
-    const downloadUrl = `${process.env.REACT_APP_API_URL}/it-support/download/${request._id}/${attachment.publicId}`;
-    window.open(downloadUrl, '_blank');
+  const handleDownload = async (attachment) => {
+    try {
+      const downloadUrl = `${process.env.REACT_APP_API_URL}/it-support/download/${request._id}/${attachment.publicId}`;
+      const response = await fetch(downloadUrl, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      if (!response.ok) throw new Error('Download failed');
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = attachment.name || attachment.publicId;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      message.error('Failed to download file. Please try again.');
+      console.error('Download error:', error);
+    }
   };
 
   const handlePreview = (attachment) => {

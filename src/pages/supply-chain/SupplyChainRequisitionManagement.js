@@ -47,7 +47,8 @@ import {
   WarningOutlined,
   LoadingOutlined,
   QuestionCircleOutlined,
-  MessageOutlined
+  MessageOutlined,
+  StopOutlined
 } from '@ant-design/icons';
 import AttachmentDisplay from '../../components/AttachmentDisplay';
 
@@ -273,10 +274,17 @@ const EnhancedSupplyChainRequisitionManagement = () => {
   const [estimatedCost, setEstimatedCost] = useState('');
   const [comments, setComments] = useState('');
 
+  const [cancellationRequests, setCancellationRequests] = useState([]);
+  const [cancellationLoading, setCancellationLoading] = useState(false);
+  const [cancellationComments, setCancellationComments] = useState('');
+  const [cancellationActionLoading, setCancellationActionLoading] = useState(false);
+
+
   // Initial data loading
   useEffect(() => {
     fetchRequisitions();
     fetchAvailableBuyers();
+    fetchCancellationRequests();
   }, []);
 
   // API Functions
@@ -320,6 +328,20 @@ const EnhancedSupplyChainRequisitionManagement = () => {
     }
   };
 
+  const fetchCancellationRequests = async () => {
+  setCancellationLoading(true);
+  try {
+    const response = await apiService.getCancellationRequests();
+    if (response.success) {
+      setCancellationRequests(response.data || []);
+    }
+  } catch (error) {
+    console.error('Error fetching cancellation requests:', error);
+  } finally {
+    setCancellationLoading(false);
+  }
+};
+
   // Status and Tag Functions
   const getStatusTag = (status) => {
     const statusMap = {
@@ -329,7 +351,9 @@ const EnhancedSupplyChainRequisitionManagement = () => {
       'supply_chain_rejected': { color: 'red', text: 'Rejected', icon: <CloseCircleOutlined /> },
       'in_procurement': { color: 'purple', text: 'In Procurement', icon: <ShoppingCartOutlined /> },
       'procurement_complete': { color: 'green', text: 'Procurement Complete', icon: <CheckCircleOutlined /> },
-      'delivered': { color: 'green', text: 'Delivered', icon: <TruckOutlined /> }
+      'delivered': { color: 'green', text: 'Delivered', icon: <TruckOutlined /> },
+      'pending_cancellation': { color: 'volcano', text: 'Cancellation Pending', icon: <StopOutlined /> },
+      'cancelled': { color: 'error', text: 'Cancelled', icon: <CloseCircleOutlined /> },
     };
 
     const statusInfo = statusMap[status] || { color: 'default', text: status, icon: null };
@@ -604,6 +628,48 @@ const EnhancedSupplyChainRequisitionManagement = () => {
     }
   };
 
+//   processCancellationApproval: async (requisitionId, data) => {
+//   try {
+//     const token = localStorage.getItem('token');
+//     const response = await fetch(
+//       `${API_BASE_URL}/purchase-requisitions/${requisitionId}/process-cancellation`,
+//       {
+//         method: 'POST',
+//         headers: {
+//           'Authorization': `Bearer ${token}`,
+//           'Content-Type': 'application/json'
+//         },
+//         body: JSON.stringify(data)
+//       }
+//     );
+//     if (!response.ok) {
+//       const errorData = await response.json();
+//       throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+//     }
+//     return await response.json();
+//   } catch (error) {
+//     console.error('API Error - processCancellationApproval:', error);
+//     throw error;
+//   }
+// };
+
+// getCancellationRequests: async () => {
+//   try {
+//     const token = localStorage.getItem('token');
+//     const response = await fetch(`${API_BASE_URL}/purchase-requisitions/cancellation-requests`, {
+//       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+//     });
+//     if (!response.ok) {
+//       const errorData = await response.json();
+//       throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+//     }
+//     return await response.json();
+//   } catch (error) {
+//     console.error('API Error - getCancellationRequests:', error);
+//     throw error;
+//   }
+// };
+
   // Load clarification history when viewing requisition
   const loadClarificationHistory = async (requisitionId) => {
     try {
@@ -615,6 +681,44 @@ const EnhancedSupplyChainRequisitionManagement = () => {
       console.error('Error loading clarification history:', error);
     }
   };
+
+  const handleCancellationDecision = async (decision) => {
+  if (!cancellationComments || cancellationComments.trim().length < 5) {
+    message.error('Please provide a comment (minimum 5 characters)');
+    return;
+  }
+
+  Modal.confirm({
+    title: `Confirm Cancellation ${decision === 'approved' ? 'Approval' : 'Rejection'}`,
+    content: decision === 'approved'
+      ? 'Approving will forward the cancellation to the next level in the chain.'
+      : 'Rejecting will restore the PR to its previous active status immediately.',
+    onOk: async () => {
+      setCancellationActionLoading(true);
+      try {
+        const response = await apiService.processCancellationApproval(
+          selectedRequisition._id,
+          { decision, comments: cancellationComments.trim() }
+        );
+        if (response.success) {
+          message.success(response.message);
+          setDetailDrawerVisible(false);
+          setSelectedRequisition(null);
+          setCancellationComments('');
+          await fetchRequisitions();
+          await fetchCancellationRequests();
+        } else {
+          message.error(response.message || 'Failed to process cancellation');
+        }
+      } catch (error) {
+        message.error(error.message || 'Failed to process cancellation');
+      } finally {
+        setCancellationActionLoading(false);
+      }
+    }
+  });
+};
+
 
   // View Details Handler
   const handleViewDetails = (requisition) => {
@@ -693,20 +797,23 @@ const EnhancedSupplyChainRequisitionManagement = () => {
 
   // ✅ UPDATED: Filter requisitions by tab
   const getFilteredRequisitions = () => {
-    switch (activeTab) {
-      case 'pending':
-        return requisitions.filter(r => r.status === 'pending_supply_chain_review');
-      case 'assigned':
-        return requisitions.filter(r => r.status === 'pending_head_approval');
-      case 'approved':
-        return requisitions.filter(r => ['approved', 'in_procurement'].includes(r.status));
-      case 'completed':
-        return requisitions.filter(r => ['procurement_complete', 'delivered'].includes(r.status));
-      case 'rejected':
-        return requisitions.filter(r => r.status === 'supply_chain_rejected');
-      default:
-        return requisitions;
+    if (activeTab === 'pending') {
+      return requisitions.filter(r => r.status === 'pending_supply_chain_review');
     }
+    if (activeTab === 'assigned') {
+      return requisitions.filter(r => r.status === 'pending_head_approval');
+    }
+    if (activeTab === 'approved') {
+      // Show both 'approved' and 'in_procurement' statuses
+      return requisitions.filter(r => ['approved', 'in_procurement'].includes(r.status));
+    }
+    if (activeTab === 'completed') {
+      return requisitions.filter(r => ['procurement_complete', 'delivered'].includes(r.status));
+    }
+    if (activeTab === 'rejected') {
+      return requisitions.filter(r => r.status === 'supply_chain_rejected');
+    }
+    return requisitions;
   };
 
   // Table columns
@@ -785,31 +892,25 @@ const EnhancedSupplyChainRequisitionManagement = () => {
       title: 'Assignment',
       key: 'assignment',
       render: (_, record) => {
-        if (record.supplyChainReview?.assignedBuyer) {
-          const buyer = availableBuyers.find(b => b._id === record.supplyChainReview.assignedBuyer) ||
-                       { fullName: 'Assigned Buyer' };
-          return (
-            <div>
-              <div>
+        const buyer = record.assignedBuyer || (record.supplyChainReview?.assignedBuyer ? availableBuyers.find(b => b._id === record.supplyChainReview.assignedBuyer) : null);
+        return (
+          <div>
+            {buyer ? (
+              <>
                 <Avatar size="small" icon={<UserOutlined />} />
-                <Text style={{ marginLeft: 8 }}>
-                  {buyer.fullName}
-                </Text>
-              </div>
-              {record.supplyChainReview.sourcingType && (
-                <div style={{ marginTop: '4px' }}>
-                  {getSourcingTypeTag(record.supplyChainReview.sourcingType)}
-                </div>
-              )}
-              {record.paymentMethod && (
-                <div style={{ marginTop: '4px' }}>
-                  {getPaymentMethodTag(record.paymentMethod)}
-                </div>
-              )}
-            </div>
-          );
-        }
-        return <Text type="secondary">Not assigned</Text>;
+                <Text style={{ marginLeft: 8 }}>{buyer.fullName || buyer.name}</Text>
+                <br />
+                {buyer.email && <Text type="secondary" style={{ fontSize: '12px' }}>{buyer.email}</Text>}
+              </>
+            ) : <Text type="secondary">Not assigned</Text>}
+            {record.paymentMethod && (
+              <div style={{ marginTop: '4px' }}>{getPaymentMethodTag(record.paymentMethod)}</div>
+            )}
+            {record.financeVerification?.budgetCode && (
+              <div style={{ marginTop: '4px' }}><Tag color="purple">{record.financeVerification.budgetCode}</Tag></div>
+            )}
+          </div>
+        );
       },
       width: 180
     },
@@ -851,7 +952,8 @@ const EnhancedSupplyChainRequisitionManagement = () => {
     assigned: requisitions.filter(r => r.status === 'pending_head_approval').length,
     approved: requisitions.filter(r => ['approved', 'in_procurement'].includes(r.status)).length,
     completed: requisitions.filter(r => ['procurement_complete', 'delivered'].includes(r.status)).length,
-    rejected: requisitions.filter(r => r.status === 'supply_chain_rejected').length
+    rejected: requisitions.filter(r => r.status === 'supply_chain_rejected').length,
+    cancellations: cancellationRequests.length,
   };
 
   return (
@@ -1069,6 +1171,32 @@ const EnhancedSupplyChainRequisitionManagement = () => {
               scroll={{ x: 'max-content' }}
             />
           </Tabs.TabPane>
+          <Tabs.TabPane
+  tab={
+    <Badge count={stats.cancellations} size="small">
+      <span><StopOutlined /> Cancellation Requests ({stats.cancellations})</span>
+    </Badge>
+  }
+  key="cancellations"
+>
+  {cancellationLoading ? (
+    <div style={{ textAlign: 'center', padding: '40px' }}><Spin /></div>
+  ) : cancellationRequests.length === 0 ? (
+    <Empty
+      description="No cancellation requests awaiting your decision"
+      image={Empty.PRESENTED_IMAGE_SIMPLE}
+    />
+  ) : (
+    <Table
+      columns={columns}
+      dataSource={cancellationRequests}
+      rowKey="_id"
+      loading={cancellationLoading}
+      pagination={{ pageSize: 10 }}
+      scroll={{ x: 'max-content' }}
+    />
+  )}
+</Tabs.TabPane>
         </Tabs>
       </Card>
 
@@ -1179,6 +1307,69 @@ const EnhancedSupplyChainRequisitionManagement = () => {
                 title="📎 Submitted Attachments"
               />
             )}
+
+            {selectedRequisition.status === 'pending_cancellation' && selectedRequisition.cancellationRequest && (
+              <Card
+                size="small"
+                title={
+                  <Space>
+                    <StopOutlined style={{ color: '#ff4d4f' }} />
+                    <Text strong style={{ color: '#ff4d4f' }}>Cancellation Request</Text>
+                  </Space>
+                }
+                style={{ marginBottom: '16px', borderColor: '#ff4d4f' }}
+                headStyle={{ backgroundColor: '#fff2f0' }}
+              >
+                <Descriptions column={2} size="small" style={{ marginBottom: '12px' }}>
+                  <Descriptions.Item label="Requested On">
+                    {new Date(selectedRequisition.cancellationRequest.requestedAt).toLocaleString('en-GB')}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Status When Requested">
+                    <Tag>{selectedRequisition.cancellationRequest.previousStatus?.replace(/_/g, ' ')}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Reason" span={2}>
+                    <Text italic>"{selectedRequisition.cancellationRequest.reason}"</Text>
+                  </Descriptions.Item>
+                </Descriptions>
+
+                <Divider style={{ margin: '8px 0' }} />
+                <Text strong style={{ fontSize: '12px', color: '#666' }}>Approval Chain Progress</Text>
+                <Timeline style={{ marginTop: '12px', marginBottom: 0 }}>
+                  {selectedRequisition.cancellationRequest.approvalChain?.map((step, i) => (
+                    <Timeline.Item
+                      key={i}
+                      color={step.status === 'approved' ? 'green' : step.status === 'rejected' ? 'red' : 'gray'}
+                      dot={
+                        step.status === 'approved' ? <CheckCircleOutlined /> :
+                        step.status === 'rejected' ? <CloseCircleOutlined /> :
+                        <ClockCircleOutlined />
+                      }
+                    >
+                      <Text strong>Level {step.level}: {step.approver.name}</Text>
+                      &nbsp;
+                      <Text type="secondary" style={{ fontSize: '12px' }}>({step.approver.role})</Text>
+                      <br />
+                      <Tag
+                        color={step.status === 'approved' ? 'green' : step.status === 'rejected' ? 'red' : 'default'}
+                      >
+                        {step.status.toUpperCase()}
+                      </Tag>
+                      {step.comments && (
+                        <Text type="secondary" italic style={{ marginLeft: 8 }}>
+                          "{step.comments}"
+                        </Text>
+                      )}
+                      {step.actionDate && (
+                        <Text type="secondary" style={{ fontSize: '11px', display: 'block' }}>
+                          {new Date(step.actionDate).toLocaleDateString('en-GB')}
+                        </Text>
+                      )}
+                    </Timeline.Item>
+                  ))}
+                </Timeline>
+              </Card>
+            )}
+
 
             {/* Business Justification */}
             <Card size="small" title="Business Justification" style={{ marginBottom: '16px' }}>
@@ -1439,6 +1630,75 @@ const EnhancedSupplyChainRequisitionManagement = () => {
                 </Form>
               </Card>
             )}
+
+            {selectedRequisition.status === 'pending_cancellation' && (() => {
+  const chain = selectedRequisition.cancellationRequest?.approvalChain || [];
+  // Find supply chain coordinator's step — match by email not available here,
+  // so we rely on the GET /cancellation-requests endpoint having already
+  // filtered to only actionable PRs. Just check if ANY step is pending at
+  // a level that matches supply chain (we confirm the user can act via
+  // the server-side check on submit).
+  const hasPendingStep = chain.some(s => s.status === 'pending');
+  if (!hasPendingStep) return null;
+
+  return (
+    <Card
+      size="small"
+      title={
+        <Space>
+          <StopOutlined style={{ color: '#ff4d4f' }} />
+          <Text strong>Cancellation Decision — Your Action Required</Text>
+        </Space>
+      }
+      style={{ marginBottom: '16px', borderColor: '#ff4d4f' }}
+      headStyle={{ backgroundColor: '#fff2f0' }}
+    >
+      <Alert
+        message="This employee has requested to cancel their purchase requisition"
+        description={
+          <span>
+            <strong>Reason:</strong> "{selectedRequisition.cancellationRequest?.reason}"
+          </span>
+        }
+        type="warning"
+        showIcon
+        style={{ marginBottom: '16px' }}
+      />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div>
+          <Text strong style={{ display: 'block', marginBottom: '8px' }}>Your Comments *</Text>
+          <TextArea
+            rows={3}
+            placeholder="Provide your reason for approving or rejecting the cancellation..."
+            value={cancellationComments}
+            onChange={e => setCancellationComments(e.target.value)}
+            showCount
+            maxLength={300}
+          />
+        </div>
+        <Space>
+          <Button
+            type="primary"
+            danger
+            icon={<CheckCircleOutlined />}
+            loading={cancellationActionLoading}
+            onClick={() => handleCancellationDecision('approved')}
+          >
+            Approve Cancellation
+          </Button>
+          <Button
+            icon={<CloseCircleOutlined />}
+            loading={cancellationActionLoading}
+            onClick={() => handleCancellationDecision('rejected')}
+          >
+            Reject — Keep PR Active
+          </Button>
+        </Space>
+      </div>
+    </Card>
+  );
+})()}
 
             {/* ✅ UPDATED: Assignment Details (for completed assignments) */}
             {selectedRequisition.supplyChainReview?.assignedBuyer && (

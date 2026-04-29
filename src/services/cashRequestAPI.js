@@ -1,8 +1,7 @@
 import axios from 'axios';
 import { store } from '../store/store';
 
-// Fix the typo in the environment variable name
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
 console.log('API Base URL configured:', API_BASE_URL);
 
@@ -19,18 +18,18 @@ api.interceptors.request.use(
   (config) => {
     const state = store.getState();
     const token = state.auth.token;
-    
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    
+
     console.log('API Request:', {
       method: config.method,
       url: config.url,
       baseURL: config.baseURL,
       fullURL: `${config.baseURL}${config.url}`
     });
-    
+
     return config;
   },
   (error) => {
@@ -56,7 +55,7 @@ api.interceptors.response.use(
       message: error.message,
       data: error.response?.data
     });
-    
+
     if (error.response?.status === 401) {
       // store.dispatch(logout());
     }
@@ -64,9 +63,10 @@ api.interceptors.response.use(
   }
 );
 
+// ─────────────────────────────────────────────────────────────
 // Projects API
+// ─────────────────────────────────────────────────────────────
 export const projectsAPI = {
-  // Get active projects
   getActiveProjects: async () => {
     try {
       console.log('=== CALLING GET ACTIVE PROJECTS ===');
@@ -78,7 +78,6 @@ export const projectsAPI = {
     }
   },
 
-  // Get all projects
   getAllProjects: async (params = {}) => {
     try {
       const response = await api.get('/projects', { params });
@@ -89,7 +88,6 @@ export const projectsAPI = {
     }
   },
 
-  // Get project by ID
   getProjectById: async (projectId) => {
     try {
       const response = await api.get(`/projects/${projectId}`);
@@ -100,7 +98,6 @@ export const projectsAPI = {
     }
   },
 
-  // Create project
   createProject: async (projectData) => {
     try {
       const response = await api.post('/projects', projectData);
@@ -111,7 +108,6 @@ export const projectsAPI = {
     }
   },
 
-  // Update project
   updateProject: async (projectId, projectData) => {
     try {
       const response = await api.put(`/projects/${projectId}`, projectData);
@@ -123,9 +119,10 @@ export const projectsAPI = {
   }
 };
 
+// ─────────────────────────────────────────────────────────────
 // Budget Codes API
+// ─────────────────────────────────────────────────────────────
 export const budgetCodesAPI = {
-  // Get available budget codes
   getAvailableBudgetCodes: async () => {
     try {
       console.log('=== CALLING GET AVAILABLE BUDGET CODES ===');
@@ -137,7 +134,6 @@ export const budgetCodesAPI = {
     }
   },
 
-  // Get all budget codes
   getAllBudgetCodes: async (params = {}) => {
     try {
       const response = await api.get('/budget-codes', { params });
@@ -148,7 +144,6 @@ export const budgetCodesAPI = {
     }
   },
 
-  // Get budget code by ID
   getBudgetCodeById: async (codeId) => {
     try {
       const response = await api.get(`/budget-codes/${codeId}`);
@@ -159,7 +154,6 @@ export const budgetCodesAPI = {
     }
   },
 
-  // Create budget code
   createBudgetCode: async (budgetCodeData) => {
     try {
       const response = await api.post('/budget-codes', budgetCodeData);
@@ -170,7 +164,6 @@ export const budgetCodesAPI = {
     }
   },
 
-  // Update budget code
   updateBudgetCode: async (codeId, budgetCodeData) => {
     try {
       const response = await api.put(`/budget-codes/${codeId}`, budgetCodeData);
@@ -182,42 +175,31 @@ export const budgetCodesAPI = {
   }
 };
 
+// ─────────────────────────────────────────────────────────────
 // Cash Requests API
+// ─────────────────────────────────────────────────────────────
 export const cashRequestAPI = {
-  // Employee functions
+
+  // ── Employee ──────────────────────────────────────────────
+
   create: async (formData) => {
     console.log('API: Creating cash request...');
-    console.log('FormData entries:');
-    
-    // Debug FormData contents
-    for (let pair of formData.entries()) {
-      if (pair[1] instanceof File) {
-        console.log(`${pair[0]}: File - ${pair[1].name} (${pair[1].size} bytes)`);
-      } else {
-        console.log(`${pair[0]}:`, pair[1]);
-      }
+    for (let [key, val] of formData.entries()) {
+      console.log(val instanceof File ? `${key}: File - ${val.name} (${val.size} bytes)` : `${key}:`, val);
     }
-
-    const config = {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      timeout: 60000, 
-    };
-    
     try {
-      const response = await api.post('/cash-requests', formData, config);
+      const response = await api.post('/cash-requests', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000,
+      });
       console.log('API: Cash request created successfully:', response.data);
       return response.data;
     } catch (error) {
       console.error('API: Error creating cash request:', error);
-      
       if (error.response) {
         console.error('Response status:', error.response.status);
         console.error('Response data:', error.response.data);
-        console.error('Response headers:', error.response.headers);
       }
-      
       throw error;
     }
   },
@@ -262,7 +244,8 @@ export const cashRequestAPI = {
     }
   },
 
-  // Supervisor functions
+  // ── Supervisor ────────────────────────────────────────────
+
   getSupervisorRequests: async (params = {}) => {
     try {
       const response = await api.get('/cash-requests/supervisor', { params });
@@ -303,17 +286,19 @@ export const cashRequestAPI = {
     }
   },
 
+  // FIX: was calling response.json() which doesn't exist on an axios response
   getSupervisorJustification: async (requestId) => {
     try {
-       const response = await api.get(`/cash-requests/${requestId}`);
-      return await response.json();
+      const response = await api.get(`/cash-requests/${requestId}`);
+      return response.data; // axios already parses JSON — never call .json() on it
     } catch (error) {
       console.error('Error fetching justification:', error);
       throw error;
     }
   },
 
-  // Finance functions  
+  // ── Finance ───────────────────────────────────────────────
+
   getFinanceRequests: async (params = {}) => {
     try {
       const response = await api.get('/cash-requests/finance', { params });
@@ -324,24 +309,20 @@ export const cashRequestAPI = {
     }
   },
 
-
   processFinanceDecision: async (requestId, decision) => {
     try {
       console.log('=== API SERVICE: processFinanceDecision ===');
       console.log('Request ID:', requestId);
       console.log('Decision payload:', JSON.stringify(decision, null, 2));
 
-      // Validate payload before sending
       if (!decision.decision) {
         throw new Error('Decision is required (approved or rejected)');
       }
-
       if (decision.decision === 'approved' && !decision.budgetCodeId) {
         throw new Error('Budget code is required for approval');
       }
 
       const response = await api.put(`/cash-requests/${requestId}/finance`, decision);
-      
       console.log('API Response:', response.data);
       return response.data;
     } catch (error) {
@@ -371,7 +352,8 @@ export const cashRequestAPI = {
     }
   },
 
-  // Admin functions
+  // ── Admin ─────────────────────────────────────────────────
+
   getAllRequests: async (params = {}) => {
     try {
       const response = await api.get('/cash-requests/admin', { params });
@@ -392,40 +374,26 @@ export const cashRequestAPI = {
     }
   },
 
-  // Justification functions
+  // ── Justification ─────────────────────────────────────────
+
   submitJustification: async (requestId, formData) => {
     console.log('API: Submitting justification...');
-    console.log('FormData entries:');
-    
-    // Debug FormData contents
-    for (let pair of formData.entries()) {
-      if (pair[1] instanceof File) {
-        console.log(`${pair[0]}: File - ${pair[1].name} (${pair[1].size} bytes)`);
-      } else {
-        console.log(`${pair[0]}:`, pair[1]);
-      }
+    for (let [key, val] of formData.entries()) {
+      console.log(val instanceof File ? `${key}: File - ${val.name} (${val.size} bytes)` : `${key}:`, val);
     }
-
-    const config = {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      timeout: 60000,
-    };
-    
     try {
-      const response = await api.post(`/cash-requests/${requestId}/justification`, formData, config);
+      const response = await api.post(`/cash-requests/${requestId}/justification`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000,
+      });
       console.log('API: Justification submitted successfully:', response.data);
       return response.data;
     } catch (error) {
       console.error('API: Error submitting justification:', error);
-      
       if (error.response) {
         console.error('Response status:', error.response.status);
         console.error('Response data:', error.response.data);
-        console.error('Response headers:', error.response.headers);
       }
-      
       throw error;
     }
   },
@@ -440,123 +408,56 @@ export const cashRequestAPI = {
     }
   },
 
-  // // Create reimbursement request
-  // createReimbursement: async (formData) => {
-  //   return api.post('/cash-requests/reimbursement', formData, {
-  //     headers: {
-  //       'Content-Type': 'multipart/form-data'
-  //     }
-  //   });
-  // },
+  // ── Reimbursement ─────────────────────────────────────────
 
+  // FIX 1: Removed duplicate definition that used wrong '/api/cash-requests/reimbursement' path.
+  //         The baseURL is already 'http://localhost:5001/' so prepending /api/ again
+  //         produced http://localhost:5001/api/api/cash-requests/reimbursement → 404.
+  // FIX 2: There was only ONE correct definition; the bad one overwrote it in JS object
+  //         literal evaluation (last key wins). Now there is exactly one definition.
   createReimbursementRequest: async (formData) => {
-  console.log('API: Creating reimbursement request...');
-  console.log('FormData entries:');
-  
-  // Debug FormData contents
-  for (let pair of formData.entries()) {
-    if (pair[1] instanceof File) {
-      console.log(`${pair[0]}: File - ${pair[1].name} (${pair[1].size} bytes)`);
-    } else {
-      console.log(`${pair[0]}:`, pair[1]);
+    console.log('API: Creating reimbursement request...');
+    for (let [key, val] of formData.entries()) {
+      console.log(val instanceof File ? `${key}: File - ${val.name} (${val.size} bytes)` : `${key}:`, val);
     }
-  }
+    try {
+      const response = await api.post('/cash-requests/reimbursement', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000,
+      });
+      console.log('API: Reimbursement request created successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('API: Error creating reimbursement request:', error);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', error.response.data);
+      }
+      throw error;
+    }
+  },
 
-  const config = {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-    timeout: 60000,
-  };
-  
-  try {
-    const response = await api.post('/api/cash-requests/reimbursement', formData, config);
-    console.log('API: Reimbursement request created successfully:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('API: Error creating reimbursement request:', error);
-    
-    if (error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
-      console.error('Response headers:', error.response.headers);
+  // FIX: Simplified — was wrapping response.data in an extra object unnecessarily
+  getReimbursementLimitStatus: async () => {
+    try {
+      console.log('API: Fetching reimbursement limit status...');
+      const response = await api.get('/cash-requests/reimbursement/limit-status');
+      return response.data;
+    } catch (error) {
+      console.error('API: Error fetching reimbursement limit status:', error);
+      if (error.response?.status === 401) {
+        throw new Error('Authentication required. Please login again.');
+      }
+      throw error;
     }
-    
-    throw error;
-  }
-},
+  },
 
- getReimbursementLimitStatus: async () => {
-  try {
-    console.log('API: Fetching reimbursement limit status...');
-    const response = await api.get('/cash-requests/reimbursement/limit-status');
-    
-    console.log('API Response:', response);
-    
-    // Handle different response structures
-    if (response.data) {
-      return response.data.success 
-        ? response.data 
-        : { success: true, data: response.data };
-    }
-    
-    return response;
-  } catch (error) {
-    console.error('API: Error fetching reimbursement limit status:', error);
-    
-    // Provide helpful error context
-    if (error.response?.status === 401) {
-      throw new Error('Authentication required. Please login again.');
-    }
-    
-    throw error;
-  }
-},
+  // ── Analytics / Reporting ─────────────────────────────────
 
-// ✅ Fixed method - consistent with create method
-createReimbursementRequest: async (formData) => {
-  console.log('API: Creating reimbursement request...');
-  console.log('FormData entries:');
-  
-  // Debug FormData contents
-  for (let pair of formData.entries()) {
-    if (pair[1] instanceof File) {
-      console.log(`${pair[0]}: File - ${pair[1].name} (${pair[1].size} bytes)`);
-    } else {
-      console.log(`${pair[0]}:`, pair[1]);
-    }
-  }
-
-  const config = {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-    timeout: 60000,
-  };
-  
-  try {
-    const response = await api.post('/cash-requests/reimbursement', formData, config);
-    console.log('API: Reimbursement request created successfully:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('API: Error creating reimbursement request:', error);
-    
-    if (error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
-      console.error('Response headers:', error.response.headers);
-    }
-    
-    throw error;
-  }
-},
-
-  // Get finance reports data
   getFinanceReportsData: async (filters) => {
     return api.get('/cash-requests/reports/analytics', { params: filters });
   },
 
-  // Analytics and reporting
   getStats: async (params = {}) => {
     try {
       const response = await api.get('/cash-requests/analytics/statistics', { params });
@@ -577,7 +478,6 @@ createReimbursementRequest: async (formData) => {
     }
   },
 
-  // Approval chain preview
   getApprovalChainPreview: async (employeeName, department) => {
     try {
       const response = await api.post('/cash-requests/preview-approval-chain', {
@@ -591,15 +491,14 @@ createReimbursementRequest: async (formData) => {
     }
   },
 
+  // ── File helpers ──────────────────────────────────────────
+
   downloadAttachment: async (publicId) => {
     try {
-      console.log('API: Downloading file with publicId:', publicId);
-      
       const response = await api.get(
         `/files/download/${encodeURIComponent(publicId)}`,
         { responseType: 'blob' }
       );
-      
       return response.data;
     } catch (error) {
       console.error('API: Error downloading attachment:', error);
@@ -607,16 +506,12 @@ createReimbursementRequest: async (formData) => {
     }
   },
 
-
   viewAttachment: async (publicId) => {
     try {
-      console.log('API: Viewing file with publicId:', publicId);
-      
       const response = await api.get(
         `/files/view/${encodeURIComponent(publicId)}`,
         { responseType: 'blob' }
       );
-      
       return response.data;
     } catch (error) {
       console.error('API: Error viewing attachment:', error);
@@ -633,6 +528,8 @@ createReimbursementRequest: async (formData) => {
       throw error;
     }
   },
+
+  // ── Approvals ─────────────────────────────────────────────
 
   getAdminApprovals: async (params = {}) => {
     try {
@@ -654,10 +551,12 @@ createReimbursementRequest: async (formData) => {
     }
   },
 
+  // ── PDF / Disbursements ───────────────────────────────────
+
   generateRequestPDF: async (requestId) => {
     try {
       const response = await api.get(`/cash-requests/${requestId}/pdf`, {
-        responseType: 'blob' 
+        responseType: 'blob'
       });
       return response;
     } catch (error) {
@@ -666,7 +565,6 @@ createReimbursementRequest: async (formData) => {
     }
   },
 
-  // Process disbursement
   processDisbursement: async (requestId, data) => {
     try {
       const response = await api.post(`/cash-requests/${requestId}/disburse`, data);
@@ -677,7 +575,6 @@ createReimbursementRequest: async (formData) => {
     }
   },
 
-  // Get disbursement history
   getDisbursementHistory: async (requestId) => {
     try {
       const response = await api.get(`/cash-requests/${requestId}/disbursements`);
@@ -688,7 +585,6 @@ createReimbursementRequest: async (formData) => {
     }
   },
 
-  // Get pending disbursements (Finance Dashboard)
   getPendingDisbursements: async () => {
     try {
       const response = await api.get('/cash-requests/finance/pending-disbursements');
@@ -700,12 +596,4 @@ createReimbursementRequest: async (formData) => {
   },
 };
 
-// Default export
 export default api;
-
-
-
-
-
-
-

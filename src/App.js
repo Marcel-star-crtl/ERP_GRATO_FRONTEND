@@ -85,6 +85,7 @@ import SupervisorKPIApprovals from './pages/supervisor/SupervisorKPIApprovals';
 import SupervisorBehavioralEvaluation from './pages/supervisor/SupervisorBehavioralEvaluation';
 import SupervisorQuarterlyEvaluation from './pages/supervisor/SupervisorQuarterlyEvaluation';
 import SupervisorPOApprovals from './pages/supervisor/SupervisorPOApprovals';
+import SupervisorTenderApprovals from './pages/supervisor/SupervisorTenderApprovals';
 import DebitNoteApprovals from './pages/supervisor/DebitNoteApprovals';
 
 // Finance components
@@ -149,6 +150,7 @@ import BuyerProcurementTasks from './pages/buyer/BuyerProcurementTasks';
 import BuyerQuoteManagement from './pages/buyer/BuyerQuoteManagement';
 import BuyerSupplierManagement from './pages/buyer/BuyerSupplierManagement';
 import BuyerPurchaseOrders from './pages/buyer/BuyerPurchaseOrders';
+import BuyerTenderManagement from './pages/buyer/BuyerTenderManagement';
 import BuyerDeliveryTracking from './pages/buyer/BuyerDeliveryTracking';
 import BuyerPerformanceAnalytics from './pages/buyer/BuyerPerformanceAnalytics';
 import PettyCashForms from './pages/buyer/PettyCashDashboard';
@@ -450,7 +452,7 @@ const AppRoutes = () => {
         <Route 
           path="/supervisor" 
           element={
-            <EnhancedProtectedRoute allowedRoles={['supervisor', 'finance', 'hr', 'it', 'supply_chain', 'project', 'buyer', 'admin', 'technical', 'manager', 'hse']}>
+            <EnhancedProtectedRoute requiredRoles={['supervisor', 'finance', 'hr', 'it', 'supply_chain', 'project', 'buyer', 'admin', 'technical', 'manager', 'hse']}>
               <PettyCashLayout />
             </EnhancedProtectedRoute>
           }
@@ -515,6 +517,7 @@ const AppRoutes = () => {
 
           {/* Purchase Order Approvals */}
           <Route path="po-approvals" element={<SupervisorPOApprovals />} />
+          <Route path="tender-approvals" element={<SupervisorTenderApprovals />} />
           <Route path="purchase-order-approvals" element={<SupervisorPOApprovals />} />
           <Route path="po-approvals/:poId" element={<RequestDetails />} />
 
@@ -558,6 +561,10 @@ const AppRoutes = () => {
           <Route path="suppliers/:supplierId/performance" element={<BuyerSupplierManagement />} />
           <Route path="suppliers/:supplierId/communication" element={<BuyerSupplierManagement />} />
           <Route path="purchase-orders" element={<BuyerPurchaseOrders />} />
+          <Route path="tenders" element={<BuyerTenderManagement />} />
+          <Route path="tenders/:tenderId" element={<RequestDetails />} />
+          <Route path="tenders/:tenderId/evaluate" element={<BuyerTenderManagement />} />
+          <Route path="tenders/:tenderId/compare" element={<BuyerTenderManagement />} />
           <Route path="purchase-orders/new" element={<BuyerPurchaseOrders />} />
           <Route path="purchase-orders/:poId" element={<RequestDetails />} />
           <Route path="purchase-orders/:poId/edit" element={<BuyerPurchaseOrders />} />

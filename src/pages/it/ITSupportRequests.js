@@ -136,9 +136,18 @@ const ITSupportRequests = () => {
           comments: values.internalNotes || values.resolution
         });
       } else if (user.role === 'it') {
+        let decision;
+        if (["approved", "it_approved", "it_assigned", "in_progress", "waiting_parts"].includes(values.status)) {
+          decision = 'approved';
+        } else if (["rejected", "it_rejected"].includes(values.status)) {
+          decision = 'rejected';
+        } else if (values.status === 'resolved') {
+          decision = 'resolved';
+        } else {
+          decision = values.status; // fallback
+        }
         response = await itSupportAPI.processITDepartmentDecision(selectedRequest._id, {
-          decision: values.status === 'approved' ? 'approved' : 
-                   values.status === 'rejected' ? 'rejected' : 'approved',
+          decision,
           comments: values.internalNotes || values.resolution,
           estimatedCost: values.estimatedCost,
           technicianId: values.assignedTo,

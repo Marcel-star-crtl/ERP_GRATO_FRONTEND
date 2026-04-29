@@ -1227,63 +1227,7 @@ const BuyerRequisitionPortal = () => {
                   </Row>
                 </Card>
 
-                <Card size="small" title="Evaluation Criteria" style={{ marginBottom: '16px' }}>
-                  <Alert
-                    message="Evaluation Weights"
-                    description="Set the importance weights for each evaluation criterion. Total must equal 100%."
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: '16px' }}
-                  />
-                  
-                  <Row gutter={[16, 16]}>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['evaluationCriteria', 'quality']}
-                        label="Quality Weight (%)"
-                        rules={[{ required: true, message: 'Please set quality weight' }]}
-                      >
-                        <InputNumber 
-                          min={0} 
-                          max={100} 
-                          style={{ width: '100%' }}
-                          formatter={value => `${value}%`}
-                          parser={value => value.replace('%', '')}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['evaluationCriteria', 'cost']}
-                        label="Cost Weight (%)"
-                        rules={[{ required: true, message: 'Please set cost weight' }]}
-                      >
-                        <InputNumber 
-                          min={0} 
-                          max={100} 
-                          style={{ width: '100%' }}
-                          formatter={value => `${value}%`}
-                          parser={value => value.replace('%', '')}
-                        />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item
-                        name={['evaluationCriteria', 'delivery']}
-                        label="Delivery Weight (%)"
-                        rules={[{ required: true, message: 'Please set delivery weight' }]}
-                      >
-                        <InputNumber 
-                          min={0} 
-                          max={100} 
-                          style={{ width: '100%' }}
-                          formatter={value => `${value}%`}
-                          parser={value => value.replace('%', '')}
-                        />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                </Card>
+                {/* Evaluation Criteria removed as per requirements */}
 
                 <Card size="small" title="Additional Requirements" style={{ marginBottom: '16px' }}>
                   <Form.Item

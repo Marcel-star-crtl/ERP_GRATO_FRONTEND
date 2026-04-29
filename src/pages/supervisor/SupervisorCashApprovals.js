@@ -908,8 +908,27 @@ const SupervisorCashApprovals = () => {
               </Tag>
             )}
           </div>
-          <Text strong>XAF {(record.amountRequested || 0).toLocaleString()}</Text>
-          <br />
+          {/* Show reimbursement breakdown if reimbursement */}
+          {record.requestMode === 'reimbursement' ? (
+            <>
+              <Text strong>Advance Received: </Text>
+              <Text>XAF {(record.advanceReceived || 0).toLocaleString()}</Text>
+              <br />
+              <Text strong>Amount Spent: </Text>
+              <Text>XAF {(record.amountSpent || 0).toLocaleString()}</Text>
+              <br />
+              <Text strong>Reimbursement Due: </Text>
+              <Text type={((record.amountSpent || 0) - (record.advanceReceived || 0)) > 0 ? 'danger' : 'success'}>
+                XAF {((record.amountSpent || 0) - (record.advanceReceived || 0)).toLocaleString()}
+              </Text>
+              <br />
+            </>
+          ) : (
+            <>
+              <Text strong>XAF {(record.amountRequested || 0).toLocaleString()}</Text>
+              <br />
+            </>
+          )}
           <Text type="secondary" style={{ fontSize: '12px' }}>
             Type: {record.requestType?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'N/A'}
           </Text>
@@ -1459,7 +1478,22 @@ const SupervisorCashApprovals = () => {
                 {getUrgencyTag(selectedRequest.urgency)}
               </Descriptions.Item>
               <Descriptions.Item label="Amount Requested">
-                <Text strong>XAF {(selectedRequest.amountRequested || 0).toLocaleString()}</Text>
+                {selectedRequest.requestMode === 'reimbursement' ? (
+                  <span>
+                    <Text strong>Advance Received: </Text>
+                    <Text>XAF {(selectedRequest.advanceReceived || 0).toLocaleString()}</Text>
+                    <br />
+                    <Text strong>Amount Spent: </Text>
+                    <Text>XAF {(selectedRequest.amountSpent || 0).toLocaleString()}</Text>
+                    <br />
+                    <Text strong>Reimbursement Due: </Text>
+                    <Text type={((selectedRequest.amountSpent || 0) - (selectedRequest.advanceReceived || 0)) > 0 ? 'danger' : 'success'}>
+                      XAF {((selectedRequest.amountSpent || 0) - (selectedRequest.advanceReceived || 0)).toLocaleString()}
+                    </Text>
+                  </span>
+                ) : (
+                  <Text strong>XAF {(selectedRequest.amountRequested || 0).toLocaleString()}</Text>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="Required Date">
                 {selectedRequest.requiredDate ? new Date(selectedRequest.requiredDate).toLocaleDateString('en-GB') : 'N/A'}

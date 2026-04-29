@@ -884,7 +884,61 @@ export const purchaseRequisitionAPI = {
       console.error('Get clarification history error:', error);
       throw error;
     }
-  }
+  },
+
+  
+  /**
+   * Fetch cancellation requests where the current user is the next pending approver
+   */
+  getCancellationRequests: async () => {
+    try {
+      const response = await apiClient.get('/purchase-requisitions/cancellation-requests');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  /**
+   * Process a cancellation approval/rejection as an approver in the chain
+   * @param {string} requisitionId
+   * @param {{ decision: 'approved'|'rejected', comments: string }} data
+   */
+  processCancellationApproval: async (requisitionId, data) => {
+    try {
+      const response = await apiClient.post(
+        `/purchase-requisitions/${requisitionId}/process-cancellation`,
+        data
+      );
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // ── headApprovalAPI.js — Add same two methods ───────────────
+  // Add to the headApprovalAPI service object:
+
+  getCancellationRequests: async () => {
+    try {
+      const response = await apiClient.get('/purchase-requisitions/cancellation-requests');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  processCancellationApproval: async (requisitionId, data) => {
+    try {
+      const response = await apiClient.post(
+        `/purchase-requisitions/${requisitionId}/process-cancellation`,
+        data
+      );
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
 };
 
 export default purchaseRequisitionAPI;

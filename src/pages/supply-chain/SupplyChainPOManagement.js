@@ -570,6 +570,13 @@ const SupplyChainPOManagement = () => {
                       <Text type="secondary" style={{ fontSize: 11 }}>Head: Mrs. Bruiline Tsitoh</Text>
                     </div>
                   </Option>
+                  <Option value="IT">
+                    <div>
+                      <Text strong>IT</Text>
+                      <br />
+                      <Text type="secondary" style={{ fontSize: 11 }}>Head: Marcel Ngong (marcel.ngong@gratoglobal.com)</Text>
+                    </div>
+                  </Option>
                 </Select>
               </Space>
             </Card>

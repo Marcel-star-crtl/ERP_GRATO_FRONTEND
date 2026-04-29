@@ -2,204 +2,141 @@ import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-// Create axios instance with auth token
-const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-});
+const api = axios.create({ baseURL: API_URL, headers: { 'Content-Type': 'application/json' } });
 
-// Add token to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
 const sharepointAPI = {
-  // ============================================
-  // FOLDER OPERATIONS
-  // ============================================
-  
-  createFolder: (data) => api.post('/sharepoint/folders', data),
-  
-  getFolders: (params) => api.get('/sharepoint/folders', { params }),
-  
-  getFolder: (folderId) => api.get(`/sharepoint/folders/${folderId}`),
-  
-  updateFolder: (folderId, data) => api.put(`/sharepoint/folders/${folderId}`, data),
-  
-  deleteFolder: (folderId) => api.delete(`/sharepoint/folders/${folderId}`),
 
-  // ============================================
-  // NEW: FOLDER ACCESS MANAGEMENT
-  // ============================================
-  
-  /**
-   * Invite users to folder
-   * @param {string} folderId 
-   * @param {Object} data - { userEmails: string[], permission: string }
-   */
-  inviteUsersToFolder: (folderId, data) => 
-    api.post(`/sharepoint/folders/${folderId}/invite`, data),
-  
-  /**
-   * Revoke user access from folder
-   * @param {string} folderId 
-   * @param {string} userId 
-   */
-  revokeUserAccess: (folderId, userId) => 
-    api.delete(`/sharepoint/folders/${folderId}/revoke/${userId}`),
-  
-  /**
-   * Block user from folder
-   * @param {string} folderId 
-   * @param {Object} data - { userEmail: string, reason: string }
-   */
-  blockUserFromFolder: (folderId, data) => 
-    api.post(`/sharepoint/folders/${folderId}/block`, data),
-  
-  /**
-   * Unblock user from folder
-   * @param {string} folderId 
-   * @param {string} userId 
-   */
-  unblockUserFromFolder: (folderId, userId) => 
-    api.delete(`/sharepoint/folders/${folderId}/unblock/${userId}`),
-  
-  /**
-   * Get folder access list
-   * @param {string} folderId 
-   */
-  getFolderAccess: (folderId) => 
-    api.get(`/sharepoint/folders/${folderId}/access`),
-  
-  /**
-   * Update user permission in folder
-   * @param {string} folderId 
-   * @param {string} userId 
-   * @param {Object} data - { permission: string }
-   */
-  updateUserPermission: (folderId, userId, data) => 
-    api.patch(`/sharepoint/folders/${folderId}/permission/${userId}`, data),
+  // ── FOLDERS ──────────────────────────────────────────────────────────────────
+  createFolder:  (data)              => api.post('/sharepoint/folders', data),
+  getFolders:    (params)            => api.get('/sharepoint/folders', { params }),
+  getFolder:     (folderId)          => api.get(`/sharepoint/folders/${folderId}`),
+  updateFolder:  (folderId, data)    => api.put(`/sharepoint/folders/${folderId}`, data),
+  deleteFolder:  (folderId)          => api.delete(`/sharepoint/folders/${folderId}`),
 
-  // ============================================
-  // FILE OPERATIONS
-  // ============================================
-  
-  uploadFile: (folderId, formData) => 
-    api.post(`/sharepoint/folders/${folderId}/files`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    }),
-  
-  getFiles: (folderId, params) => 
-    api.get(`/sharepoint/folders/${folderId}/files`, { params }),
-  
-  getFileDetails: (fileId) => 
-    api.get(`/sharepoint/files/${fileId}`),
-  
-  downloadFile: (fileId) => 
-    api.get(`/sharepoint/files/${fileId}/download`, { 
-      responseType: 'blob' 
-    }),
-  
-  deleteFile: (fileId, permanently = false) => 
-    api.delete(`/sharepoint/files/${fileId}`, { 
-      params: { permanently } 
-    }),
+  // ── FOLDER ACCESS ─────────────────────────────────────────────────────────────
+  inviteUsersToFolder:   (folderId, data)   => api.post(`/sharepoint/folders/${folderId}/invite`, data),
+  revokeUserAccess:      (folderId, userId) => api.delete(`/sharepoint/folders/${folderId}/revoke/${userId}`),
+  blockUserFromFolder:   (folderId, data)   => api.post(`/sharepoint/folders/${folderId}/block`, data),
+  unblockUserFromFolder: (folderId, userId) => api.delete(`/sharepoint/folders/${folderId}/unblock/${userId}`),
+  getFolderAccess:       (folderId)         => api.get(`/sharepoint/folders/${folderId}/access`),
+  updateUserPermission:  (folderId, userId, data) => api.patch(`/sharepoint/folders/${folderId}/permission/${userId}`, data),
 
-  // ============================================
-  // FILE SHARING (Enhanced)
-  // ============================================
-  
+  // ── FILES ─────────────────────────────────────────────────────────────────────
+  uploadFile: (folderId, formData) =>
+    api.post(`/sharepoint/folders/${folderId}/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+
+  getFiles:       (folderId, params) => api.get(`/sharepoint/folders/${folderId}/files`, { params }),
+  getFileDetails: (fileId)           => api.get(`/sharepoint/files/${fileId}`),
+  deleteFile:     (fileId, permanently = false) => api.delete(`/sharepoint/files/${fileId}`, { params: { permanently } }),
+
   /**
-   * Share file with user or department
-   * @param {string} fileId 
-   * @param {Object} data - { shareWith: string, permission: string, type: 'user'|'department' }
+   * Download — opens in new tab; works for both local files and Cloudinary.
+   * The server redirects to the Cloudinary URL automatically for cloud-stored files.
    */
-  shareFile: (fileId, data) => 
-    api.post(`/sharepoint/files/${fileId}/share`, data),
-  
-  revokeFileAccess: (fileId, userId) => 
-    api.delete(`/sharepoint/files/${fileId}/access/${userId}`),
-  
+  openFileDownload: async (fileId, fileName = 'download') => {
+    const token = localStorage.getItem('token');
+    
+    const response = await fetch(`${API_URL}/sharepoint/files/${fileId}/download`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) throw new Error('Download failed');
+
+    // Try to get filename from Content-Disposition header if available
+    const disposition = response.headers.get('Content-Disposition');
+    if (disposition) {
+      const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (match?.[1]) fileName = match[1].replace(/['"]/g, '');
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  // ── CHECK-OUT / CHECK-IN ──────────────────────────────────────────────────────
   /**
-   * Generate shareable link for file
-   * @param {string} fileId 
-   * @param {number} expiresIn - Expiration time in seconds
+   * Lock a file for exclusive editing.
+   * @param {string} fileId
+   * @param {string} [note] - Optional note about what you're working on
    */
-  generateShareLink: (fileId, expiresIn = 604800) => 
-    api.post(`/sharepoint/files/${fileId}/share-link`, { expiresIn }),
+  checkoutFile: (fileId, note = '') =>
+    api.post(`/sharepoint/files/${fileId}/checkout`, { note }),
 
-  // ============================================
-  // USER OPERATIONS
-  // ============================================
-  
-  getUserFiles: (params) => 
-    api.get('/sharepoint/my-files', { params }),
-  
-  getUserStats: () => 
-    api.get('/sharepoint/user-stats'),
-  
   /**
-   * Search users for invitation
-   * @param {string} query - Search query
+   * Release the lock. Optionally upload a new version in the same request.
+   * @param {string} fileId
+   * @param {File|null} [newFile] - Optional updated file
+   * @param {string}    [changeNote]
    */
-  searchUsers: (query) => 
-    api.get('/sharepoint/users/search', { params: { q: query } }),
+  checkinFile: (fileId, newFile = null, changeNote = '') => {
+    if (newFile) {
+      const formData = new FormData();
+      formData.append('file', newFile);
+      if (changeNote) formData.append('changeNote', changeNote);
+      return api.post(`/sharepoint/files/${fileId}/checkin`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    }
+    return api.post(`/sharepoint/files/${fileId}/checkin`, { changeNote });
+  },
 
-  // ============================================
-  // SEARCH & DISCOVERY
-  // ============================================
-  
-  globalSearch: (params) => 
-    api.get('/sharepoint/search', { params }),
-  
-  getRecentFiles: (params) => 
-    api.get('/sharepoint/recent', { params }),
+  /** Force-release a lock (admin or checkout owner) */
+  forceCheckin: (fileId) => api.delete(`/sharepoint/files/${fileId}/checkout`),
 
-  // ============================================
-  // BULK OPERATIONS
-  // ============================================
-  
-  bulkUploadFiles: (folderId, formData) => 
-    api.post(`/sharepoint/folders/${folderId}/bulk-upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    }),
+  // ── VERSIONS ──────────────────────────────────────────────────────────────────
+  createFileVersion: (fileId, formData) =>
+    api.post(`/sharepoint/files/${fileId}/version`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 
-  // ============================================
-  // ANALYTICS
-  // ============================================
-  
-  getStorageStats: (params) => 
-    api.get('/sharepoint/stats/storage', { params }),
-  
-  getActivityLog: (params) => 
-    api.get('/sharepoint/stats/activity', { params }),
-  
-  getDepartmentStats: (department) => 
-    api.get(`/sharepoint/stats/department/${department}`),
-  
-  getSharePointDashboardStats: () => 
-    api.get('/sharepoint/dashboard-stats'),
+  getFileVersions:    (fileId)              => api.get(`/sharepoint/files/${fileId}/versions`),
+  restoreFileVersion: (fileId, versionIndex) => api.post(`/sharepoint/files/${fileId}/restore/${versionIndex}`),
 
-  // ============================================
-  // VERSION CONTROL
-  // ============================================
-  
-  createFileVersion: (fileId, formData) => 
-    api.post(`/sharepoint/files/${fileId}/version`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    }),
-  
-  getFileVersions: (fileId) => 
-    api.get(`/sharepoint/files/${fileId}/versions`),
-  
-  restoreFileVersion: (fileId, versionIndex) => 
-    api.post(`/sharepoint/files/${fileId}/restore/${versionIndex}`)
+  // ── COMMENTS ──────────────────────────────────────────────────────────────────
+  addComment:    (fileId, text, versionIndex = null) => api.post(`/sharepoint/files/${fileId}/comments`, { text, versionIndex }),
+  deleteComment: (fileId, commentId)                 => api.delete(`/sharepoint/files/${fileId}/comments/${commentId}`),
+
+  // ── COLLABORATORS ─────────────────────────────────────────────────────────────
+  addCollaborator:    (fileId, userEmail, permission) => api.post(`/sharepoint/files/${fileId}/collaborators`, { userEmail, permission }),
+  removeCollaborator: (fileId, userId)                => api.delete(`/sharepoint/files/${fileId}/collaborators/${userId}`),
+  getFileAuditTrail:  (fileId)                        => api.get(`/sharepoint/files/${fileId}/audit`),
+
+  // ── SHARING ───────────────────────────────────────────────────────────────────
+  shareFile:       (fileId, data)               => api.post(`/sharepoint/files/${fileId}/share`, data),
+  revokeFileAccess:(fileId, userId)             => api.delete(`/sharepoint/files/${fileId}/access/${userId}`),
+  generateShareLink:(fileId, expiresIn = 604800) => api.post(`/sharepoint/files/${fileId}/share-link`, { expiresIn }),
+
+  // ── USER ──────────────────────────────────────────────────────────────────────
+  getUserFiles:   (params) => api.get('/sharepoint/my-files', { params }),
+  getUserStats:   ()       => api.get('/sharepoint/user-stats'),
+  searchUsers:    (query)  => api.get('/sharepoint/users/search', { params: { q: query } }),
+
+  // ── SEARCH ────────────────────────────────────────────────────────────────────
+  globalSearch:   (params) => api.get('/sharepoint/search', { params }),
+  getRecentFiles: (params) => api.get('/sharepoint/recent', { params }),
+
+  // ── BULK ──────────────────────────────────────────────────────────────────────
+  bulkUploadFiles: (folderId, formData) =>
+    api.post(`/sharepoint/folders/${folderId}/bulk-upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+
+  // ── ANALYTICS ─────────────────────────────────────────────────────────────────
+  getStorageStats:           (params)      => api.get('/sharepoint/stats/storage', { params }),
+  getActivityLog:            (params)      => api.get('/sharepoint/stats/activity', { params }),
+  getDepartmentStats:        (department)  => api.get(`/sharepoint/stats/department/${department}`),
+  getSharePointDashboardStats: ()          => api.get('/sharepoint/dashboard-stats')
 };
 
 export default sharepointAPI;
@@ -212,56 +149,102 @@ export default sharepointAPI;
 
 
 
+
 // import axios from 'axios';
 
+// const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+// // Create axios instance with auth token
 // const api = axios.create({
-//   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5001/api',
+//   baseURL: API_URL,
+//   headers: {
+//     'Content-Type': 'application/json'
+//   }
 // });
 
+// // Add token to requests
 // api.interceptors.request.use((config) => {
 //   const token = localStorage.getItem('token');
 //   if (token) {
-//     config.headers['Authorization'] = `Bearer ${token}`;
+//     config.headers.Authorization = `Bearer ${token}`;
 //   }
 //   return config;
-// }, (error) => {
-//   return Promise.reject(error);
 // });
 
-// api.interceptors.response.use((response) => {
-//   return response;
-// }, (error) => {
-//   if (error.response?.status === 401) {
-//     localStorage.removeItem('token');
-//     window.location = '/login';
-//   }
-//   return Promise.reject(error);
-// });
+// const sharepointAPI = {
+//   // ============================================
+//   // FOLDER OPERATIONS
+//   // ============================================
+  
+//   createFolder: (data) => api.post('/sharepoint/folders', data),
+  
+//   getFolders: (params) => api.get('/sharepoint/folders', { params }),
+  
+//   getFolder: (folderId) => api.get(`/sharepoint/folders/${folderId}`),
+  
+//   updateFolder: (folderId, data) => api.put(`/sharepoint/folders/${folderId}`, data),
+  
+//   deleteFolder: (folderId) => api.delete(`/sharepoint/folders/${folderId}`),
 
-// export default {
-//   // ============ FOLDER OPERATIONS ============
+//   // ============================================
+//   // NEW: FOLDER ACCESS MANAGEMENT
+//   // ============================================
   
-//   createFolder: (folderData) => 
-//     api.post('/sharepoint/folders', folderData),
+//   /**
+//    * Invite users to folder
+//    * @param {string} folderId 
+//    * @param {Object} data - { userEmails: string[], permission: string }
+//    */
+//   inviteUsersToFolder: (folderId, data) => 
+//     api.post(`/sharepoint/folders/${folderId}/invite`, data),
   
-//   getFolders: (params) => 
-//     api.get('/sharepoint/folders', { params }),
+//   /**
+//    * Revoke user access from folder
+//    * @param {string} folderId 
+//    * @param {string} userId 
+//    */
+//   revokeUserAccess: (folderId, userId) => 
+//     api.delete(`/sharepoint/folders/${folderId}/revoke/${userId}`),
   
-//   getFolder: (folderId) => 
-//     api.get(`/sharepoint/folders/${folderId}`),
+//   /**
+//    * Block user from folder
+//    * @param {string} folderId 
+//    * @param {Object} data - { userEmail: string, reason: string }
+//    */
+//   blockUserFromFolder: (folderId, data) => 
+//     api.post(`/sharepoint/folders/${folderId}/block`, data),
   
-//   updateFolder: (folderId, folderData) => 
-//     api.put(`/sharepoint/folders/${folderId}`, folderData),
+//   /**
+//    * Unblock user from folder
+//    * @param {string} folderId 
+//    * @param {string} userId 
+//    */
+//   unblockUserFromFolder: (folderId, userId) => 
+//     api.delete(`/sharepoint/folders/${folderId}/unblock/${userId}`),
   
-//   deleteFolder: (folderId) => 
-//     api.delete(`/sharepoint/folders/${folderId}`),
+//   /**
+//    * Get folder access list
+//    * @param {string} folderId 
+//    */
+//   getFolderAccess: (folderId) => 
+//     api.get(`/sharepoint/folders/${folderId}/access`),
+  
+//   /**
+//    * Update user permission in folder
+//    * @param {string} folderId 
+//    * @param {string} userId 
+//    * @param {Object} data - { permission: string }
+//    */
+//   updateUserPermission: (folderId, userId, data) => 
+//     api.patch(`/sharepoint/folders/${folderId}/permission/${userId}`, data),
 
-//   // ============ FILE OPERATIONS ============
+//   // ============================================
+//   // FILE OPERATIONS
+//   // ============================================
   
 //   uploadFile: (folderId, formData) => 
 //     api.post(`/sharepoint/folders/${folderId}/files`, formData, {
-//       headers: { 'Content-Type': 'multipart/form-data' },
-//       timeout: 60000 // 60 second timeout for large files
+//       headers: { 'Content-Type': 'multipart/form-data' }
 //     }),
   
 //   getFiles: (folderId, params) => 
@@ -271,51 +254,77 @@ export default sharepointAPI;
 //     api.get(`/sharepoint/files/${fileId}`),
   
 //   downloadFile: (fileId) => 
-//     api.get(`/sharepoint/files/${fileId}/download`, {
-//       responseType: 'blob'
+//     api.get(`/sharepoint/files/${fileId}/download`, { 
+//       responseType: 'blob' 
 //     }),
   
 //   deleteFile: (fileId, permanently = false) => 
-//     api.delete(`/sharepoint/files/${fileId}`, {
-//       params: { permanently }
+//     api.delete(`/sharepoint/files/${fileId}`, { 
+//       params: { permanently } 
 //     }),
 
-//   // ============ USER-SPECIFIC OPERATIONS ============
+//   // ============================================
+//   // FILE SHARING (Enhanced)
+//   // ============================================
+  
+//   /**
+//    * Share file with user or department
+//    * @param {string} fileId 
+//    * @param {Object} data - { shareWith: string, permission: string, type: 'user'|'department' }
+//    */
+//   shareFile: (fileId, data) => 
+//     api.post(`/sharepoint/files/${fileId}/share`, data),
+  
+//   revokeFileAccess: (fileId, userId) => 
+//     api.delete(`/sharepoint/files/${fileId}/access/${userId}`),
+  
+//   /**
+//    * Generate shareable link for file
+//    * @param {string} fileId 
+//    * @param {number} expiresIn - Expiration time in seconds
+//    */
+//   generateShareLink: (fileId, expiresIn = 604800) => 
+//     api.post(`/sharepoint/files/${fileId}/share-link`, { expiresIn }),
+
+//   // ============================================
+//   // USER OPERATIONS
+//   // ============================================
   
 //   getUserFiles: (params) => 
 //     api.get('/sharepoint/my-files', { params }),
   
 //   getUserStats: () => 
 //     api.get('/sharepoint/user-stats'),
+  
+//   /**
+//    * Search users for invitation
+//    * @param {string} query - Search query
+//    */
+//   searchUsers: (query) => 
+//     api.get('/sharepoint/users/search', { params: { q: query } }),
 
-//   // ============ SHARING OPERATIONS ============
-  
-//   shareFile: (fileId, shareData) => 
-//     api.post(`/sharepoint/files/${fileId}/share`, shareData),
-  
-//   revokeAccess: (fileId, userId) => 
-//     api.delete(`/sharepoint/files/${fileId}/access/${userId}`),
-  
-//   generateShareLink: (fileId, expiresIn) => 
-//     api.post(`/sharepoint/files/${fileId}/share-link`, { expiresIn }),
-
-//   // ============ SEARCH & DISCOVERY ============
+//   // ============================================
+//   // SEARCH & DISCOVERY
+//   // ============================================
   
 //   globalSearch: (params) => 
 //     api.get('/sharepoint/search', { params }),
   
-//   getRecentFiles: (limit = 10) => 
-//     api.get('/sharepoint/recent', { params: { limit } }),
+//   getRecentFiles: (params) => 
+//     api.get('/sharepoint/recent', { params }),
 
-//   // ============ BULK OPERATIONS ============
+//   // ============================================
+//   // BULK OPERATIONS
+//   // ============================================
   
-//   bulkUpload: (folderId, formData) => 
+//   bulkUploadFiles: (folderId, formData) => 
 //     api.post(`/sharepoint/folders/${folderId}/bulk-upload`, formData, {
-//       headers: { 'Content-Type': 'multipart/form-data' },
-//       timeout: 120000 // 2 minute timeout for bulk uploads
+//       headers: { 'Content-Type': 'multipart/form-data' }
 //     }),
 
-//   // ============ ANALYTICS (Admin) ============
+//   // ============================================
+//   // ANALYTICS
+//   // ============================================
   
 //   getStorageStats: (params) => 
 //     api.get('/sharepoint/stats/storage', { params }),
@@ -325,8 +334,13 @@ export default sharepointAPI;
   
 //   getDepartmentStats: (department) => 
 //     api.get(`/sharepoint/stats/department/${department}`),
+  
+//   getSharePointDashboardStats: () => 
+//     api.get('/sharepoint/dashboard-stats'),
 
-//   // ============ VERSION CONTROL ============
+//   // ============================================
+//   // VERSION CONTROL
+//   // ============================================
   
 //   createFileVersion: (fileId, formData) => 
 //     api.post(`/sharepoint/files/${fileId}/version`, formData, {
@@ -340,7 +354,4 @@ export default sharepointAPI;
 //     api.post(`/sharepoint/files/${fileId}/restore/${versionIndex}`)
 // };
 
-
-
-
-
+// export default sharepointAPI;

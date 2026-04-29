@@ -223,9 +223,13 @@ const CashRequestForm = () => {
       formData.append('requestMode', 'advance');
       formData.append('requestType', values.requestType);
       formData.append('amountRequested', values.amountRequested);
-      const purposeValue = typeof values.purpose === 'string' && values.purpose !== 'undefined'
-        ? values.purpose
-        : '';
+      // Ensure purpose is always included and not undefined/null
+      let purposeValue = '';
+      if (typeof values.purpose === 'string' && values.purpose.trim().length > 0) {
+        purposeValue = values.purpose.trim();
+      } else if (form.getFieldValue('purpose')) {
+        purposeValue = form.getFieldValue('purpose').trim();
+      }
       formData.append('purpose', purposeValue);
       formData.append('urgency', values.urgency);
       formData.append('requiredDate', values.requiredDate.format('YYYY-MM-DD'));

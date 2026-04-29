@@ -232,7 +232,8 @@ const FinanceJustificationForm = () => {
         });
         
         // Use the API route to serve the document with authentication
-        const documentUrl = `/cash-requests/justification-document/${request._id}/${encodeURIComponent(doc.name)}`;
+        // Use publicId for correct file retrieval
+        const documentUrl = `/cash-requests/justification-document/${request._id}/${encodeURIComponent(doc.publicId || doc.name)}`;
         
         console.log('Fetching from API route:', documentUrl);
         
